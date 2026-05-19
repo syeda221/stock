@@ -10,12 +10,20 @@ class AdminUserSeeder extends Seeder
 {
     public function run()
     {
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'admin@admin.com'],
             [
                 'name' => 'Admin',
                 'password' => Hash::make('admin'),
             ]
         );
+
+        // Assign the Super Admin role if the package is installed and role exists
+        if (class_exists(\Spatie\Permission\Models\Role::class)) {
+            $role = \Spatie\Permission\Models\Role::where('name', 'Super Admin')->first();
+            if ($role) {
+                $user->assignRole($role);
+            }
+        }
     }
 }
