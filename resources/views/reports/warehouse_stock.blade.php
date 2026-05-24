@@ -14,7 +14,7 @@
             </ol>
         </nav>
         <h5 class="mb-0 fw-bold">Warehouse Stock Report</h5>
-        <small class="text-muted">View stock levels by warehouse and product</small>
+        <small class="text-muted">View stock levels by warehouse, location, batch, and pallet details</small>
     </div>
 </div>
 
@@ -43,12 +43,12 @@
                 <div class="d-flex align-items-center">
                     <div class="flex-shrink-0">
                         <div class="bg-info bg-opacity-10 rounded-3 p-3">
-                            <i class="bi bi-arrow-down-circle text-info fs-4"></i>
+                            <i class="bi bi-box-seam text-info fs-4"></i>
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="text-muted mb-1">Total Inbound</h6>
-                        <h4 class="mb-0 fw-bold text-info" id="summaryInbound">{{ number_format($summary['total_inbound'], 2) }}</h4>
+                        <h6 class="text-muted mb-1">Products</h6>
+                        <h4 class="mb-0 fw-bold text-info" id="summaryProducts">{{ $summary['total_products'] }}</h4>
                     </div>
                 </div>
             </div>
@@ -60,12 +60,12 @@
                 <div class="d-flex align-items-center">
                     <div class="flex-shrink-0">
                         <div class="bg-warning bg-opacity-10 rounded-3 p-3">
-                            <i class="bi bi-arrow-up-circle text-warning fs-4"></i>
+                            <i class="bi bi-pallet text-warning fs-4"></i>
                         </div>
                     </div>
                     <div class="flex-grow-1 ms-3">
-                        <h6 class="text-muted mb-1">Total Outbound</h6>
-                        <h4 class="mb-0 fw-bold text-warning" id="summaryOutbound">{{ number_format($summary['total_outbound'], 2) }}</h4>
+                        <h6 class="text-muted mb-1">Total Pallets</h6>
+                        <h4 class="mb-0 fw-bold text-warning" id="summaryPallets">{{ number_format($summary['total_pallets']) }}</h4>
                     </div>
                 </div>
             </div>
@@ -160,10 +160,14 @@
                         <th>Item Code</th>
                         <th>Product Name</th>
                         <th>Warehouse</th>
-                        <th class="text-end">Total Inbound</th>
-                        <th class="text-end">Total Outbound</th>
+                        <th>Location</th>
+                        <th class="text-end">Pallets Used</th>
+                        <th>SAP Batch</th>
+                        <th>Vendor Batch</th>
+                        <th>Expiry Date</th>
                         <th class="text-end">Balance</th>
-                        <th class="text-center">Status</th>
+                        <th class="text-center">QC Status</th>
+                        <th class="text-center" style="width:80px;">Action</th>
                     </tr>
                 </thead>
 
@@ -171,41 +175,82 @@
                     @forelse($stockReport as $index => $item)
                         <tr>
                             <td class="text-muted fw-semibold">{{ $index + 1 }}</td>
-                            <td class="fw-semibold">{{ $item['item_code'] }}</td>
+                            <td class="fw-semibold">{{ $item->item_code }}</td>
                             <td>
-                                <div class="fw-semibold text-dark">{{ $item['product_name'] }}</div>
+                                <div class="fw-semibold text-dark">{{ $item->product_name }}</div>
                             </td>
                             <td>
                                 <span class="badge bg-secondary bg-opacity-10 text-secondary">
-                                    <i class="bi bi-buildings me-1"></i>{{ $item['warehouse_name'] }}
+                                    <i class="bi bi-buildings me-1"></i>{{ $item->warehouse_name }}
                                 </span>
                             </td>
-                            <td class="text-end">
-                                <span class="text-info fw-semibold">
-                                    <i class="bi bi-arrow-down-circle me-1"></i>{{ number_format($item['total_inbound'], 2) }}
-                                </span>
+                            <td>
+                                @if($item->row_name)
+                                    <span class="badge bg-light text-dark border">
+                                        <i class="bi bi-geo-alt me-1"></i>{{ $item->row_name }}
+                                    </span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
                             </td>
                             <td class="text-end">
-                                <span class="text-warning fw-semibold">
-                                    <i class="bi bi-arrow-up-circle me-1"></i>{{ number_format($item['total_outbound'], 2) }}
+                                <span class="fw-semibold">
+                                    {{ $item->pallets_used ? number_format($item->pallets_used) : '—' }}
                                 </span>
                             </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ $item->sap_batch ?: '—' }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ $item->vendor_batch ?: '—' }}</span>
+                            </td>
+                            <td>
+                                @if($item->expiry_date)
+                                    <span class="badge {{ \Carbon\Carbon::parse($item->expiry_date)->isPast() ? 'bg-danger' : 'bg-success' }} bg-opacity-10 text-dark">
+                                        {{ \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') }}
+                                    </span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
                             <td class="text-end">
-                                <span class="fw-bold {{ $item['total_balance'] > 0 ? 'text-success' : 'text-danger' }}">
-                                    {{ number_format($item['total_balance'], 2) }}
+                                <span class="fw-bold text-success">
+                                    {{ number_format($item->balance_quantity, 2) }}
                                 </span>
                             </td>
                             <td class="text-center">
-                                @if($item['total_balance'] > 0)
-                                    <span class="badge bg-success">In Stock</span>
+                                @if($item->quality_clearance === 'cleared')
+                                    <span class="badge bg-success">Cleared</span>
+                                @elseif($item->quality_clearance === 'pending')
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                @elseif($item->quality_clearance === 'rejected')
+                                    <span class="badge bg-danger">Rejected</span>
                                 @else
-                                    <span class="badge bg-danger">Out of Stock</span>
+                                    <span class="text-muted">—</span>
                                 @endif
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-primary quick-view-btn"
+                                    data-item_code="{{ $item->item_code }}"
+                                    data-product_name="{{ $item->product_name }}"
+                                    data-warehouse_name="{{ $item->warehouse_name }}"
+                                    data-row_name="{{ $item->row_name ?? '—' }}"
+                                    data-pallets_used="{{ $item->pallets_used ? number_format($item->pallets_used) : '—' }}"
+                                    data-sap_batch="{{ $item->sap_batch ?: '—' }}"
+                                    data-vendor_batch="{{ $item->vendor_batch ?: '—' }}"
+                                    data-expiry_date="{{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '—' }}"
+                                    data-balance_quantity="{{ number_format($item->balance_quantity, 2) }}"
+                                    data-quality_clearance="{{ $item->quality_clearance ?: '—' }}"
+                                    data-mfg_date="{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '—' }}"
+                                    data-total_quantity="{{ number_format($item->total_quantity, 2) }}"
+                                    title="Quick View">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="text-center py-5">
+                            <td colspan="12" class="text-center py-5">
                                 <div class="text-muted">
                                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                     No stock data found
@@ -218,15 +263,107 @@
                 @if(count($stockReport) > 0)
                 <tfoot class="table-light">
                     <tr class="fw-bold">
-                        <td colspan="4" class="text-end">Totals:</td>
-                        <td class="text-end text-info">{{ number_format($summary['total_inbound'], 2) }}</td>
-                        <td class="text-end text-warning">{{ number_format($summary['total_outbound'], 2) }}</td>
+                        <td colspan="5" class="text-end">Totals:</td>
+                        <td class="text-end text-warning">{{ number_format($summary['total_pallets']) }}</td>
+                        <td colspan="3"></td>
                         <td class="text-end text-success">{{ number_format($summary['total_balance'], 2) }}</td>
+                        <td></td>
                         <td></td>
                     </tr>
                 </tfoot>
                 @endif
             </table>
+        </div>
+    </div>
+</div>
+
+{{-- Quick View Modal --}}
+<div class="modal fade" id="quickViewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h6 class="modal-title"><i class="bi bi-eye me-2"></i>Stock Detail</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Item Code</small>
+                            <strong class="fs-6" id="mdl_item_code">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Product Name</small>
+                            <strong class="fs-6" id="mdl_product_name">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Warehouse</small>
+                            <strong id="mdl_warehouse_name">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Location</small>
+                            <strong id="mdl_row_name">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Total Quantity</small>
+                            <strong id="mdl_total_quantity">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Balance Quantity</small>
+                            <strong class="text-success" id="mdl_balance_quantity">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Pallets Used</small>
+                            <strong id="mdl_pallets_used">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">SAP Batch</small>
+                            <strong id="mdl_sap_batch">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Vendor Batch</small>
+                            <strong id="mdl_vendor_batch">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Mfg Date</small>
+                            <strong id="mdl_mfg_date">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">Expiry Date</small>
+                            <strong id="mdl_expiry_date">—</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3">
+                            <small class="text-muted d-block">QC Status</small>
+                            <strong id="mdl_quality_clearance">—</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -247,6 +384,23 @@ $(document).ready(function() {
 
     $('.filter-field').on('change', function() {
         applyFilters();
+    });
+
+    $(document).on('click', '.quick-view-btn', function() {
+        const btn = $(this);
+        $('#mdl_item_code').text(btn.data('item_code'));
+        $('#mdl_product_name').text(btn.data('product_name'));
+        $('#mdl_warehouse_name').text(btn.data('warehouse_name'));
+        $('#mdl_row_name').text(btn.data('row_name'));
+        $('#mdl_total_quantity').text(btn.data('total_quantity'));
+        $('#mdl_balance_quantity').text(btn.data('balance_quantity'));
+        $('#mdl_pallets_used').text(btn.data('pallets_used'));
+        $('#mdl_sap_batch').text(btn.data('sap_batch'));
+        $('#mdl_vendor_batch').text(btn.data('vendor_batch'));
+        $('#mdl_mfg_date').text(btn.data('mfg_date'));
+        $('#mdl_expiry_date').text(btn.data('expiry_date'));
+        $('#mdl_quality_clearance').text(btn.data('quality_clearance'));
+        $('#quickViewModal').modal('show');
     });
 
     function applyFilters() {
@@ -281,14 +435,14 @@ $(document).ready(function() {
 
                 // Update summary cards
                 const summaryWarehouses = doc.querySelector('#summaryWarehouses');
-                const summaryInbound = doc.querySelector('#summaryInbound');
-                const summaryOutbound = doc.querySelector('#summaryOutbound');
+                const summaryProducts = doc.querySelector('#summaryProducts');
+                const summaryPallets = doc.querySelector('#summaryPallets');
                 const summaryBalance = doc.querySelector('#summaryBalance');
                 const totalCount = doc.querySelector('#totalCount');
 
                 if (summaryWarehouses) $('#summaryWarehouses').text(summaryWarehouses.textContent);
-                if (summaryInbound) $('#summaryInbound').text(summaryInbound.textContent);
-                if (summaryOutbound) $('#summaryOutbound').text(summaryOutbound.textContent);
+                if (summaryProducts) $('#summaryProducts').text(summaryProducts.textContent);
+                if (summaryPallets) $('#summaryPallets').text(summaryPallets.textContent);
                 if (summaryBalance) $('#summaryBalance').text(summaryBalance.textContent);
                 if (totalCount) $('#totalCount').text(totalCount.textContent);
 

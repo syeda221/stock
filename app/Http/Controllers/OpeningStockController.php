@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\StockIn;
 use App\Models\StockInItem;
 use App\Models\Warehouse;
+use App\Models\WarehouseRow;
 use App\Services\WarehouseRowFifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -237,6 +238,349 @@ class OpeningStockController extends Controller
                 return response()->json(['message' => $e->getMessage()], 422);
             }
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    public function export()
+    {
+        $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
+            ->with('product', 'warehouse', 'stockIn')
+            ->latest()
+            ->get();
+
+        $filename = 'opening_stock_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () use ($items) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, [
+                'Warehouse', 'Item Code', 'Product Name', 'SAP Batch', 'Vendor Batch',
+                'Units Received', 'Pack Size', 'Total Qty', 'Balance Qty',
+                'Pallets Used', 'MFG Date', 'Expiry Date', 'Quality Clearance',
+                'Sound', 'Blocked', 'Hold', 'Created At'
+            ]);
+
+            foreach ($items as $item) {
+                fputcsv($file, [
+                    $item->warehouse->name ?? '',
+                    $item->product->item_code ?? '',
+                    $item->product->name ?? '',
+                    $item->sap_batch ?? '',
+                    $item->vendor_batch ?? '',
+                    $item->units_received,
+                    $item->pack_size_snapshot,
+                    $item->total_quantity,
+                    $item->balance_quantity,
+                    $item->pallets_used ?? 0,
+                    $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
+                    $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                    $item->quality_clearance ?? '',
+                    $item->sound_stock ? 'Yes' : 'No',
+                    $item->block_stock ? 'Yes' : 'No',
+                    $item->hold_stock ? 'Yes' : 'No',
+                    $item->created_at->format('Y-m-d'),
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function downloadTemplate()
+    {
+        $filename = 'opening_stock_import_template.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, [
+                'Item Code', 'Units Received', 'SAP Batch', 'Vendor Batch',
+                'MFG Date', 'Expiry Date', 'Quality Clearance',
+                'Blocked', 'Hold', 'Remarks'
+            ]);
+            fputcsv($file, [
+                'PRD001', '100', 'SAP-2024-001', 'VENDOR-BATCH-001',
+                '2024-01-15', '2025-01-15', 'approved',
+                'No', 'No', 'Initial opening stock'
+            ]);
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function importForm()
+    {
+        return view('opening_stock.import', [
+            'warehouses' => Warehouse::where('status', 1)->orderBy('name')->get(),
+        ]);
+    }
+
+    public function importStore(Request $request)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+        ]);
+
+        $file = $request->file('csv_file');
+        $path = $file->getRealPath();
+        $handle = fopen($path, 'r');
+
+        $rawHeaders = fgetcsv($handle);
+        if (!$rawHeaders) {
+            fclose($handle);
+            return back()->with('error', 'Could not read CSV headers.');
+        }
+
+        $csvHeaders = array_map(fn($h) => trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)), $rawHeaders);
+
+        // Flexible field aliases
+        $fieldAliases = [
+            'Item Code'      => ['Item Code', 'Item Code', 'item_code', 'ItemCode', 'Code'],
+            'Units Received' => ['Units Received', 'Units Received', 'units_received', 'Units'],
+            'SAP Batch'      => ['SAP Batch', 'SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
+            'Vendor Batch'   => ['Vendor Batch', 'Vendor Batch', 'vendor_batch', 'VendorBatch'],
+            'MFG Date'       => ['MFG Date', 'MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
+            'Expiry Date'    => ['Expiry Date', 'Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
+            'Quality Clearance' => ['Quality Clearance', 'Quality Clearance', 'quality_clearance', 'QC'],
+            'Blocked'        => ['Blocked', 'Blocked', 'block_stock', 'Block'],
+            'Hold'           => ['Hold', 'Hold', 'hold_stock', 'Hold'],
+            'Remarks'        => ['Remarks', 'Remarks', 'remarks', 'Notes', 'Comment'],
+            'Warehouse'      => ['Warehouse', 'Warehouse', 'warehouse', 'Warehouse Name', 'WH'],
+        ];
+
+        // Build header map: for each field, find first matching column
+        $headerMap = [];
+        foreach ($fieldAliases as $field => $aliases) {
+            $pos = false;
+            foreach ($aliases as $alias) {
+                $idx = array_search($alias, $csvHeaders);
+                if ($idx === false) $idx = array_search(strtolower($alias), array_map('strtolower', $csvHeaders));
+                if ($idx !== false) {
+                    $pos = $idx;
+                    break;
+                }
+            }
+            if ($pos !== false) {
+                $headerMap[$field] = $pos;
+            }
+        }
+
+        // Item Code and Units Received are required
+        if (!isset($headerMap['Item Code'])) {
+            fclose($handle);
+            return back()->with('error', 'Missing required column "Item Code". Found: ' . implode(', ', $csvHeaders));
+        }
+        if (!isset($headerMap['Units Received'])) {
+            fclose($handle);
+            return back()->with('error', 'Missing required column "Units Received". Found: ' . implode(', ', $csvHeaders));
+        }
+
+        // Build warehouse map (name -> id)
+        $allWarehouses = Warehouse::where('status', 1)->get()->keyBy(function($w) {
+            return strtolower(trim($w->name));
+        });
+
+        // Determine warehouses to use
+        $csvHasWarehouse = isset($headerMap['Warehouse']);
+        if ($request->warehouse_id) {
+            // User selected a specific warehouse
+            $targetWarehouse = Warehouse::findOrFail($request->warehouse_id);
+            $warehousePool = collect([$targetWarehouse]);
+        } elseif ($csvHasWarehouse) {
+            // CSV has Warehouse column — use it per-row; fall back to auto-assign
+            $warehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
+            if ($warehousePool->isEmpty()) {
+                $warehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
+            }
+        } else {
+            // Auto-assign across warehouses with rows
+            $warehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
+            if ($warehousePool->isEmpty()) {
+                $warehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
+            }
+            if ($warehousePool->isEmpty()) {
+                fclose($handle);
+                return back()->with('error', 'No active warehouses found for auto-assignment.');
+            }
+        }
+
+        $errors = [];
+        $imported = 0;
+        $skipped = 0;
+        $items = [];
+        $allProducts = Product::where('status', 1)->get()->keyBy('item_code');
+
+        // Helper to read cell value by field name
+        $getCell = function($row, $field) use ($headerMap) {
+            if (!isset($headerMap[$field])) return '';
+            $idx = $headerMap[$field];
+            return trim($row[$idx] ?? '');
+        };
+
+        $rowNum = 1;
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+            if (count($row) <= 1 && ($row[0] === null || trim($row[0]) === '')) continue;
+
+            $itemCode = $getCell($row, 'Item Code');
+            $units = $getCell($row, 'Units Received');
+            $rowErrors = [];
+
+            if (empty($itemCode)) $rowErrors[] = 'Missing Item Code';
+            if (empty($units) || !is_numeric($units)) $rowErrors[] = 'Invalid Units Received';
+
+            $product = null;
+            if (!empty($itemCode)) {
+                $product = $allProducts->get($itemCode);
+                if (!$product) $rowErrors[] = "Product '{$itemCode}' not found";
+            }
+
+            // Determine warehouse for this row
+            $rowWarehouse = null;
+            if ($csvHasWarehouse) {
+                $whName = strtolower(trim($getCell($row, 'Warehouse')));
+                if (!empty($whName) && $allWarehouses->has($whName)) {
+                    $rowWarehouse = $allWarehouses[$whName];
+                }
+            }
+            if (!$rowWarehouse && $request->warehouse_id) {
+                $rowWarehouse = $targetWarehouse;
+            }
+
+            if (!empty($rowErrors)) {
+                $errors[] = "Row {$rowNum}: " . implode('; ', $rowErrors);
+                $skipped++;
+                continue;
+            }
+
+            $items[] = [
+                'product' => $product,
+                'units' => (int) $units,
+                'warehouse' => $rowWarehouse,
+                'sap_batch' => $getCell($row, 'SAP Batch'),
+                'vendor_batch' => $getCell($row, 'Vendor Batch'),
+                'mfg_date' => $getCell($row, 'MFG Date'),
+                'expiry_date' => $getCell($row, 'Expiry Date'),
+                'quality_clearance' => in_array(strtolower($getCell($row, 'Quality Clearance')), ['approved', 'rejected']) ? strtolower($getCell($row, 'Quality Clearance')) : 'pending',
+                'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
+                'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
+                'remarks' => $getCell($row, 'Remarks'),
+            ];
+        }
+
+        fclose($handle);
+
+        if (count($items) === 0) {
+            return back()->with('error', 'No valid rows found in CSV');
+        }
+
+        try {
+            DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, &$imported, &$skipped, &$errors) {
+                $whIndex = 0;
+
+                foreach ($items as $item) {
+                    $product = $item['product'];
+                    $units = $item['units'];
+                    $packSize = (float) $product->pack_size;
+                    $palletsNeeded = 0;
+
+                    if ($product->cartons_per_pallet > 0) {
+                        $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
+                    }
+
+                    // Determine target warehouse(s) for this item
+                    if ($item['warehouse']) {
+                        $targets = collect([$item['warehouse']]);
+                    } else {
+                        $targets = $warehousePool;
+                    }
+
+                    $assigned = false;
+                    $attempts = 0;
+
+                    while (!$assigned && $attempts < $targets->count()) {
+                        $wh = $targets[$whIndex % $targets->count()];
+                        $whIndex++;
+
+                        $splits = WarehouseRowFifo::assign($wh->id, $palletsNeeded, $units, $packSize);
+
+                        $hasSpace = false;
+                        foreach ($splits as $s) {
+                            if ($s['warehouse_row_id'] !== null) { $hasSpace = true; break; }
+                        }
+                        if ($wh->rows()->count() === 0) $hasSpace = true;
+
+                        if ($hasSpace || $attempts >= $targets->count() - 1) {
+                            $stockIn = StockIn::firstOrCreate(
+                                [
+                                    'source_type' => 'opening',
+                                    'warehouse_id' => $wh->id,
+                                    'remarks' => 'Imported via CSV on ' . now()->format('Y-m-d H:i'),
+                                ],
+                                ['shipment_type' => 'manual']
+                            );
+
+                            foreach ($splits as $split) {
+                                $splitUnits = $split['units'];
+                                $splitQty = round($splitUnits * $packSize, 4);
+
+                                StockInItem::create([
+                                    'stock_in_id' => $stockIn->id,
+                                    'product_id' => $product->id,
+                                    'warehouse_id' => $wh->id,
+                                    'warehouse_row_id' => $split['warehouse_row_id'],
+                                    'sap_batch' => $item['sap_batch'] ?: null,
+                                    'vendor_batch' => $item['vendor_batch'] ?: null,
+                                    'mfg_date' => $item['mfg_date'] ?: null,
+                                    'expiry_date' => $item['expiry_date'] ?: null,
+                                    'units_received' => $splitUnits,
+                                    'pack_size_snapshot' => $packSize,
+                                    'total_quantity' => $splitQty,
+                                    'balance_quantity' => $splitQty,
+                                    'use_pallets' => $split['pallets'] > 0,
+                                    'pallets_used' => $split['pallets'] > 0 ? $split['pallets'] : null,
+                                    'sound_stock' => !$item['blocked'] && !$item['hold'],
+                                    'block_stock' => $item['blocked'],
+                                    'hold_stock' => $item['hold'],
+                                    'quality_clearance' => $item['quality_clearance'],
+                                    'remarks' => $item['remarks'] ?: null,
+                                ]);
+                            }
+
+                            $assigned = true;
+                            $imported++;
+                        }
+                        $attempts++;
+                    }
+
+                    if (!$assigned) {
+                        $errors[] = "No warehouse with space for '{$product->item_code}'";
+                        $skipped++;
+                    }
+                }
+            });
+
+            $message = "Imported {$imported} product(s).";
+            if ($csvHasWarehouse) $message .= " (warehouse from CSV)";
+            elseif ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
+            else $message .= " Auto-assigned.";
+            if ($skipped > 0) $message .= " {$skipped} skipped.";
+            if ($errors) $message .= " " . implode(' | ', array_slice($errors, 0, 10));
+
+            return redirect()->route('opening-stock.index')->with('success', $message);
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
     }
 }

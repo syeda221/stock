@@ -7,4 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class ProductCategory extends Model
 {
     protected $fillable = ['name', 'status'];
+
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'product_category_id');
+    }
 }

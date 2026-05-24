@@ -3,12 +3,22 @@
 @section('content')
 
 <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <h6 class="mb-0">Opening Stock (Batch Wise)</h6>
-        <a href="{{ route('opening-stock.create') }}"
-           class="btn btn-sm btn-primary">
-            + Add Opening Stock
-        </a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('opening-stock.export') }}"
+               class="btn btn-sm btn-outline-success">
+                <i class="bi bi-download"></i> Export
+            </a>
+            <a href="{{ route('opening-stock.import') }}"
+               class="btn btn-sm btn-outline-info">
+                <i class="bi bi-upload"></i> Import
+            </a>
+            <a href="{{ route('opening-stock.create') }}"
+               class="btn btn-sm btn-primary">
+                + Add Opening Stock
+            </a>
+        </div>
     </div>
 
     <div class="card-body p-3">
@@ -75,7 +85,12 @@
 
         @if(session('success'))
             <div class="alert alert-success m-3">
-                {{ session('success') }}
+                <i class="bi bi-check-circle me-1"></i> {{ session('success') }}
+            </div>
+        @endif
+        @if(session('error'))
+            <div class="alert alert-danger m-3">
+                <i class="bi bi-x-circle me-1"></i> {{ session('error') }}
             </div>
         @endif
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Models\StockIn;
 use App\Models\StockInItem;
 use App\Models\StockOut;
@@ -61,7 +62,7 @@ class OutboundController extends Controller
             'stockOut.customer',
             'stockOut.toWarehouse',
             'stockOut.transporter',
-            'product',
+            'product.group',
         ]);
 
         // Apply source type filter
@@ -90,6 +91,14 @@ class OutboundController extends Controller
             $query->where('product_id', $request->product_id);
         }
 
+        // Apply product group filter
+        if ($request->filled('product_group_id')) {
+            $groupId = $request->product_group_id;
+            $query->whereHas('product', function ($q) use ($groupId) {
+                $q->where('product_group_id', $groupId);
+            });
+        }
+
         // Apply date filter
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
@@ -109,14 +118,16 @@ class OutboundController extends Controller
             $wh = Warehouse::find($wid);
             if ($wh) {
                 $totalCapacity = $wh->total_capacity ?: $wh->rows()->sum('pallet_capacity');
-                $usedPallets = \App\Models\StockInItem::where('warehouse_id', $wid)
+                $usedPallets = StockInItem::where('warehouse_id', $wid)
                     ->where('balance_quantity', '>', 0)
                     ->sum('pallets_used');
                 $warehouseCapacities[$wid] = max(0, $totalCapacity - $usedPallets);
             }
         }
 
-        return view('outbound.index', compact('items', 'warehouseCapacities'));
+        $productGroups = ProductGroup::where('status', 1)->orderBy('name')->get();
+
+        return view('outbound.index', compact('items', 'warehouseCapacities', 'productGroups'));
     }
 
     /* ================= CREATE ================= */

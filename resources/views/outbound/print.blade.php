@@ -23,7 +23,7 @@
         ? $stockOut->customer->name
         : $stockOut->toWarehouse->name }}</td>
 </tr>
-<tr><td>Date:</td><td>{{ $stockOut->created_at->format('d-m-Y H:i') }}</td></tr>
+<tr><td>Date:</td><td>{{ $stockOut->created_at->format('d.m.Y H:i') }}</td></tr>
 </table>
 
 <br>

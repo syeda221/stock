@@ -30,6 +30,20 @@ class StockInItem extends Model
         'remarks',
     ];
 
+    protected $casts = [
+        'mfg_date' => 'date',
+        'expiry_date' => 'date',
+        'units_received' => 'integer',
+        'pack_size_snapshot' => 'decimal:4',
+        'total_quantity' => 'decimal:4',
+        'balance_quantity' => 'decimal:4',
+        'use_pallets' => 'boolean',
+        'pallets_used' => 'integer',
+        'sound_stock' => 'boolean',
+        'block_stock' => 'boolean',
+        'hold_stock' => 'boolean',
+    ];
+
     public function stockIn()
     {
         return $this->belongsTo(StockIn::class);
@@ -49,7 +63,7 @@ class StockInItem extends Model
     {
         return $this->belongsTo(WarehouseRow::class, 'warehouse_row_id');
     }
-    // ✅ THIS IS WHAT WAS MISSING
+
     public function warehouseRow()
     {
         return $this->belongsTo(WarehouseRow::class, 'warehouse_row_id');

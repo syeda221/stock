@@ -37,20 +37,82 @@
     }
 </style> -->
 
-<div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0">Inbound Stock (Batch Wise)</h6>
-        <a href="{{ route('inbound.create') }}" class="btn btn-sm btn-primary">
-            + Add Inbound
-        </a>
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+        <h5 class="fw-bold mb-0">Inbound Stock</h5>
+        <small class="text-muted">Batch-wise inbound stock management</small>
+    </div>
+    <a href="{{ route('inbound.create') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Add Inbound
+    </a>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm bg-primary bg-opacity-10">
+            <div class="card-body p-3 d-flex align-items-center gap-3">
+                <div class="bg-primary bg-opacity-25 rounded-3 p-2">
+                    <i class="bi bi-box-seam text-primary fs-5"></i>
+                </div>
+                <div>
+                    <small class="text-muted d-block">Total Batches</small>
+                    <strong class="fs-6">{{ $items->total() }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm bg-success bg-opacity-10">
+            <div class="card-body p-3 d-flex align-items-center gap-3">
+                <div class="bg-success bg-opacity-25 rounded-3 p-2">
+                    <i class="bi bi-check-circle text-success fs-5"></i>
+                </div>
+                <div>
+                    <small class="text-muted d-block">QC Approved</small>
+                    <strong class="fs-6">{{ $items->where('quality_clearance', 'approved')->count() }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm bg-warning bg-opacity-10">
+            <div class="card-body p-3 d-flex align-items-center gap-3">
+                <div class="bg-warning bg-opacity-25 rounded-3 p-2">
+                    <i class="bi bi-exclamation-circle text-warning fs-5"></i>
+                </div>
+                <div>
+                    <small class="text-muted d-block">QC Pending</small>
+                    <strong class="fs-6">{{ $items->where('quality_clearance', 'pending')->count() }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm bg-danger bg-opacity-10">
+            <div class="card-body p-3 d-flex align-items-center gap-3">
+                <div class="bg-danger bg-opacity-25 rounded-3 p-2">
+                    <i class="bi bi-x-circle text-danger fs-5"></i>
+                </div>
+                <div>
+                    <small class="text-muted d-block">QC Rejected</small>
+                    <strong class="fs-6">{{ $items->where('quality_clearance', 'rejected')->count() }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+        <h6 class="mb-0 fw-semibold"><i class="bi bi-list-ul me-2"></i>Inbound Batches</h6>
     </div>
 
     <div class="card-body p-3">
         <!-- Filters -->
-        <form id="inboundFilterForm" class="mb-3" onsubmit="return false;">
+        <form id="inboundFilterForm" class="mb-0" onsubmit="return false;">
             <div class="row g-2">
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">QC Status</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-funnel me-1"></i>QC Status</label>
                     <select name="qc_status" id="filter_qc_status" class="form-select form-select-sm filter-field">
                         <option value="">All Status</option>
                         <option value="pending">🟡 Pending</option>
@@ -59,7 +121,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Warehouse</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-buildings me-1"></i>Warehouse</label>
                     <select name="warehouse_id" id="filter_warehouse" class="form-select form-select-sm filter-field">
                         <option value="">All Warehouses</option>
                         @foreach($warehouses as $warehouse)
@@ -68,7 +130,7 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Vendor</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-truck me-1"></i>Vendor</label>
                     <select name="vendor_id" id="filter_vendor" class="form-select form-select-sm filter-field">
                         <option value="">All Vendors</option>
                         @foreach($vendors as $vendor)
@@ -77,7 +139,16 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Product</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-tag me-1"></i>Product Group</label>
+                    <select name="product_group_id" id="filter_product_group" class="form-select form-select-sm filter-field">
+                        <option value="">All Groups</option>
+                        @foreach($productGroups as $group)
+                            <option value="{{ $group->id }}">{{ $group->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small"><i class="bi bi-box me-1"></i>Product</label>
                     <select name="product_id" id="filter_product" class="form-select form-select-sm filter-field">
                         <option value="">All Products</option>
                         @foreach($products as $product)
@@ -86,22 +157,22 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Date From</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date From</label>
                     <input type="date" name="date_from" id="filter_date_from" class="form-control form-control-sm filter-field">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Date To</label>
+                    <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date To</label>
                     <input type="date" name="date_to" id="filter_date_to" class="form-control form-control-sm filter-field">
                 </div>
             </div>
-            <div class="mt-2">
+            <div class="mt-2 d-flex align-items-center gap-2">
                 <button type="button" id="applyFilters" class="btn btn-sm btn-primary">
                     <i class="bi bi-search"></i> Apply Filters
                 </button>
                 <button type="button" id="resetFilters" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-arrow-counterclockwise"></i> Reset
                 </button>
-                <span class="ms-2 text-muted small">Total: <strong id="totalCount">{{ $items->count() }}</strong> batches</span>
+                <span class="ms-auto text-muted small">Total: <strong id="totalCount">{{ $items->count() }}</strong> batches</span>
             </div>
         </form>
     </div>
@@ -122,21 +193,22 @@
             </div>
         @endif
 
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover table-sm">
-                <thead class="table-light">
+        <div class="table-responsive rounded-bottom">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-primary small">
                     <tr>
                         <th style="width:40px">#</th>
-                        <th style="min-width:160px">Product</th>
-                        <th style="width:100px">Warehouse</th>
-                        <th class="text-end" style="width:60px">Units</th>
-                        <th class="text-end" style="width:70px">Balance</th>
-                        <th style="width:90px">Status</th>
-                        <th style="width:110px">QC</th>
-                        <th style="width:120px">Vehicle/Driver</th>
-                        <th style="width:100px">Days</th>
-                        <th style="width:85px">Date</th>
-                        <th style="width:90px" class="text-center">Actions</th>
+                        <th style="min-width:140px">Product</th>
+                        <th style="width:90px">Group</th>
+                        <th style="width:90px">Warehouse</th>
+                        <th class="text-end" style="width:55px">Units</th>
+                        <th class="text-end" style="width:65px">Balance</th>
+                        <th style="width:80px">Status</th>
+                        <th style="width:100px">QC</th>
+                        <th style="width:110px">Vehicle/Driver</th>
+                        <th style="width:80px">Days</th>
+                        <th style="width:80px">Date</th>
+                        <th style="width:80px" class="text-center">Actions</th>
                     </tr>
                 </thead>
 
@@ -164,10 +236,10 @@
                             'Vehicle No' => $item->stockIn->vehicle_no ?? '-',
                             'Vehicle Size' => $item->stockIn->vehicle_size ?? '-',
                             'Vehicle In Time' => $item->stockIn->vehicle_in_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_in_time)->format('d-m-Y H:i')
+                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_in_time)->format('d.m.Y H:i')
                             : '-',
                             'Vehicle Out Time' => $item->stockIn->vehicle_out_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_out_time)->format('d-m-Y H:i')
+                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_out_time)->format('d.m.Y H:i')
                             : '-',
 
                             'Driver Name' => $item->stockIn->driver_name ?? '-',
@@ -193,10 +265,10 @@
                             'IBD#' => $item->ibd_no ?? '-',
                             'PO' => $item->po_no ?? '-',
 
-                            'MFG Date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d-m-Y') :
+                            'MFG Date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') :
                             '-',
                             'Expiry Date' => $item->expiry_date ?
-                            \Carbon\Carbon::parse($item->expiry_date)->format('d-m-Y') : '-',
+                            \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
                             'Days in Warehouse' => $item->created_at ? $item->created_at->diffInDays(now()) : 0,
 
                             'Units Received' => $item->units_received ?? 0,
@@ -235,7 +307,17 @@
                             
                             <td>
                                 <div class="fw-semibold">{{ $item->product->item_code ?? '-' }}</div>
-                                <small class="text-muted" style="display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->product->name ?? '-' }}">{{ $item->product->name ?? '-' }}</small>
+                                <small class="text-muted" style="display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->product->name ?? '-' }}">{{ $item->product->name ?? '-' }}</small>
+                            </td>
+                            
+                            <td>
+                                @if($item->product->group)
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1" style="font-size: 10px;">
+                                        {{ $item->product->group->name }}
+                                    </span>
+                                @else
+                                    <span class="text-muted" style="font-size: 10px;">—</span>
+                                @endif
                             </td>
                             
                             <td style="font-size: 11px;">{{ Str::limit($item->stockIn->warehouse->name ?? '-', 12) }}</td>
@@ -252,7 +334,7 @@
                             <td>{!! $statusHtml !!}</td>
                             
                             <td>
-                                <select class="form-select form-select-sm qc-status-select"
+                                <select class="form-select form-select-sm qc-status-select qc-bg-{{ $item->quality_clearance ?? 'pending' }}"
                                         data-item-id="{{ $item->id }}"
                                         style="width: 100%; font-size: 10px;">
                                     <option value="pending" {{ ($item->quality_clearance ?? 'pending') == 'pending' ? 'selected' : '' }}>
@@ -299,31 +381,36 @@
                             </td>
                             
                             <td class="text-nowrap">
-                                {{ $item->created_at ? $item->created_at->format('d-m-Y') : '-' }}
+                                {{ $item->created_at ? $item->created_at->format('d.m.Y') : '-' }}
                             </td>
                             
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <a href="{{ route('reports.inbound.pdf', $item->stock_in_id) }}" 
-                                       class="btn btn-sm btn-outline-danger" 
-                                       title="Download PDF"
-                                       target="_blank">
-                                        <i class="bi bi-file-pdf"></i>
-                                    </a>
                                     <button type="button" class="btn btn-sm btn-outline-primary js-more"
                                         data-bs-toggle="modal" data-bs-target="#supportiveModal"
                                         data-title="Inbound Item Details" 
                                         data-header='@json($headerData)'
                                         data-item='@json($itemData)'
-                                        title="View Details">
+                                        title="View">
                                         <i class="bi bi-eye"></i>
                                     </button>
+                                    <a href="{{ route('inbound.edit', $item->stock_in_id) }}" 
+                                       class="btn btn-sm btn-outline-warning" 
+                                       title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{{ route('reports.inbound.pdf', $item->stock_in_id) }}" 
+                                       class="btn btn-sm btn-outline-danger" 
+                                       title="PDF"
+                                       target="_blank">
+                                        <i class="bi bi-file-pdf"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="text-center text-muted p-5">
+                            <td colspan="12" class="text-center text-muted p-5">
                                 <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
                                 <p class="mb-0">No inbound stock found</p>
                             </td>
@@ -332,6 +419,12 @@
                 </tbody>
 
             </table>
+        </div>
+        <div class="card-footer bg-white border-top-0 py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">Showing {{ $items->firstItem() ?? 0 }} - {{ $items->lastItem() ?? 0 }} of {{ $items->total() }} batches</small>
+                {{ $items->links() }}
+            </div>
         </div>
     </div>
 </div>
@@ -551,10 +644,14 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
+                            // Update background color class
+                            selectElement.className = selectElement.className.replace(/qc-bg-\w+/g, '').trim();
+                            selectElement.classList.add('qc-bg-' + newStatus);
+
                             // Show success feedback
                             selectElement.style.backgroundColor = '#d4edda';
                             setTimeout(() => {
-                                selectElement.style.backgroundColor = originalBg;
+                                selectElement.style.backgroundColor = '';
                             }, 1000);
 
                             // Update the selected attribute
@@ -610,6 +707,12 @@
     </script>
 @endpush
 
+
+<style>
+    .qc-bg-pending { background-color: #fff3cd !important; }
+    .qc-bg-approved { background-color: #d1e7dd !important; }
+    .qc-bg-rejected { background-color: #f8d7da !important; }
+</style>
 
 <!-- iam adding some colors in to the modal for beautifiction -->
 <style>
@@ -714,6 +817,7 @@ $(document).ready(function() {
             qc_status: $('#filter_qc_status').val(),
             warehouse_id: $('#filter_warehouse').val(),
             vendor_id: $('#filter_vendor').val(),
+            product_group_id: $('#filter_product_group').val(),
             product_id: $('#filter_product').val(),
             date_from: $('#filter_date_from').val(),
             date_to: $('#filter_date_to').val()

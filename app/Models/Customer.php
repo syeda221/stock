@@ -10,4 +10,9 @@ class Customer extends Model
             'name',
             'status',
         ];
+
+    public function stockOuts()
+    {
+        return $this->hasMany(StockOut::class);
+    }
 }

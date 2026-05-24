@@ -594,21 +594,31 @@ class ReportController extends Controller
         $warehouses = \App\Models\Warehouse::orderBy('name')->get();
         $products = \App\Models\Product::orderBy('name')->get();
 
-        // Build the query for stock data
+        // Build query for detailed stock data with location, pallets, and batch info
         $query = DB::table('stock_in_items')
             ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
             ->join('products', 'stock_in_items.product_id', '=', 'products.id')
             ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
+                'stock_in_items.id as stock_in_item_id',
                 'products.id as product_id',
                 'products.item_code',
                 'products.name as product_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
-                DB::raw('SUM(stock_in_items.total_quantity) as total_inbound'),
-                DB::raw('SUM(stock_in_items.balance_quantity) as total_balance')
+                'warehouse_rows.id as row_id',
+                'warehouse_rows.row_name',
+                'stock_in_items.sap_batch',
+                'stock_in_items.vendor_batch',
+                'stock_in_items.expiry_date',
+                'stock_in_items.mfg_date',
+                'stock_in_items.pallets_used',
+                'stock_in_items.total_quantity',
+                'stock_in_items.balance_quantity',
+                'stock_in_items.quality_clearance'
             )
-            ->groupBy('products.id', 'products.item_code', 'products.name', 'warehouses.id', 'warehouses.name');
+            ->where('stock_in_items.balance_quantity', '>', 0);
 
         // Apply warehouse filter
         if ($request->filled('warehouse_id')) {
@@ -629,44 +639,18 @@ class ReportController extends Controller
             $query->whereDate('stock_in_items.created_at', '<=', $request->date_to);
         }
 
-        $stockData = $query->orderBy('warehouses.name')->orderBy('products.name')->get();
-
-        // Calculate outbound quantities for each product-warehouse combination
-        $stockReport = $stockData->map(function ($item) use ($request) {
-            $outboundQuery = DB::table('stock_out_items')
-                ->join('stock_outs', 'stock_out_items.stock_out_id', '=', 'stock_outs.id')
-                ->where('stock_out_items.product_id', $item->product_id)
-                ->where('stock_outs.warehouse_id', $item->warehouse_id);
-
-            // Apply date range to outbound as well
-            if ($request->filled('date_from')) {
-                $outboundQuery->whereDate('stock_out_items.created_at', '>=', $request->date_from);
-            }
-            if ($request->filled('date_to')) {
-                $outboundQuery->whereDate('stock_out_items.created_at', '<=', $request->date_to);
-            }
-
-            $totalOutbound = $outboundQuery->sum('stock_out_items.dispatch_quantity');
-
-            return [
-                'product_id' => $item->product_id,
-                'item_code' => $item->item_code,
-                'product_name' => $item->product_name,
-                'warehouse_id' => $item->warehouse_id,
-                'warehouse_name' => $item->warehouse_name,
-                'total_inbound' => $item->total_inbound,
-                'total_outbound' => $totalOutbound,
-                'total_balance' => $item->total_balance,
-            ];
-        });
+        $stockReport = $query->orderBy('warehouses.name')
+            ->orderBy('products.name')
+            ->orderBy('warehouse_rows.row_name')
+            ->orderBy('stock_in_items.sap_batch')
+            ->get();
 
         // Calculate summary
         $summary = [
             'total_products' => $stockReport->unique('product_id')->count(),
             'total_warehouses' => $stockReport->unique('warehouse_id')->count(),
-            'total_inbound' => $stockReport->sum('total_inbound'),
-            'total_outbound' => $stockReport->sum('total_outbound'),
-            'total_balance' => $stockReport->sum('total_balance'),
+            'total_pallets' => $stockReport->sum('pallets_used'),
+            'total_balance' => $stockReport->sum('balance_quantity'),
         ];
 
         return view('reports.warehouse_stock', compact('stockReport', 'warehouses', 'products', 'summary'));

@@ -27,7 +27,7 @@
         <td><strong>Type</strong></td>
         <td>{{ ucfirst($stockIn->source_type ?? 'inbound') }}</td>
         <td><strong>Date</strong></td>
-        <td>{{ optional($stockIn->created_at)->format('d-m-Y H:i') ?? '-' }}</td>
+        <td>{{ optional($stockIn->created_at)->format('d.m.Y H:i') ?? '-' }}</td>
     </tr>
     <tr>
         <td><strong>Inbound Invoice No</strong></td>
@@ -61,11 +61,11 @@
     <tr>
         <td><strong>Vehicle In Time</strong></td>
         <td>
-            {{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d-m-Y H:i') : '-' }}
+            {{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}
         </td>
         <td><strong>Vehicle Out Time</strong></td>
         <td>
-            {{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d-m-Y H:i') : '-' }}
+            {{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}
         </td>
     </tr>
     <tr>

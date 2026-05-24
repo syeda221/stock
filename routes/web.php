@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ArrivedFromController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InboundController;
 use App\Http\Controllers\OpeningStockController;
 use App\Http\Controllers\OutboundController;
@@ -25,9 +26,8 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-    Route::get('/', function () {
-        return view('dashboard');
-    })->name('dashboard');
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/notifications', [DashboardController::class, 'notifications'])->name('notifications');
 
     // UOM Routes
     Route::get('/uoms', [UomController::class, 'index'])->name('uom.index');
@@ -65,6 +65,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/products', [ProductController::class, 'index'])->name('product.index');
     Route::get('/products/create', [ProductController::class, 'create'])->name('product.create');
     Route::post('/products', [ProductController::class, 'store'])->name('product.store');
+    Route::get('/products/export/csv', [ProductController::class, 'export'])->name('product.export');
+    Route::get('/products/import/template', [ProductController::class, 'downloadTemplate'])->name('product.import.template');
+    Route::get('/products/import', [ProductController::class, 'importForm'])->name('product.import');
+    Route::post('/products/import', [ProductController::class, 'importStore'])->name('product.import.store');
     Route::get('/products/{product}/edit', [ProductController::class, 'edit'])->name('product.edit');
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('product.update');
     Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('product.destroy');
@@ -114,6 +118,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/opening-stock', [OpeningStockController::class, 'index'])->name('opening-stock.index');
     Route::get('/opening-stock/create', [OpeningStockController::class, 'create'])->name('opening-stock.create');
     Route::post('/opening-stock', [OpeningStockController::class, 'store'])->name('opening-stock.store');
+    Route::get('/opening-stock/export/csv', [OpeningStockController::class, 'export'])->name('opening-stock.export');
+    Route::get('/opening-stock/import/template', [OpeningStockController::class, 'downloadTemplate'])->name('opening-stock.import.template');
+    Route::get('/opening-stock/import', [OpeningStockController::class, 'importForm'])->name('opening-stock.import');
+    Route::post('/opening-stock/import', [OpeningStockController::class, 'importStore'])->name('opening-stock.import.store');
 
     // Inbound Routes
     Route::get('/inbound', [InboundController::class, 'index'])->name('inbound.index');
@@ -121,6 +129,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/inbound', [InboundController::class, 'store'])->name('inbound.store');
     Route::get('/inbound/{stockIn}/invoice', [InboundController::class, 'invoice'])->name('inbound.invoice');
     Route::get('/inbound/{stockIn}/print', [InboundController::class, 'print'])->name('inbound.print');
+    Route::get('/inbound/{stockIn}/edit', [InboundController::class, 'edit'])->name('inbound.edit');
+    Route::put('/inbound/{stockIn}', [InboundController::class, 'update'])->name('inbound.update');
 
     // QC Status Update Route
     Route::post('/qc-status/{item}/update', [QcStatusController::class, 'update'])->name('qc.status.update');

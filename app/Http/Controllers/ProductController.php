@@ -135,4 +135,211 @@ class ProductController extends Controller
         return redirect()->route('product.index')
             ->with('success', 'Product deleted successfully');
     }
+
+    public function export()
+    {
+        $products = Product::with(['category', 'group', 'uom', 'packingType'])
+            ->orderBy('name')->get();
+
+        $filename = 'products_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () use ($products) {
+            $file = fopen('php://output', 'w');
+
+            fputcsv($file, [
+                'Item Code', 'Name', 'Category', 'Group', 'UOM',
+                'Packing Type', 'Pack Size', 'Cartons Per Pallet', 'Status'
+            ]);
+
+            foreach ($products as $p) {
+                fputcsv($file, [
+                    $p->item_code,
+                    $p->name,
+                    $p->category->name ?? '',
+                    $p->group->name ?? '',
+                    $p->uom->name ?? '',
+                    $p->packingType->name ?? '',
+                    $p->pack_size,
+                    $p->cartons_per_pallet ?? '',
+                    $p->status ? 'Active' : 'Inactive',
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function downloadTemplate()
+    {
+        $filename = 'product_import_template.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () {
+            $file = fopen('php://output', 'w');
+
+            fputcsv($file, [
+                'Item Code', 'Name', 'Category', 'Group', 'UOM',
+                'Packing Type', 'Pack Size', 'Cartons Per Pallet', 'Status'
+            ]);
+
+            fputcsv($file, [
+                'PRD001', 'Sample Product', 'Raw Material', 'Group A', 'Kg',
+                'Bag', '25', '40', 'Active'
+            ]);
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function importForm()
+    {
+        return view('product.import');
+    }
+
+    public function importStore(Request $request)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt',
+        ]);
+
+        $file = $request->file('csv_file');
+        $path = $file->getRealPath();
+        $handle = fopen($path, 'r');
+
+        $rawHeaders = fgetcsv($handle);
+        if (!$rawHeaders) {
+            fclose($handle);
+            return back()->with('error', 'Could not read CSV headers.');
+        }
+
+        // Strip BOM and trim headers
+        $headers = array_map(function ($h) {
+            return trim(preg_replace('/^\xEF\xBB\xBF/', '', $h));
+        }, $rawHeaders);
+
+        $expectedHeaders = ['Item Code', 'Name', 'Category', 'Group', 'UOM', 'Packing Type', 'Pack Size', 'Cartons Per Pallet', 'Status'];
+
+        $headerMap = [];
+        foreach ($expectedHeaders as $h) {
+            $pos = array_search($h, $headers);
+            if ($pos === false) {
+                // Case-insensitive fallback
+                $pos = array_search(strtolower($h), array_map('strtolower', $headers));
+            }
+            if ($pos === false) {
+                fclose($handle);
+                return back()->with('error', 'Missing column "' . $h . '". Found: ' . implode(', ', $headers));
+            }
+            $headerMap[$h] = $pos;
+        }
+
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        // Cache lookups: name => id
+        $catMap = \App\Models\ProductCategory::pluck('id', 'name')->toArray();
+        $grpMap = \App\Models\ProductGroup::pluck('id', 'name')->toArray();
+        $uomMap = \App\Models\Uom::pluck('id', 'name')->toArray();
+        $pkMap  = \App\Models\PackingType::pluck('id', 'name')->toArray();
+
+        $existingCodes = Product::pluck('item_code')->toArray();
+
+        $rowNum = 1;
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+
+            if (count($row) <= 1 && ($row[0] === null || trim($row[0]) === '')) {
+                continue;
+            }
+
+            $data = [];
+            foreach ($headerMap as $field => $index) {
+                $data[$field] = trim($row[$index] ?? '');
+            }
+
+            $itemCode       = $data['Item Code'];
+            $name           = $data['Name'];
+            $categoryName   = $data['Category'];
+            $groupName      = $data['Group'];
+            $uomName        = $data['UOM'];
+            $packingName    = $data['Packing Type'];
+            $packSize       = $data['Pack Size'];
+            $cartonsPerPallet = $data['Cartons Per Pallet'];
+            $statusStr      = $data['Status'];
+
+            $rowErrors = [];
+
+            if (empty($itemCode))          $rowErrors[] = 'Missing Item Code';
+            if (empty($name))              $rowErrors[] = 'Missing Name';
+
+            if (!empty($itemCode) && in_array($itemCode, $existingCodes)) {
+                $rowErrors[] = "Item Code '{$itemCode}' already exists";
+            }
+
+            $catId = $catMap[$categoryName] ?? null;
+            $grpId = $grpMap[$groupName] ?? null;
+            $uomId = $uomMap[$uomName] ?? null;
+            $pkId  = $pkMap[$packingName] ?? null;
+
+            if (!$catId) $rowErrors[] = "Category '{$categoryName}' not found";
+            if (!$grpId) $rowErrors[] = "Group '{$groupName}' not found";
+            if (!$uomId) $rowErrors[] = "UOM '{$uomName}' not found";
+            if (!$pkId)  $rowErrors[] = "Packing Type '{$packingName}' not found";
+
+            if (!empty($rowErrors)) {
+                $errors[] = "Row {$rowNum}: " . implode('; ', $rowErrors);
+                $skipped++;
+                continue;
+            }
+
+            try {
+                Product::create([
+                    'item_code'         => $itemCode,
+                    'name'              => $name,
+                    'product_category_id' => $catId,
+                    'product_group_id'    => $grpId,
+                    'uom_id'            => $uomId,
+                    'packing_type_id'   => $pkId,
+                    'pack_size'         => max((int) ($packSize ?: 1), 1),
+                    'cartons_per_pallet' => is_numeric($cartonsPerPallet) ? (int) $cartonsPerPallet : null,
+                    'status'            => strtolower($statusStr) === 'active' ? 1 : 0,
+                ]);
+                $imported++;
+            } catch (\Exception $e) {
+                $errors[] = "Row {$rowNum}: " . $e->getMessage();
+                $skipped++;
+            }
+        }
+
+        fclose($handle);
+
+        if ($imported > 0) {
+            $message = "Imported {$imported} product(s).";
+        } else {
+            $message = "No products were imported.";
+        }
+
+        if ($skipped > 0) {
+            $message .= " {$skipped} row(s) skipped.";
+        }
+
+        if (count($errors) > 0) {
+            $message .= " Details: " . implode(' | ', $errors);
+        }
+
+        return redirect()->route('product.index')
+            ->with('success', $message);
+    }
 }

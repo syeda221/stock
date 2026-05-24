@@ -1,64 +1,27 @@
 @extends('layouts.app')
 
 @section('content')
-    @push('styles')
-        <style>
-            .page-wrapper,
-            .content,
-            .container-fluid,
-            .container {
-                max-width: 100%;
-                overflow-x: hidden
-            }
-
-            .form-label {
-                font-size: 12px;
-                margin-bottom: 2px
-            }
-
-            .form-control,
-            .form-select {
-                font-size: 13px;
-                height: 32px
-            }
-
-            .table-wrapper {
-                width: 100%;
-                overflow-x: auto
-            }
-
-            .table-wrapper table {
-                min-width: 1500px
-            }
-
-            .product-search-wrap {
-                position: relative
-            }
-
-            .product-search-results {
-                position: absolute;
-                top: 100%;
-                left: 0;
-                right: 0;
-                z-index: 1050;
-                background: #fff;
-                border: 1px solid #ddd;
-                max-height: 220px;
-                overflow-y: auto
-            }
-
-            .product-search-item {
-                padding: 6px 10px;
-                cursor: pointer;
-                font-size: 13px
-            }
-
-            .product-search-item:hover {
-                background: #0d6efd;
-                color: #fff
-            }
-        </style>
-    @endpush
+    <style>
+        .form-label { font-size: 12px; margin-bottom: 2px }
+        .form-control, .form-select { font-size: 13px; height: 32px }
+        .table-wrapper { width: 100%; overflow-x: auto }
+        .table-wrapper table { min-width: 1500px }
+        .product-search-wrap { position: relative }
+        .product-search-item { padding: 6px 10px; cursor: pointer; font-size: 13px }
+        .product-search-item:hover { background: #0d6efd; color: #fff }
+        .product-search-dropdown {
+            position: fixed; z-index: 1070; background: #fff;
+            border: 1px solid #ddd; border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.15);
+            max-height: 220px; overflow-y: auto; min-width: 280px;
+        }
+        .qc-select-pending option[value="pending"] { background: #fff3cd; }
+        .qc-select-approved option[value="approved"] { background: #d1e7dd; }
+        .qc-select-rejected option[value="rejected"] { background: #f8d7da; }
+        .qc-select-pending { background: #fff3cd !important; }
+        .qc-select-approved { background: #d1e7dd !important; }
+        .qc-select-rejected { background: #f8d7da !important; }
+    </style>
 
     <form method="POST" action="{{ route('inbound.store') }}" id="inboundForm">
         @csrf
@@ -75,10 +38,26 @@
                         <label class="form-label">Warehouse</label>
                         <select id="warehouseSelect" name="warehouse_id" class="form-control form-control-sm" required>
                             <option value="">Select</option>
-                            @foreach ($warehouses as $w)
-                                <option value="{{ $w->id }}">{{ $w->name }}</option>
+                            @foreach ($warehouseData as $wd)
+                                @php $w = $warehouses->firstWhere('id', $wd['id']) @endphp
+                                <option value="{{ $wd['id'] }}"
+                                    data-free="{{ $wd['free_pallets'] }}"
+                                    {{ $wd['id'] == $autoSelectWarehouseId ? 'selected' : '' }}
+                                    {{ !$wd['has_space'] ? 'disabled' : '' }}>
+                                    {{ $wd['name'] }}
+                                    @if($w->total_capacity > 0)
+                                        ({{ $wd['free_pallets'] }} free / {{ $w->total_capacity }} total)
+                                    @else
+                                        (unlimited)
+                                    @endif
+                                </option>
                             @endforeach
                         </select>
+                        @if($autoSelectWarehouseId)
+                            <small class="text-muted" id="warehouseHint">
+                                <i class="bi bi-info-circle"></i> Auto-selected warehouse with most free space
+                            </small>
+                        @endif
                     </div>
 
                     <div class="col-md-2 mb-2">
@@ -167,23 +146,6 @@
 
 
                     <div class="col-md-2 mb-2">
-                        <label class="form-label">PO No</label>
-                        <input name="po_no" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Shipment No</label>
-                        <input name="shipment_no" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Stock No</label>
-                        <input name="sto_no" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">IBD#</label>
-                        <input name="ibd_no" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-10 mb-2">
                         <label class="form-label">Remarks</label>
                         <input name="remarks" class="form-control form-control-sm">
                     </div>
@@ -242,10 +204,10 @@
 
                 <div class="modal-body row g-2">
                     <div class="col-md-4"><label>SAP</label><input class="form-control form-control-sm modal-sap"></div>
-                    <div class="col-md-4"><label>Vendor</label><input class="form-control form-control-sm modal-vendor">
+                    <div class="col-md-4"><label>Vendor Batch</label><input class="form-control form-control-sm modal-vendor">
                     </div>
-                    <div class="col-md-4"><label>IBD</label><input class="form-control form-control-sm modal-ibd"></div>
-                    <div class="col-md-4"><label>PO</label><input class="form-control form-control-sm modal-po"></div>
+                    <div class="col-md-4"><label>IBD/OBD</label><input class="form-control form-control-sm modal-ibd"></div>
+                    <div class="col-md-4"><label>PO/Shipment</label><input class="form-control form-control-sm modal-po"></div>
                     <div class="col-md-4"><label>MFG</label><input type="date"
                             class="form-control form-control-sm modal-mfg"></div>
                     <div class="col-md-4"><label>EXP</label><input type="date"
@@ -273,7 +235,18 @@
             let rowIndex = 0,
                 activeRow = null;
             const products = @json($products);
+            const warehouseData = @json($warehouseData);
             const batchModal = new bootstrap.Modal(document.getElementById('batchModal'));
+
+            /* Show warehouse free space hint on change */
+            warehouseSelect.addEventListener('change', function() {
+                const opt = this.options[this.selectedIndex];
+                const free = opt ? opt.dataset.free : null;
+                const hint = document.getElementById('warehouseHint');
+                if (hint && free !== undefined) {
+                    hint.innerHTML = `<i class="bi bi-info-circle"></i> ${free} pallet slots free`;
+                }
+            });
 
             /* ADD ROW FUNCTION */
             function addRow() {
@@ -286,9 +259,8 @@
 <tr>
 <td>
 <div class="product-search-wrap">
-<input class="form-control form-control-sm product-input" placeholder="Search product">
+<input class="form-control form-control-sm product-input" placeholder="Search product" autocomplete="off">
 <input type="hidden" name="items[${rowIndex}][product_id]" class="product-id">
-<div class="product-search-results d-none"></div>
 </div>
 </td>
 
@@ -309,10 +281,10 @@
 </td>
 
 <td>
-<select name="items[${rowIndex}][quality_clearance]" class="form-control form-control-sm">
-<option value="pending">Pending</option>
-<option value="approved">Approved</option>
-<option value="rejected">Rejected</option>
+<select name="items[${rowIndex}][quality_clearance]" class="form-control form-control-sm qc-select qc-select-pending" onchange="this.className='form-control form-control-sm qc-select qc-select-'+this.value">
+<option value="pending">🟡 Pending</option>
+<option value="approved">🟢 Approved</option>
+<option value="rejected">🔴 Rejected</option>
 </select>
 </td>
 
@@ -334,44 +306,65 @@
                 addRow();
             };
 
-            /* SHOW ALL PRODUCTS ON FOCUS */
+            let productDropdown = null;
+            let activeInput = null;
+
+            function showProductDropdown(input) {
+                hideProductDropdown();
+                activeInput = input;
+                const rect = input.getBoundingClientRect();
+                const dropdown = document.createElement('div');
+                dropdown.className = 'product-search-dropdown';
+                dropdown.style.top = (rect.bottom + 4) + 'px';
+                dropdown.style.left = Math.max(10, rect.left) + 'px';
+                dropdown.style.width = Math.max(280, rect.width) + 'px';
+                document.body.appendChild(dropdown);
+                productDropdown = dropdown;
+                renderProductItems(dropdown, '');
+            }
+
+            function hideProductDropdown() {
+                if (productDropdown) {
+                    productDropdown.remove();
+                    productDropdown = null;
+                }
+                activeInput = null;
+            }
+
+            function renderProductItems(dropdown, filter) {
+                const val = filter.toLowerCase();
+                const filtered = filter
+                    ? products.filter(p => p.name.toLowerCase().includes(val) || p.item_code.toLowerCase().includes(val))
+                    : products;
+                dropdown.innerHTML = filtered.map(p =>
+                    `<div class="product-search-item" data-id="${p.id}" data-pack="${p.pack_size}" data-cartons="${p.cartons_per_pallet || ''}">${p.item_code} - ${p.name}</div>`
+                ).join('');
+            }
+
+            /* SHOW DROPDOWN ON FOCUS */
             document.addEventListener('focusin', e => {
                 if (!e.target.classList.contains('product-input')) return;
-                const box = e.target.nextElementSibling.nextElementSibling;
-                box.innerHTML = '';
-                products.forEach(p => {
-                    box.innerHTML +=
-                        `<div class="product-search-item" data-id="${p.id}" data-pack="${p.pack_size}" data-cartons="${p.cartons_per_pallet || ''}">${p.item_code} - ${p.name}</div>`;
-                });
-                box.classList.remove('d-none');
+                showProductDropdown(e.target);
             });
 
-            /* FILTER SEARCH */
+            /* FILTER ON INPUT */
             document.addEventListener('input', e => {
                 if (!e.target.classList.contains('product-input')) return;
-                const box = e.target.nextElementSibling.nextElementSibling;
-                const val = e.target.value.toLowerCase();
-                box.innerHTML = '';
-                products.filter(p => p.name.toLowerCase().includes(val) || p.item_code.toLowerCase()
-                        .includes(val))
-                    .forEach(p => {
-                        box.innerHTML +=
-                            `<div class="product-search-item" data-id="${p.id}" data-pack="${p.pack_size}" data-cartons="${p.cartons_per_pallet || ''}">${p.item_code} - ${p.name}</div>`;
-                    });
-                box.classList.remove('d-none');
+                if (!productDropdown) return;
+                renderProductItems(productDropdown, e.target.value);
             });
 
             /* SELECT PRODUCT */
             document.addEventListener('mousedown', e => {
                 if (e.target.classList.contains('product-search-item')) {
-                    e.preventDefault(); // Prevent input blur
-                    activeRow = e.target.closest('tr');
+                    e.preventDefault();
+                    activeRow = e.target.closest('tr') || (activeInput ? activeInput.closest('tr') : null);
+                    if (!activeRow) return;
                     activeRow.querySelector('.product-id').value = e.target.dataset.id;
                     activeRow.querySelector('.pack-size').value = e.target.dataset.pack;
                     activeRow.querySelector('.product-input').value = e.target.textContent;
-                    e.target.closest('.product-search-results').classList.add('d-none');
+                    hideProductDropdown();
 
-                    // Auto-fill pallets from product setup
                     const cartonsPerPallet = e.target.dataset.cartons || '';
                     activeRow.querySelector('.pallets-per-packing').value = cartonsPerPallet;
                     const palletsInput = activeRow.querySelector('.pallets-used');
@@ -386,12 +379,21 @@
                     }
 
                     batchModal.show();
-                } else if (!e.target.closest('.product-search-wrap')) {
-                    document.querySelectorAll('.product-search-results').forEach(box => {
-                        box.classList.add('d-none');
-                    });
                 }
             });
+
+            /* HIDE DROPDOWN ON CLICK OUTSIDE */
+            document.addEventListener('mousedown', e => {
+                if (e.target.classList.contains('product-search-item')) return;
+                if (productDropdown && !productDropdown.contains(e.target) && !e.target.classList.contains('product-input')) {
+                    hideProductDropdown();
+                }
+            });
+
+            /* HIDE DROPDOWN ON SCROLL */
+            document.addEventListener('scroll', () => {
+                if (productDropdown) hideProductDropdown();
+            }, true);
 
             /* SAVE MODAL */
             saveBatchBtn.onclick = () => {
@@ -433,11 +435,11 @@
             /* AUTO-ADD ROW when last row gets a product */
             document.addEventListener('mousedown', e => {
                 if (!e.target.classList.contains('product-search-item')) return;
-                
+
                 const allRows = document.querySelectorAll('#itemsTable tbody tr');
                 const lastRow = allRows[allRows.length - 1];
-                const clickedRow = e.target.closest('tr');
-                
+                const clickedRow = e.target.closest('tr') || (activeInput ? activeInput.closest('tr') : null);
+
                 // If user filled the last row, add a new one
                 if (clickedRow === lastRow && warehouseSelect.value) {
                     setTimeout(() => addRow(), 100);
@@ -447,7 +449,7 @@
             /* AJAX FORM SUBMISSION */
             document.getElementById('inboundForm').addEventListener('submit', function(e) {
                 e.preventDefault();
-                
+
                 let submitBtn = this.querySelector('button[type="submit"]') || this.querySelector('button.btn-primary');
                 if (submitBtn) {
                     submitBtn.disabled = true;
@@ -477,7 +479,7 @@
                         if(!errorMsg && res.body.message) {
                             errorMsg = res.body.message;
                         }
-                        
+
                         Swal.fire({
                             icon: 'error',
                             title: 'Validation Error',

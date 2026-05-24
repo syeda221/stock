@@ -28,6 +28,14 @@
                    placeholder="Search product...">
         </div> -->
 
+        <a href="{{ route('product.export') }}"
+           class="btn btn-sm btn-outline-success rounded-pill px-3">
+            <i class="bi bi-download me-1"></i> Export
+        </a>
+        <a href="{{ route('product.import') }}"
+           class="btn btn-sm btn-outline-info rounded-pill px-3">
+            <i class="bi bi-upload me-1"></i> Import
+        </a>
         <a href="{{ route('product.create') }}"
            class="btn btn-sm btn-primary rounded-pill shadow-sm px-3">
             <i class="bi bi-plus-lg me-1"></i> Add Product
@@ -35,10 +43,15 @@
     </div>
 </div>
 
-{{-- Success Alert --}}
+{{-- Success / Error Alert --}}
 @if(session('success'))
     <div class="alert alert-success border-0 shadow-sm rounded-4">
         <i class="bi bi-check-circle me-1"></i> {{ session('success') }}
+    </div>
+@endif
+@if(session('error'))
+    <div class="alert alert-danger border-0 shadow-sm rounded-4">
+        <i class="bi bi-x-circle me-1"></i> {{ session('error') }}
     </div>
 @endif
 

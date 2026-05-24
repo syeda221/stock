@@ -22,7 +22,24 @@
     {{-- Masters --}}
     @canany(['uom-list', 'packing-type-list', 'product-category-list', 'product-group-list', 'product-list'])
     <li class="sidebar-section mt-3">Masters</li>
-
+ @can('product-category-list')
+    <li class="nav-item">
+        <a href="{{ route('product-category.index') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product-category.*') ? 'active' : '' }}">
+            <i class="bi bi-tags me-2"></i>
+            <span>Product Category</span>
+        </a>
+    </li>
+    @endcan
+     @can('product-group-list')
+    <li class="nav-item">
+        <a href="{{ route('product-group.index') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product-group.*') ? 'active' : '' }}">
+            <i class="bi bi-collection me-2"></i>
+            <span>Product Group</span>
+        </a>
+    </li>
+    @endcan
     @can('uom-list')
     <li class="nav-item">
         <a href="{{ route('uom.index') }}"
@@ -43,25 +60,7 @@
     </li>
     @endcan
 
-    @can('product-category-list')
-    <li class="nav-item">
-        <a href="{{ route('product-category.index') }}"
-           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product-category.*') ? 'active' : '' }}">
-            <i class="bi bi-tags me-2"></i>
-            <span>Product Category</span>
-        </a>
-    </li>
-    @endcan
 
-    @can('product-group-list')
-    <li class="nav-item">
-        <a href="{{ route('product-group.index') }}"
-           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product-group.*') ? 'active' : '' }}">
-            <i class="bi bi-collection me-2"></i>
-            <span>Product Group</span>
-        </a>
-    </li>
-    @endcan
 
     @can('product-list')
     <li class="nav-item">
@@ -206,7 +205,7 @@
         </a>
         <div class="collapse {{ request()->routeIs('reports.*') ? 'show' : '' }}" id="reportsCollapse">
             <ul class="nav flex-column ms-3">
-                
+
                 {{-- Stock Reports Sub-section --}}
                 @canany(['report-all-stocks', 'report-stock-ledger', 'report-warehouse-stock', 'report-warehouse-capacity'])
                 <li class="nav-item mt-2">
@@ -215,7 +214,7 @@
                     </small>
                 </li>
                 @endcanany
-                
+
                 @can('report-all-stocks')
                 <li class="nav-item">
                     <a href="{{ route('reports.all-stocks') }}"
@@ -225,7 +224,7 @@
                     </a>
                 </li>
                 @endcan
-                
+
                 @can('report-stock-ledger')
                 <li class="nav-item">
                     <a href="{{ route('reports.stock-ledger') }}"
@@ -235,7 +234,7 @@
                     </a>
                 </li>
                 @endcan
-                
+
                 @can('report-warehouse-stock')
                 <li class="nav-item">
                     <a href="{{ route('reports.warehouse-stock') }}"
@@ -245,7 +244,7 @@
                     </a>
                 </li>
                 @endcan
-                
+
                 @can('report-warehouse-capacity')
                 <li class="nav-item">
                     <a href="{{ route('reports.warehouse-capacity') }}"
@@ -255,7 +254,7 @@
                     </a>
                 </li>
                 @endcan
-                
+
                 {{-- Transaction Reports Sub-section --}}
                 @canany(['report-inbound', 'report-outbound'])
                 <li class="nav-item mt-3">
@@ -264,7 +263,7 @@
                     </small>
                 </li>
                 @endcanany
-                
+
                 @can('report-inbound')
                 <li class="nav-item">
                     <a href="{{ route('reports.inbound') }}"
@@ -274,7 +273,7 @@
                     </a>
                 </li>
                 @endcan
-                
+
                 @can('report-outbound')
                 <li class="nav-item">
                     <a href="{{ route('reports.outbound') }}"

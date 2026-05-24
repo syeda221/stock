@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ArrivedFrom;
 use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Models\StockIn;
 use App\Models\StockInItem;
 use App\Models\Transporter;
@@ -48,6 +49,14 @@ class InboundController extends Controller
             $query->where('product_id', $request->product_id);
         }
 
+        // Apply product group filter
+        if ($request->filled('product_group_id')) {
+            $groupId = $request->product_group_id;
+            $query->whereHas('product', function ($q) use ($groupId) {
+                $q->where('product_group_id', $groupId);
+            });
+        }
+
         // Apply date filter
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
@@ -63,6 +72,7 @@ class InboundController extends Controller
                 'stockIn.transporter',
                 'stockIn.arrivedFrom',
                 'product.category',
+                'product.group',
                 'product.uom',
                 'product.packingType',
                 'warehouseRow',
@@ -74,8 +84,9 @@ class InboundController extends Controller
         $warehouses = Warehouse::orderBy('name', 'asc')->get();
         $vendors = Vendor::orderBy('name', 'asc')->get();
         $products = Product::orderBy('name', 'asc')->get();
+        $productGroups = ProductGroup::where('status', 1)->orderBy('name', 'asc')->get();
 
-        return view('inbound.index', compact('items', 'warehouses', 'vendors', 'products'));
+        return view('inbound.index', compact('items', 'warehouses', 'vendors', 'products', 'productGroups'));
     }
 
     private function generateDispatchedInvoiceNo(): string
@@ -122,9 +133,29 @@ class InboundController extends Controller
      */
     public function create()
     {
+        $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name')->get();
+
+        $warehouseData = $warehouses->map(function ($w) {
+            $usedPallets = StockInItem::where('warehouse_id', $w->id)
+                ->where('balance_quantity', '>', 0)
+                ->sum('pallets_used');
+            $freePallets = $w->total_capacity ? max(0, $w->total_capacity - $usedPallets) : PHP_INT_MAX;
+            return [
+                'id' => $w->id,
+                'name' => $w->name,
+                'total_capacity' => $w->total_capacity,
+                'used_pallets' => $usedPallets,
+                'free_pallets' => $freePallets,
+                'has_space' => $freePallets > 0,
+            ];
+        });
+
+        $autoSelectId = $warehouseData->where('has_space', true)->sortByDesc('free_pallets')->first()['id'] ?? null;
 
         return view('inbound.create', [
-            'warehouses' => Warehouse::where('status', 1)->with('rows')->orderBy('name')->get(),
+            'warehouses' => $warehouses,
+            'warehouseData' => $warehouseData,
+            'autoSelectWarehouseId' => $autoSelectId,
             'products' => Product::where('status', 1)->orderBy('name')->get(),
             'vendors' => Vendor::where('status', 1)->orderBy('name')->get(),
             'transporters' => Transporter::where('status', 1)->orderBy('name')->get(),
@@ -229,8 +260,14 @@ class InboundController extends Controller
                 }
             }
 
-            if ($warehouse->total_capacity && $totalPallets > $warehouse->total_capacity) {
-                throw new \Exception('Pallet capacity exceeded for selected warehouse.');
+            $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                ->where('balance_quantity', '>', 0)
+                ->sum('pallets_used');
+
+            $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
+
+            if ($freePallets < $totalPallets) {
+                throw new \Exception("Insufficient pallet capacity in {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPallets} needed.");
             }
 
             /** -----------------------------
