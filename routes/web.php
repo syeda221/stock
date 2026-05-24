@@ -3,6 +3,7 @@
 use App\Http\Controllers\ArrivedFromController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExpiryController;
 use App\Http\Controllers\InboundController;
 use App\Http\Controllers\OpeningStockController;
 use App\Http\Controllers\OutboundController;
@@ -28,6 +29,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/notifications', [DashboardController::class, 'notifications'])->name('notifications');
+    Route::get('/expiry', [ExpiryController::class, 'index'])->name('expiry.index');
 
     // UOM Routes
     Route::get('/uoms', [UomController::class, 'index'])->name('uom.index');

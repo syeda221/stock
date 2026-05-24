@@ -304,12 +304,12 @@
 
                         <tr>
                             <td>{{ ($items->currentPage() - 1) * $items->perPage() + $loop->iteration }}</td>
-                            
+
                             <td>
                                 <div class="fw-semibold">{{ $item->product->item_code ?? '-' }}</div>
                                 <small class="text-muted" style="display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->product->name ?? '-' }}">{{ $item->product->name ?? '-' }}</small>
                             </td>
-                            
+
                             <td>
                                 @if($item->product->group)
                                     <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1" style="font-size: 10px;">
@@ -319,9 +319,9 @@
                                     <span class="text-muted" style="font-size: 10px;">—</span>
                                 @endif
                             </td>
-                            
+
                             <td style="font-size: 11px;">{{ Str::limit($item->stockIn->warehouse->name ?? '-', 12) }}</td>
-                            
+
                             <td class="text-end">{{ $item->units_received ?? 0 }}</td>
                             <td class="text-end fw-bold">
                                 @php
@@ -330,9 +330,9 @@
                                 {{ rtrim(rtrim(number_format($balUnits, 2), '0'), '.') }} U<br>
                                 <small class="text-muted fw-normal">({{ rtrim(rtrim(number_format($item->balance_quantity, 2), '0'), '.') }} Qty)</small>
                             </td>
-                            
+
                             <td>{!! $statusHtml !!}</td>
-                            
+
                             <td>
                                 <select class="form-select form-select-sm qc-status-select qc-bg-{{ $item->quality_clearance ?? 'pending' }}"
                                         data-item-id="{{ $item->id }}"
@@ -348,12 +348,12 @@
                                     </option>
                                 </select>
                             </td>
-                            
+
                             <td style="font-size: 10px;">
                                 <div class="fw-semibold" style="max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $vehicleText }}">{{ Str::limit($vehicleText, 12) }}</div>
                                 <small class="text-muted" style="display: block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $driverText }}">{{ Str::limit($driverText, 12) }}</small>
                             </td>
-                            
+
                             <td class="text-center">
                                 @php
                                     $days = (int) $item->created_at->diffInDays(now());
@@ -379,28 +379,28 @@
                                 @endphp
                                 <span class="badge {{ $badgeClass }} px-2 py-1" style="white-space: nowrap;">{{ $daysText }}</span>
                             </td>
-                            
+
                             <td class="text-nowrap">
                                 {{ $item->created_at ? $item->created_at->format('d.m.Y') : '-' }}
                             </td>
-                            
+
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
                                     <button type="button" class="btn btn-sm btn-outline-primary js-more"
                                         data-bs-toggle="modal" data-bs-target="#supportiveModal"
-                                        data-title="Inbound Item Details" 
+                                        data-title="Inbound Item Details"
                                         data-header='@json($headerData)'
                                         data-item='@json($itemData)'
                                         title="View">
                                         <i class="bi bi-eye"></i>
                                     </button>
-                                    <a href="{{ route('inbound.edit', $item->stock_in_id) }}" 
-                                       class="btn btn-sm btn-outline-warning" 
+                                    <a href="{{ route('inbound.edit', $item->stock_in_id) }}"
+                                       class="btn btn-sm btn-outline-warning"
                                        title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    <a href="{{ route('reports.inbound.pdf', $item->stock_in_id) }}" 
-                                       class="btn btn-sm btn-outline-danger" 
+                                    <a href="{{ route('reports.inbound.pdf', $item->stock_in_id) }}"
+                                       class="btn btn-sm btn-outline-danger"
                                        title="PDF"
                                        target="_blank">
                                         <i class="bi bi-file-pdf"></i>
@@ -458,8 +458,16 @@
                         <div class="row g-2" id="warehouseInfo"></div>
                     </div>
                 </div>
+                {{-- Warehouse & Location --}}
+                warehouse with location like pallets k kahan rakha howa hai agar os k andar pallets bany hoy hain row wise warna na simpole use palltes bata dyn
 
+                   {{-- Batch & Reference Numbers --}}
+                dobule po ko avoud karyn sirf row mai input mai jo po or details add karyn wo show ho po ki  ibd  or po dono double hai enko aik karna hai
                 {{-- Batch & Reference Numbers --}}
+
+                {{-- Vehicle & Transport --}}
+                delivery no yahan sy utha k shipment k barbar mai rakh dyna hai
+                
                 <div class="card border mb-3">
                     <div class="card-header bg-light border-bottom">
                         <i class="bi bi-upc-scan me-2"></i><strong>Batch & Reference Numbers</strong>
@@ -479,7 +487,6 @@
                     </div>
                 </div>
 
-                {{-- Vehicle & Transport --}}
                 <div class="card border mb-3">
                     <div class="card-header bg-light border-bottom">
                         <i class="bi bi-truck me-2"></i><strong>Vehicle & Transport Details</strong>
