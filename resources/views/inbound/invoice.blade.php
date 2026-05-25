@@ -51,47 +51,41 @@
         </table>
 
         {{-- HEADER DETAILS --}}
-        <table class="table table-bordered table-sm mb-3">
+        <table class="table table-bordered table-sm mb-3 header-details">
             <tr>
                 <th>Inbound Invoice No</th>
                 <td>{{ $stockIn->inbound_invoice_no ?? '-' }}</td>
-
-               
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Inbound Type</th>
                 <td>{{ strtoupper($stockIn->source_type ?? 'inbound') }}</td>
-
                 <th>Warehouse</th>
                 <td>{{ optional($stockIn->warehouse)->name ?? '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Vendor</th>
                 <td>{{ optional($stockIn->vendor)->name ?? '-' }}</td>
-
                 <th>Arrived From</th>
                 <td>{{ optional($stockIn->arrivedFrom)->name ?? '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Transporter</th>
                 <td>{{ optional($stockIn->transporter)->name ?? '-' }}</td>
-
                 <th>Shipment Type</th>
                 <td>{{ strtoupper($stockIn->shipment_type ?? 'manual') }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Vehicle No</th>
                 <td>{{ $stockIn->vehicle_no ?? '-' }}</td>
-
                 <th>Vehicle Size</th>
                 <td>{{ $stockIn->vehicle_size ?? '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Driver</th>
                 <td>
                     {{ $stockIn->driver_name ?? '-' }}
@@ -99,28 +93,25 @@
                         ({{ $stockIn->driver_mobile }})
                     @endif
                 </td>
-
                 <th>Delivery No</th>
                 <td>{{ $stockIn->delivery_no ?? '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Vehicle In</th>
                 <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</td>
-
                 <th>Vehicle Out</th>
                 <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Dispatcher</th>
                 <td>{{ $stockIn->dispatcher_sig ?? '-' }}</td>
-
                 <th>Picker</th>
                 <td>{{ $stockIn->picker ?? '-' }}</td>
             </tr>
 
-            <tr>
+            <tr class="print-hidden">
                 <th>Remarks</th>
                 <td colspan="3">{{ $stockIn->remarks ?? '-' }}</td>
             </tr>
@@ -214,6 +205,7 @@
 <style>
 @media print {
     .no-print { display:none }
+    .print-hidden { display:none }
     body { background:#fff }
     .card { border:none }
     table { font-size:12px }
