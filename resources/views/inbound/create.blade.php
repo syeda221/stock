@@ -204,12 +204,11 @@
 
                 <div class="modal-body row g-2">
                     <div class="col-md-4"><label>SAP</label><input class="form-control form-control-sm modal-sap"></div>
-                    <div class="col-md-4"><label>Vendor Batch</label><input class="form-control form-control-sm modal-vendor">
-                    </div>
-                    <div class="col-md-4"><label>MFG</label><input type="date"
-                            class="form-control form-control-sm modal-mfg"></div>
-                    <div class="col-md-4"><label>EXP</label><input type="date"
-                            class="form-control form-control-sm modal-expiry"></div>
+                    <div class="col-md-4"><label>Vendor Batch</label><input class="form-control form-control-sm modal-vendor"></div>
+                    <div class="col-md-4"><label>PO</label><input class="form-control form-control-sm modal-po"></div>
+                    <div class="col-md-4"><label>IBD</label><input class="form-control form-control-sm modal-ibd"></div>
+                    <div class="col-md-4"><label>MFG</label><input type="date" class="form-control form-control-sm modal-mfg"></div>
+                    <div class="col-md-4"><label>EXP</label><input type="date" class="form-control form-control-sm modal-expiry"></div>
                 </div>
 
                 <div class="modal-footer">
@@ -396,14 +395,12 @@
             /* SAVE MODAL */
             saveBatchBtn.onclick = () => {
                 if (!activeRow) return;
-                activeRow.querySelector('[name$="[sap_batch]"]').value = document.querySelector('.modal-sap')
-                    .value;
-                activeRow.querySelector('[name$="[vendor_batch]"]').value = document.querySelector(
-                    '.modal-vendor').value;
-                activeRow.querySelector('[name$="[mfg_date]"]').value = document.querySelector('.modal-mfg')
-                    .value;
-                activeRow.querySelector('[name$="[expiry_date]"]').value = document.querySelector(
-                    '.modal-expiry').value;
+                activeRow.querySelector('[name$="[sap_batch]"]').value = document.querySelector('.modal-sap').value;
+                activeRow.querySelector('[name$="[vendor_batch]"]').value = document.querySelector('.modal-vendor').value;
+                activeRow.querySelector('[name$="[po_no]"]').value = document.querySelector('.modal-po').value;
+                activeRow.querySelector('[name$="[ibd_no]"]').value = document.querySelector('.modal-ibd').value;
+                activeRow.querySelector('[name$="[mfg_date]"]').value = document.querySelector('.modal-mfg').value;
+                activeRow.querySelector('[name$="[expiry_date]"]').value = document.querySelector('.modal-expiry').value;
                 batchModal.hide();
             };
 

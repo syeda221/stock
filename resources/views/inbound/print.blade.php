@@ -11,72 +11,13 @@
         .right { text-align: right; }
         .muted { color: #333; }
         .title { margin: 0 0 10px; }
-        .meta td:first-child { width: 180px; }
     </style>
 </head>
 <body onload="window.print()">
 
 <h3 class="center title">Inbound Receipt</h3>
 
-@php
-    /** @var \App\Models\StockIn $stockIn */
-@endphp
-
-<table class="no-border meta">
-    <tr>
-        <td><strong>Type</strong></td>
-        <td>{{ ucfirst($stockIn->source_type ?? 'inbound') }}</td>
-        <td><strong>Date</strong></td>
-        <td>{{ optional($stockIn->created_at)->format('d.m.Y H:i') ?? '-' }}</td>
-    </tr>
-    <tr>
-        <td><strong>Inbound Invoice No</strong></td>
-        <td>{{ $stockIn->inbound_invoice_no ?? '-' }}</td>
-    </tr>
-    <tr>
-        <td><strong>Warehouse</strong></td>
-        <td>{{ optional($stockIn->warehouse)->name ?? '-' }}</td>
-        <td><strong>Vendor</strong></td>
-        <td>{{ optional($stockIn->vendor)->name ?? '-' }}</td>
-    </tr>
-    <tr>
-        <td><strong>Arrived From</strong></td>
-        <td>{{ optional($stockIn->arrivedFrom)->name ?? '-' }}</td>
-        <td><strong>Transporter</strong></td>
-        <td>{{ optional($stockIn->transporter)->name ?? '-' }}</td>
-    </tr>
-    <tr>
-        <td><strong>Vehicle No</strong></td>
-        <td>{{ $stockIn->vehicle_no ?? '-' }}</td>
-        <td><strong>Driver</strong></td>
-        <td>
-            {{ $stockIn->driver_name ?? '-' }}
-            @if(!empty($stockIn->driver_mobile))
-                <span class="muted">({{ $stockIn->driver_mobile }})</span>
-            @endif
-        </td>
-    </tr>
-    <tr>
-        <td><strong>Vehicle In Time</strong></td>
-        <td>
-            {{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}
-        </td>
-        <td><strong>Vehicle Out Time</strong></td>
-        <td>
-            {{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}
-        </td>
-    </tr>
-    <tr>
-        <td><strong>Dispatcher / Picker</strong></td>
-        <td colspan="3">
-            Dispatcher: {{ $stockIn->dispatcher_sig ?? '-' }}
-            &nbsp;|&nbsp; Picker: {{ $stockIn->picker ?? '-' }}
-            &nbsp;|&nbsp; Shipment Type: {{ strtoupper($stockIn->shipment_type ?? 'manual') }}
-        </td>
-    </tr>
-</table>
-
-<br>
+<p><strong>Inbound Invoice No:</strong> {{ $stockIn->inbound_invoice_no ?? '-' }}</p>
 
 <table>
 <thead>
@@ -85,6 +26,8 @@
     <th>Product</th>
     <th style="width: 120px">SAP Batch</th>
     <th style="width: 120px">Vendor Batch</th>
+    <th>PO</th>
+    <th>IBD</th>
     <th style="width: 90px" class="right">Units</th>
     <th style="width: 90px" class="right">Pack</th>
     <th style="width: 110px" class="right">Total Qty</th>
@@ -100,6 +43,8 @@
         </td>
         <td>{{ $it->sap_batch ?? '-' }}</td>
         <td>{{ $it->vendor_batch ?? '-' }}</td>
+        <td>{{ $it->po_no ?? '-' }}</td>
+        <td>{{ $it->ibd_no ?? '-' }}</td>
         <td class="right">{{ $it->units_received ?? 0 }}</td>
         <td class="right">{{ $it->pack_size_snapshot ?? 0 }}</td>
         <td class="right">{{ $it->total_quantity ?? 0 }}</td>
@@ -107,14 +52,11 @@
     </tr>
 @empty
     <tr>
-        <td colspan="8" class="center">No items</td>
+        <td colspan="10" class="center">No items</td>
     </tr>
 @endforelse
 </tbody>
 </table>
-
-<br>
-<p><strong>Remarks:</strong> {{ $stockIn->remarks ?? '-' }}</p>
 
 </body>
 </html>
