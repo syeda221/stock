@@ -311,6 +311,8 @@
                 <th>Product Name</th>
                 <th style="width: 80px;">SAP Batch</th>
                 <th style="width: 80px;">Vendor Batch</th>
+                <th>PO</th>
+                <th>IBD</th>
                 <th style="width: 50px;" class="text-center">Units</th>
                 <th style="width: 50px;" class="text-center">Pack Size</th>
                 <th style="width: 70px;" class="text-center">Total Qty</th>
@@ -327,6 +329,8 @@
                 <td>{{ $item->product->name ?? '-' }}</td>
                 <td>{{ $item->sap_batch ?? '-' }}</td>
                 <td>{{ $item->vendor_batch ?? '-' }}</td>
+                <td>{{ $item->po_no ?? '-' }}</td>
+                <td>{{ $item->ibd_no ?? '-' }}</td>
                 <td class="text-center">{{ number_format($item->units_received) }}</td>
                 <td class="text-center">{{ $item->pack_size_snapshot ?? '-' }}</td>
                 <td class="text-center">{{ number_format($item->total_quantity, 2) }}</td>
@@ -365,7 +369,7 @@
             @if($item->remarks || $item->warehouse_row_id || $item->use_pallets)
             <tr>
                 <td></td>
-                <td colspan="11" style="font-size: 9px; color: #666; padding-left: 15px;">
+                <td colspan="13" style="font-size: 9px; color: #666; padding-left: 15px;">
                     @if($item->warehouseRow)
                         <strong>Row:</strong> {{ $item->warehouseRow->name }} &nbsp;|&nbsp;
                     @endif
