@@ -392,13 +392,73 @@ class InboundController extends Controller
     }
 
     /**
-     * Edit inbound header (for fixing missing driver/vehicle/etc on old records)
+     * Edit inbound (Header and Items)
      */
     public function edit(StockIn $stockIn)
     {
+        $stockIn->load(['warehouse', 'vendor', 'transporter', 'arrivedFrom', 'items.product', 'items.warehouseRow']);
+
+        // Group items that were split across multiple rows back into single logical entries
+        $groupedItems = $stockIn->items->groupBy(function($item) {
+            return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+        })->map(function($group) {
+            $first = $group->first();
+            $totalUnits = $group->sum('units_received');
+            $totalQty = $group->sum('total_quantity');
+            $balanceQty = $group->sum('balance_quantity');
+            $isDispatched = round($totalQty - $balanceQty, 4) > 0;
+
+            return [
+                'product_id' => $first->product_id,
+                'product_name' => optional($first->product)->name,
+                'item_code' => optional($first->product)->item_code,
+                'pack_size' => $first->pack_size_snapshot,
+                'cartons_per_pallet' => optional($first->product)->cartons_per_pallet,
+                'sap_batch' => $first->sap_batch,
+                'vendor_batch' => $first->vendor_batch,
+                'po_no' => $first->po_no,
+                'ibd_no' => $first->ibd_no,
+                'mfg_date' => $first->mfg_date ? $first->mfg_date->format('Y-m-d') : null,
+                'expiry_date' => $first->expiry_date ? $first->expiry_date->format('Y-m-d') : null,
+                'units_received' => $totalUnits,
+                'total_quantity' => $totalQty,
+                'balance_quantity' => $balanceQty,
+                'is_dispatched' => $isDispatched,
+                'use_pallets' => $first->use_pallets,
+                'pallets_used' => $group->sum('pallets_used'),
+                'sound_stock' => $first->sound_stock,
+                'block_stock' => $first->block_stock,
+                'hold_stock' => $first->hold_stock,
+                'quality_clearance' => $first->quality_clearance,
+                'damage_stock' => $first->damage_stock,
+                'remarks' => $first->remarks,
+                // store the IDs of the splits so we can clean them up if modified
+                'split_ids' => $group->pluck('id')->join(','),
+            ];
+        })->values();
+
+        $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name')->get();
+        $warehouseData = $warehouses->map(function ($w) {
+            $usedPallets = StockInItem::where('warehouse_id', $w->id)
+                ->where('balance_quantity', '>', 0)
+                ->sum('pallets_used');
+            $freePallets = $w->total_capacity ? max(0, $w->total_capacity - $usedPallets) : PHP_INT_MAX;
+            return [
+                'id' => $w->id,
+                'name' => $w->name,
+                'total_capacity' => $w->total_capacity,
+                'used_pallets' => $usedPallets,
+                'free_pallets' => $freePallets,
+                'has_space' => $freePallets > 0,
+            ];
+        });
+
         return view('inbound.edit', [
-            'stockIn' => $stockIn->load(['warehouse', 'vendor', 'transporter', 'arrivedFrom', 'items.product']),
-            'warehouses' => Warehouse::where('status', 1)->orderBy('name')->get(),
+            'stockIn' => $stockIn,
+            'groupedItems' => $groupedItems,
+            'warehouses' => $warehouses,
+            'warehouseData' => $warehouseData,
+            'products' => Product::where('status', 1)->orderBy('name')->get(),
             'vendors' => Vendor::where('status', 1)->orderBy('name')->get(),
             'transporters' => Transporter::where('status', 1)->orderBy('name')->get(),
             'arrivedFroms' => ArrivedFrom::where('status', 1)->orderBy('name')->get(),
@@ -406,11 +466,11 @@ class InboundController extends Controller
     }
 
     /**
-     * Update inbound header
+     * Update inbound header and items
      */
     public function update(Request $request, StockIn $stockIn)
     {
-        $data = $request->validate([
+        $request->validate([
             'warehouse_id' => 'required|exists:warehouses,id',
             'vendor_id' => 'nullable|exists:vendors,id',
             'arrived_from_id' => 'nullable|exists:arrived_froms,id',
@@ -435,12 +495,169 @@ class InboundController extends Controller
             'dispatcher_sig' => 'nullable|string|max:255',
             'picker' => 'nullable|string|max:120',
             'remarks' => 'nullable|string|max:1000',
+
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|exists:products,id',
+            'items.*.units_received' => 'nullable|numeric|min:0',
         ]);
 
-        $stockIn->update($data);
+        try {
+            DB::transaction(function () use ($request, $stockIn) {
+                // 1. Update Header
+                $stockIn->update($request->only([
+                    'warehouse_id', 'vendor_id', 'arrived_from_id', 'transporter_id',
+                    'shipment_type', 'vehicle_in_time', 'vehicle_out_time', 'vehicle_no',
+                    'vehicle_size', 'driver_name', 'driver_mobile', 'po_no', 'ibd_no',
+                    'shipment_no', 'sto_no', 'delivery_no', 'dispatched_invoice_no',
+                    'dispatcher_sig', 'picker', 'remarks'
+                ]));
 
-        return redirect()
-            ->route('inbound.invoice', $stockIn)
-            ->with('success', 'Inbound updated successfully.');
+                $warehouse = Warehouse::findOrFail($request->warehouse_id);
+
+                // Fetch original split IDs BEFORE modifying the database
+                $allOriginalSplitIds = $stockIn->items()->pluck('id')->toArray();
+
+                // Track which split IDs are submitted so we can delete removed ones
+                $submittedSplitIds = [];
+
+                // 2. Process Items
+                foreach ($request->items as $itemData) {
+                    if (empty($itemData['product_id']) || empty($itemData['units_received'])) continue;
+
+                    $productId = $itemData['product_id'];
+                    $product = Product::findOrFail($productId);
+                    $newUnits = (float) $itemData['units_received'];
+                    $packSize = (float) $product->pack_size;
+                    $newQty = round($newUnits * $packSize, 4);
+                    
+                    $splitIdsStr = $itemData['split_ids'] ?? '';
+                    $splitIds = array_filter(explode(',', $splitIdsStr));
+
+                    if (!empty($splitIds)) {
+                        // EXISTING ITEM
+                        $submittedSplitIds = array_merge($submittedSplitIds, $splitIds);
+
+                        $existingSplits = StockInItem::whereIn('id', $splitIds)->get();
+                        
+                        $oldTotalQty = round($existingSplits->sum('total_quantity'), 4);
+                        $oldBalanceQty = round($existingSplits->sum('balance_quantity'), 4);
+                        $isDispatched = ($oldTotalQty - $oldBalanceQty) > 0.001;
+
+                        if ($isDispatched) {
+                            // Enforce constraint: Cannot reduce units below what is already dispatched
+                            $dispatchedQty = $oldTotalQty - $oldBalanceQty;
+                            if ($newQty < $dispatchedQty) {
+                                throw new \Exception("Cannot reduce product '{$product->name}' below dispatched quantity.");
+                            }
+                            // Dispatched items cannot be fully modified regarding their physical rows because they're tied to outbounds.
+                            // We only allow updating text/status fields.
+                            foreach ($existingSplits as $split) {
+                                $split->update([
+                                    'sap_batch' => $itemData['sap_batch'] ?? null,
+                                    'vendor_batch' => $itemData['vendor_batch'] ?? null,
+                                    'po_no' => $itemData['po_no'] ?? null,
+                                    'ibd_no' => $itemData['ibd_no'] ?? null,
+                                    'mfg_date' => $itemData['mfg_date'] ?? null,
+                                    'expiry_date' => $itemData['expiry_date'] ?? null,
+                                    'sound_stock' => !empty($itemData['sound_stock']),
+                                    'block_stock' => !empty($itemData['block_stock']),
+                                    'hold_stock' => !empty($itemData['hold_stock']),
+                                    'quality_clearance' => $itemData['quality_clearance'] ?? 'pending',
+                                    'damage_stock' => !empty($itemData['damage_stock']),
+                                ]);
+                            }
+                        } else {
+                            // Item NOT dispatched. We can safely delete old splits and re-create them with FIFO
+                            StockInItem::whereIn('id', $splitIds)->delete();
+                            
+                            $this->createItemSplits($stockIn, $warehouse, $product, $itemData);
+                        }
+
+                    } else {
+                        // NEW ITEM
+                        $this->createItemSplits($stockIn, $warehouse, $product, $itemData);
+                    }
+                }
+
+                // 3. Delete Removed Items
+                $splitsToRemove = array_diff($allOriginalSplitIds, $submittedSplitIds);
+                
+                if (!empty($splitsToRemove)) {
+                    $removedSplits = StockInItem::whereIn('id', $splitsToRemove)->get();
+                    foreach ($removedSplits as $removedSplit) {
+                        if (round($removedSplit->total_quantity - $removedSplit->balance_quantity, 4) > 0) {
+                            throw new \Exception("Cannot delete item '{$removedSplit->product->name}' because it has already been dispatched.");
+                        }
+                    }
+                    StockInItem::whereIn('id', $splitsToRemove)->delete();
+                }
+
+            });
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Inbound updated successfully.',
+                    'redirect' => route('inbound.invoice', $stockIn) . '?print=1'
+                ]);
+            }
+
+            return redirect()->route('inbound.invoice', $stockIn)
+                ->with('success', 'Inbound updated successfully.');
+
+        } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Helper to create FIFO split items
+     */
+    private function createItemSplits($stockIn, $warehouse, $product, $itemData)
+    {
+        $units = (float) $itemData['units_received'];
+        $packSize = (float) $product->pack_size;
+        $palletsNeeded = (int) ($itemData['pallets_used'] ?? 0);
+
+        if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+            $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
+        }
+
+        $splits = \App\Services\WarehouseRowFifo::assign($warehouse->id, $palletsNeeded, $units, $packSize);
+
+        foreach ($splits as $split) {
+            $splitUnits = $split['units'];
+            $splitQty = round($splitUnits * $packSize, 4);
+
+            StockInItem::create([
+                'stock_in_id'        => $stockIn->id,
+                'product_id'         => $product->id,
+                'warehouse_id'       => $warehouse->id,
+                'warehouse_row_id'   => $split['warehouse_row_id'],
+                'sap_batch'          => $itemData['sap_batch'] ?? null,
+                'vendor_batch'       => $itemData['vendor_batch'] ?? null,
+                'ibd_no'             => $itemData['ibd_no'] ?? null,
+                'po_no'              => $itemData['po_no'] ?? null,
+                'mfg_date'           => $itemData['mfg_date'] ?? null,
+                'expiry_date'        => $itemData['expiry_date'] ?? null,
+                'units_received'     => $splitUnits,
+                'pack_size_snapshot' => $packSize,
+                'total_quantity'     => $splitQty,
+                'balance_quantity'   => $splitQty,
+                'use_pallets'        => $split['pallets'] > 0,
+                'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                'sound_stock'        => !empty($itemData['sound_stock']),
+                'block_stock'        => !empty($itemData['block_stock']),
+                'hold_stock'         => !empty($itemData['hold_stock']),
+                'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                'damage_stock'       => !empty($itemData['damage_stock']),
+                'remarks'            => $itemData['remarks'] ?? null,
+                'uom_snapshot'       => optional($product->uom)->name,
+                'packing_snapshot'   => optional($product->packingType)->name,
+            ]);
+        }
     }
 }

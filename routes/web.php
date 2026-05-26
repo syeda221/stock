@@ -163,6 +163,7 @@ Route::get('/outbound/product-stock/{product}',
 Route::get('/outbound/{stockOut}/print', [OutboundController::class, 'print'])->name('outbound.print');
 // FUTURE (ready but baad mein use)
 Route::get('/outbound/{stockOut}/edit', [OutboundController::class, 'edit'])->name('outbound.edit');
+Route::put('/outbound/{stockOut}', [OutboundController::class, 'update'])->name('outbound.update');
 Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->name('outbound.destroy');
 
     // Reporting Routes

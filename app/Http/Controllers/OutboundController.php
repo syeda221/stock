@@ -461,7 +461,230 @@ class OutboundController extends Controller
         }
     }
 
-    /* ================= PRINT / VIEW ================= */
+    /* ================= EDIT ================= */
+    public function edit(StockOut $stockOut)
+    {
+        $stockOut->load([
+            'warehouse',
+            'toWarehouse',
+            'customer',
+            'transporter',
+            'items.product',
+            'items.product.uom',
+        ]);
+
+        $groupedItems = $stockOut->items->groupBy(function($item) {
+            return $item->product_id . '_' . $item->warehouse_id;
+        })->map(function($group) {
+            $first = $group->first();
+            return [
+                'product_id' => $first->product_id,
+                'product_name' => optional($first->product)->name,
+                'item_code' => optional($first->product)->item_code,
+                'warehouse_id' => $first->warehouse_id,
+                'warehouse_name' => optional($first->warehouse)->name,
+                'units_dispatch' => $group->sum('units_dispatch'),
+                'pack_size' => $first->pack_size_snapshot,
+                'total_qty' => $group->sum('dispatch_quantity'),
+                'po_no' => $first->po_no,
+                'ibd_no' => $first->ibd_no,
+                'sto_no' => $first->sto_no,
+                'pallets_returned' => $group->sum('pallets_returned'),
+            ];
+        })->values();
+
+        $warehouses = Warehouse::where('status', 1)->orderBy('name')->get();
+        $customers = Customer::where('status', 1)->orderBy('name')->get();
+        $transporters = Transporter::where('status', 1)->orderBy('name')->get();
+
+        return view('outbound.edit', [
+            'stockOut' => $stockOut,
+            'groupedItems' => $groupedItems,
+            'warehouses' => $warehouses,
+            'customers' => $customers,
+            'transporters' => $transporters,
+            'products' => Product::where('status', 1)->orderBy('name')->get(),
+        ]);
+    }
+
+    /* ================= UPDATE ================= */
+    public function update(Request $request, StockOut $stockOut)
+    {
+        $request->validate([
+            'outbound_type'               => 'required|in:warehouse,customer',
+            'customer_id'                 => 'required_if:outbound_type,customer|nullable',
+            'to_warehouse_id'             => 'required_if:outbound_type,warehouse|nullable',
+            'shipment_type'               => 'nullable|string',
+            'dispatched_invoice_no'        => 'nullable|string|max:80',
+            'items'                       => 'required|array|min:1',
+            'items.*.product_id'          => 'required|exists:products,id',
+            'items.*.warehouse_id'        => 'required|exists:warehouses,id',
+            'items.*.units_dispatch'      => 'required|integer|min:1',
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $stockOut) {
+
+                if ($request->filled('dispatched_invoice_no')
+                    && StockOut::where('dispatched_invoice_no', $request->dispatched_invoice_no)->where('id', '!=', $stockOut->id)->exists()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'dispatched_invoice_no' => 'Dispatched invoice no already exists.',
+                    ]);
+                }
+
+                if ($stockOut->source_type === 'transfer') {
+                    throw new \Exception("Warehouse transfers cannot be edited because their destination stock might have already been used. Please delete the transfer and create a new one.");
+                }
+
+                $firstItem = collect($request->items)->first();
+
+                // 1. Revert Existing Items
+                foreach ($stockOut->items as $item) {
+                    $sourceBatch = StockInItem::lockForUpdate()->find($item->stock_in_item_id);
+                    if ($sourceBatch) {
+                        $sourceBatch->increment('balance_quantity', $item->dispatch_quantity);
+                        if ($item->pallets_returned > 0) {
+                            $sourceBatch->increment('pallets_used', $item->pallets_returned);
+                        }
+                    }
+                }
+                
+                // Delete old items
+                $stockOut->items()->delete();
+
+                // 2. Update Header
+                $stockOut->update([
+                    'warehouse_id'         => $firstItem['warehouse_id'],
+                    'customer_id'          => $request->customer_id,
+                    'transporter_id'       => $request->transporter_id,
+                    'shipment_type'        => $request->shipment_type,
+                    'dispatched_invoice_no'=> $request->dispatched_invoice_no,
+                    'dispatcher_sig'       => $request->dispatcher_sig,
+                    'picker'               => $request->picker,
+                    'da_no'                => $request->da_no,
+                    'vehicle_no'           => $request->vehicle_no,
+                    'vehicle_size'         => $request->vehicle_size,
+                    'driver_name'          => $request->driver_name,
+                    'driver_mobile'        => $request->driver_mobile,
+                    'vehicle_in_time'      => $request->vehicle_in_time,
+                    'vehicle_out_time'     => $request->vehicle_out_time,
+                    'remarks'              => $request->remarks,
+                ]);
+
+                // 3. Process New Items (FIFO)
+                foreach ($request->items as $it) {
+                    $productId = $it['product_id'];
+                    $itWarehouseId = $it['warehouse_id'];
+                    $unitsRemaining = (int) $it['units_dispatch'];
+                    
+                    $userPo = $it['po_no'] ?? null;
+                    $userIbd = $it['ibd_no'] ?? null;
+                    $stoNo = $it['sto_no'] ?? null;
+
+                    $batchQuery = StockInItem::where('product_id', $productId)
+                        ->where('warehouse_id', $itWarehouseId)
+                        ->where('balance_quantity', '>', 0);
+
+                    if ($request->outbound_type === 'customer') {
+                        $batchQuery->where('block_stock', false)
+                              ->where('quality_clearance', '!=', 'rejected')
+                              ->where(function ($q) {
+                                  $q->whereNull('expiry_date')
+                                    ->orWhere('expiry_date', '>=', now()->toDateString());
+                              });
+                    }
+
+                    $batches = $batchQuery->orderBy('expiry_date', 'asc')
+                        ->orderBy('created_at', 'asc')
+                        ->lockForUpdate()
+                        ->get();
+
+                    if ($batches->isEmpty()) {
+                        $productName = Product::find($productId)->name ?? $productId;
+                        throw new \Exception("No valid stock available for product '{$productName}' in selected warehouse.");
+                    }
+
+                    $totalUnitsForThisItem = (int) $it['units_dispatch'];
+                    $totalPalletsForThisItem = (int) ($it['pallets_returned'] ?? 0);
+                    $palletsDistributed = 0;
+
+                    foreach ($batches as $batch) {
+                        if ($unitsRemaining <= 0) break;
+
+                        $pack = (float) $batch->pack_size_snapshot;
+                        if ($pack <= 0) continue;
+
+                        $batchAvailableUnits = floor($batch->balance_quantity / $pack);
+                        if ($batchAvailableUnits <= 0) continue;
+
+                        $unitsToTake = min($unitsRemaining, $batchAvailableUnits);
+                        $qtyToTake = $unitsToTake * $pack;
+
+                        $batch->decrement('balance_quantity', $qtyToTake);
+
+                        $palletsToTake = 0;
+                        if ($totalUnitsForThisItem > 0) {
+                            if ($unitsToTake == $unitsRemaining) {
+                                $palletsToTake = max(0, $totalPalletsForThisItem - $palletsDistributed);
+                            } else {
+                                $palletsToTake = (int) round($totalPalletsForThisItem * ($unitsToTake / $totalUnitsForThisItem));
+                            }
+                        }
+                        $palletsDistributed += $palletsToTake;
+
+                        if ($palletsToTake > 0 && $batch->pallets_used > 0) {
+                            $palletsToDeduct = min($palletsToTake, $batch->pallets_used);
+                            $batch->decrement('pallets_used', $palletsToDeduct);
+                        }
+
+                        StockOutItem::create([
+                            'stock_out_id'        => $stockOut->id,
+                            'stock_in_item_id'    => $batch->id,
+                            'product_id'          => $batch->product_id,
+                            'warehouse_id'        => $batch->warehouse_id,
+                            'warehouse_row_id'    => $batch->warehouse_row_id,
+                            'sap_batch'           => $batch->sap_batch,
+                            'vendor_batch'        => $batch->vendor_batch,
+                            'units_dispatch'      => $unitsToTake,
+                            'pack_size_snapshot'  => $pack,
+                            'dispatch_quantity'   => $qtyToTake,
+                            'po_no'               => $userPo ?: $batch->po_no,
+                            'ibd_no'              => $userIbd ?: $batch->ibd_no,
+                            'sto_no'              => $stoNo,
+                            'mfg_date'            => $batch->mfg_date,
+                            'expiry_date'         => $batch->expiry_date,
+                            'pallets_returned'    => $palletsToTake,
+                        ]);
+
+                        $unitsRemaining -= $unitsToTake;
+                    }
+
+                    if ($unitsRemaining > 0) {
+                        $productName = Product::find($productId)->name ?? $productId;
+                        throw new \Exception("Insufficient stock for product '$productName'. Needed $unitsRemaining more units.");
+                    }
+                }
+            });
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Outbound updated successfully',
+                    'redirect' => route('outbound.index')
+                ]);
+            }
+
+            return redirect()
+                ->route('outbound.index')
+                ->with('success', 'Outbound updated successfully');
+
+        } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
     public function print(StockOut $stockOut)
     {
         $stockOut->load([
