@@ -231,6 +231,25 @@ class OutboundController extends Controller
                     throw new \Exception('Invalid items data');
                 }
 
+                if ($request->outbound_type === 'warehouse') {
+                    $destinationWarehouse = Warehouse::findOrFail($request->to_warehouse_id);
+                    if ($destinationWarehouse->total_capacity > 0) {
+                        $totalPalletsNeeded = 0;
+                        foreach ($request->items as $it) {
+                            $totalPalletsNeeded += (int) ($it['pallets_returned'] ?? 0);
+                        }
+
+                        $usedPallets = \App\Models\StockInItem::where('warehouse_id', $destinationWarehouse->id)
+                            ->where('balance_quantity', '>', 0)
+                            ->sum('pallets_used');
+                        $freePallets = max(0, $destinationWarehouse->total_capacity - $usedPallets);
+
+                        if ($freePallets < $totalPalletsNeeded) {
+                            throw new \Exception("Warehouse is full. Cannot transfer more stock to {$destinationWarehouse->name}. Only {$freePallets} pallet slots available, but {$totalPalletsNeeded} needed.");
+                        }
+                    }
+                }
+
                 /* ========= AUTO DISPATCH INVOICE (UNIQUE) ========= */
                 $invoiceNo = $request->dispatched_invoice_no ?: $this->generateDispatchedInvoiceNo();
 

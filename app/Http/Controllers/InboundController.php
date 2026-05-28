@@ -254,8 +254,13 @@ class InboundController extends Controller
             $totalPallets = 0;
 
             foreach ($request->items as $item) {
-                if (! empty($item['use_pallets'])) {
-                    $totalPallets += (int) ($item['pallets_used'] ?? 0);
+                if (!empty($item['product_id']) && !empty($item['units_received'])) {
+                    $product = Product::find($item['product_id']);
+                    $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                    if ($palletsNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
+                        $palletsNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
+                    }
+                    $totalPallets += $palletsNeeded;
                 }
             }
 
@@ -266,7 +271,7 @@ class InboundController extends Controller
             $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
 
             if ($freePallets < $totalPallets) {
-                throw new \Exception("Insufficient pallet capacity in {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPallets} needed.");
+                throw new \Exception("Warehouse is full. Cannot inbound more stock to {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPallets} needed.");
             }
 
             /** -----------------------------

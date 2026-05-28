@@ -140,16 +140,27 @@ class OpeningStockController extends Controller
                 */
                 $warehouse = Warehouse::findOrFail($request->warehouse_id);
 
-                $totalPalletsUsed = 0;
+                $totalPalletsUsedByNewItems = 0;
 
                 foreach ($request->items as $item) {
-                    if (! empty($item['use_pallets']) && ! empty($item['pallets_used'])) {
-                        $totalPalletsUsed += (int) $item['pallets_used'];
+                    if (!empty($item['product_id']) && !empty($item['units_received'])) {
+                        $product = Product::find($item['product_id']);
+                        $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                        if ($palletsNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
+                            $palletsNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
+                        }
+                        $totalPalletsUsedByNewItems += $palletsNeeded;
                     }
                 }
 
-                if ($totalPalletsUsed > $warehouse->total_capacity) {
-                    throw new \Exception('Total pallets exceed warehouse capacity.');
+                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                    ->where('balance_quantity', '>', 0)
+                    ->sum('pallets_used');
+
+                $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
+
+                if ($freePallets < $totalPalletsUsedByNewItems) {
+                    throw new \Exception("Warehouse is full. Cannot add opening stock to {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPalletsUsedByNewItems} needed.");
                 }
 
                 /*
