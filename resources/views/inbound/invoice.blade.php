@@ -140,8 +140,18 @@
                 </tr>
             </thead>
             <tbody>
-                @php $totalQty = 0; @endphp
-                @foreach($stockIn->items as $item)
+                @php 
+                    $totalQty = 0; 
+                    $groupedItems = $stockIn->items->groupBy(function($item) {
+                        return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+                    })->map(function($group) {
+                        $first = clone $group->first();
+                        $first->units_received = $group->sum('units_received');
+                        $first->total_quantity = $group->sum('total_quantity');
+                        return $first;
+                    });
+                @endphp
+                @foreach($groupedItems as $item)
                     @php $totalQty += (float) ($item->total_quantity ?? 0); @endphp
                     <tr>
                         <td>{{ $item->product->item_code ?? '-' }}</td>

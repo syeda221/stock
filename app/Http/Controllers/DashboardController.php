@@ -43,7 +43,7 @@ class DashboardController extends Controller
         // Total tracking
         $totalTransactions = $inboundCount + $outboundCount;
         $totalItems = $inboundItems + $outboundItems;
-        $totalQty = ($inboundTotal ?? 0) + ($outboundTotal ?? 0);
+        $totalQty = \App\Models\StockInItem::sum('balance_quantity') ?? 0;
 
         // Recent inbound (last 5)
         $recentInbound = StockIn::with('warehouse', 'vendor')

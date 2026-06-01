@@ -288,7 +288,28 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($stockIn->items as $i => $item)
+            @php 
+                $groupedItems = $stockIn->items->groupBy(function($item) {
+                    return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+                })->map(function($group) {
+                    $first = clone $group->first();
+                    $first->units_received = $group->sum('units_received');
+                    $first->total_quantity = $group->sum('total_quantity');
+                    
+                    // Sum up the sub-items for the details row below
+                    $first->pallets_used = $group->sum('pallets_used');
+                    $first->sound_stock = $group->sum('sound_stock');
+                    $first->block_stock = $group->sum('block_stock');
+                    $first->hold_stock = $group->sum('hold_stock');
+                    
+                    // Gather row names
+                    $rows = $group->map(function($i) { return optional($i->warehouseRow)->name; })->filter()->unique()->implode(', ');
+                    $first->row_names = $rows;
+                    
+                    return $first;
+                })->values();
+            @endphp
+            @foreach($groupedItems as $i => $item)
             <tr>
                 <td>{{ $i + 1 }}</td>
                 <td>{{ $item->product->name ?? '-' }}{{ $item->product->item_code ? ' ('.$item->product->item_code.')' : '' }}</td>
@@ -330,12 +351,12 @@
                     @endif
                 </td>
             </tr>
-            @if($item->remarks || $item->warehouse_row_id || $item->use_pallets)
+            @if($item->remarks || $item->row_names || $item->use_pallets)
             <tr>
                 <td></td>
                 <td colspan="12" style="font-size: 9px; color: #666; padding-left: 15px;">
-                    @if($item->warehouseRow)
-                        <strong>Row:</strong> {{ $item->warehouseRow->name }} &nbsp;|&nbsp;
+                    @if($item->row_names)
+                        <strong>Row:</strong> {{ $item->row_names }} &nbsp;|&nbsp;
                     @endif
                     @if($item->use_pallets)
                         <strong>Pallets:</strong> {{ $item->pallets_used }} &nbsp;|&nbsp;

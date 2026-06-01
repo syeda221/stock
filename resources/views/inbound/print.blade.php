@@ -36,7 +36,17 @@
 </tr>
 </thead>
 <tbody>
-@forelse($stockIn->items as $it)
+@php 
+    $groupedItems = $stockIn->items->groupBy(function($item) {
+        return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+    })->map(function($group) {
+        $first = clone $group->first();
+        $first->units_received = $group->sum('units_received');
+        $first->total_quantity = $group->sum('total_quantity');
+        return $first;
+    });
+@endphp
+@forelse($groupedItems as $it)
     <tr>
         <td class="center">{{ $loop->iteration }}</td>
         <td>
