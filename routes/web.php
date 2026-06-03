@@ -124,6 +124,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/opening-stock/import/template', [OpeningStockController::class, 'downloadTemplate'])->name('opening-stock.import.template');
     Route::get('/opening-stock/import', [OpeningStockController::class, 'importForm'])->name('opening-stock.import');
     Route::post('/opening-stock/import', [OpeningStockController::class, 'importStore'])->name('opening-stock.import.store');
+    Route::get('/opening-stock/{item}/edit', [OpeningStockController::class, 'edit'])->name('opening-stock.edit');
+    Route::put('/opening-stock/{item}', [OpeningStockController::class, 'update'])->name('opening-stock.update');
+    Route::get('/opening-stock/product/{productId}/batches', [OpeningStockController::class, 'productBatches'])->name('opening-stock.product-batches');
 
     // Inbound Routes
     Route::get('/inbound', [InboundController::class, 'index'])->name('inbound.index');

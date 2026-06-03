@@ -98,17 +98,15 @@
             <table class="table table-bordered table-sm mb-0 align-middle">
                 <thead class="table-light">
                 <tr>
-                    <th>#</th>
-                    <th>Warehouse</th>
+                    <th width="60">#</th>
                     <th>Item Code</th>
                     <th>Description</th>
-                    <th>SAP / Vendor</th>
-                    <th class="text-end">Units</th>
-                    <th class="text-end">Balance</th>
-                    <th class="text-center">Pallets</th>
-                    <th class="text-center">Age</th>
-                    <th>Status</th>
-                    <th width="70">View</th>
+                    <th>Category</th>
+                    <th class="text-center">Entries</th>
+                    <th class="text-end">Total Units</th>
+                    <th class="text-center">Total Pallets</th>
+                    <th class="text-end">Total Qty</th>
+                    <th width="140" class="text-center">Action</th>
                 </tr>
                 </thead>
 
@@ -117,78 +115,46 @@
                     <tr>
                         <td>{{ ($items->currentPage() - 1) * $items->perPage() + $loop->iteration }}</td>
 
-                        <td>{{ $item->stockIn->warehouse->name }}</td>
-
                         <td class="fw-semibold">
                             {{ $item->product->item_code }}
                         </td>
 
                         <td>{{ $item->product->name }}</td>
 
-                        <td>
-                            <div><small>SAP:</small> {{ $item->sap_batch ?? '-' }}</div>
-                            <div><small>Vendor:</small> {{ $item->vendor_batch ?? '-' }}</div>
-                        </td>
-
-                        <td class="text-end">{{ $item->units_received }}</td>
-
-                        <td class="text-end fw-bold">
-                            @php
-                                $balUnits = $item->pack_size_snapshot > 0 ? $item->balance_quantity / $item->pack_size_snapshot : 0;
-                            @endphp
-                            {{ rtrim(rtrim(number_format($balUnits, 2), '0'), '.') }} U<br>
-                            <small class="text-muted fw-normal">({{ rtrim(rtrim(number_format($item->balance_quantity, 2), '0'), '.') }} Qty)</small>
-                        </td>
+                        <td>{{ $item->product->category->name ?? '-' }}</td>
 
                         <td class="text-center">
-                            @if($item->pallets_used)
-                                <span class="badge bg-info text-dark" title="{{ $item->product->cartons_per_pallet ? $item->product->cartons_per_pallet.' ctn/pallet' : '' }}">
-                                    <i class="bi bi-layers me-1"></i>{{ $item->pallets_used }}
+                            <span class="badge bg-secondary">{{ $item->batch_count }}</span>
+                        </td>
+
+                        <td class="text-end">{{ $item->total_units }}</td>
+
+                        <td class="text-center">
+                            @if($item->total_pallets)
+                                <span class="badge bg-info text-dark">
+                                    <i class="bi bi-layers me-1"></i>{{ $item->total_pallets }}
                                 </span>
                             @else
                                 <span class="text-muted">-</span>
                             @endif
                         </td>
 
-                        {{-- 🔥 Stock Age --}}
-                       <td class="text-center">
-    @php
-        $days = $item->created_at->startOfDay()->diffInDays(now()->startOfDay());
-    @endphp
-
-    @if($days ==0)
-        <span class="badge bg-info">Today</span>
-    @elseif($days == 1)
-        <span class="badge bg-secondary">Yesterday</span>
-    @else
-        <span class="badge bg-light text-dark">{{ $days }} days</span>
-    @endif
-</td>
-
-
-                        {{-- 🔥 STATUS LOGIC --}}
-                        <td>
-                            @if($item->balance_quantity == 0)
-                                <span class="badge bg-dark">Stock Out</span>
-                            @elseif($item->block_stock)
-                                <span class="badge bg-danger">Blocked</span>
-                            @elseif($item->hold_stock)
-                                <span class="badge bg-warning text-dark">Hold</span>
-                            @else
-                                <span class="badge bg-success">Available</span>
-                            @endif
+                        <td class="text-end fw-bold">
+                            {{ rtrim(rtrim(number_format($item->total_qty, 2), '0'), '.') }}
                         </td>
 
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-primary view-btn"
-                                    data-item='@json($item)'>
-                                👁
+                            <button class="btn btn-sm btn-outline-primary view-batches-btn"
+                                    data-product-id="{{ $item->product_id }}"
+                                    data-product-name="{{ $item->product->name }} ({{ $item->product->item_code ?? '' }})"
+                                    title="View Details">
+                                👁 Details
                             </button>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11"
+                        <td colspan="9"
                             class="text-center text-muted py-4">
                             No opening stock found
                         </td>
@@ -282,41 +248,178 @@
 </div>
 </div>
 </div>
+
+{{-- ================= BATCHES DETAILS MODAL ================= --}}
+<div class="modal fade" id="batchesModal" tabindex="-1">
+<div class="modal-dialog modal-xl modal-dialog-scrollable">
+<div class="modal-content">
+    <div class="modal-header">
+        <h6 class="modal-title">Locations & Batches for <span id="batchModalProductName" class="text-primary fw-bold"></span></h6>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Warehouse</th>
+                        <th>Row / Slot</th>
+                        <th>SAP / Vendor Batch</th>
+                        <th>MFG / Expiry</th>
+                        <th class="text-end">Units</th>
+                        <th class="text-end">Balance Qty</th>
+                        <th class="text-center">Pallets</th>
+                        <th>QC</th>
+                        <th>Status</th>
+                        <th width="110" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="batchesTableBody">
+                    <!-- Loaded dynamically via AJAX -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</div>
+</div>
+
 @endsection
 
 @push('scripts')
 <script>
 document.addEventListener('click',function(e){
+    // VIEW BTN
+    let viewBtn = e.target.closest('.view-btn');
+    if (viewBtn) {
+        const d = JSON.parse(viewBtn.dataset.item);
 
-if(!e.target.classList.contains('view-btn')) return;
+        document.getElementById('vWarehouse').innerText = d.stock_in?.warehouse?.name ?? '-';
+        document.getElementById('vRow').innerText = d.warehouse_row?.row_name ?? '-';
+        document.getElementById('vDate').innerText = d.created_at?.substring(0,10);
 
-const d = JSON.parse(e.target.dataset.item);
+        document.getElementById('vCode').innerText = d.product.item_code;
+        document.getElementById('vDesc').innerText = d.product.name;
+        document.getElementById('vCategory').innerText = d.product.category?.name ?? '-';
 
-document.getElementById('vWarehouse').innerText = d.stock_in.warehouse.name;
-document.getElementById('vRow').innerText = d.warehouse_row?.row_name ?? '-';
-document.getElementById('vDate').innerText = d.created_at?.substring(0,10);
+        document.getElementById('vSap').innerText = d.sap_batch ?? '-';
+        document.getElementById('vVendor').innerText = d.vendor_batch ?? '-';
+        document.getElementById('vIbd').innerText = d.ibd_no ?? '-';
+        document.getElementById('vPo').innerText = d.po_no ?? '-';
 
-document.getElementById('vCode').innerText = d.product.item_code;
-document.getElementById('vDesc').innerText = d.product.name;
-document.getElementById('vCategory').innerText = d.product.category?.name ?? '-';
+        document.getElementById('vMfg').innerText = d.mfg_date ?? '-';
+        document.getElementById('vExpiry').innerText = d.expiry_date ?? '-';
 
-document.getElementById('vSap').innerText = d.sap_batch ?? '-';
-document.getElementById('vVendor').innerText = d.vendor_batch ?? '-';
-document.getElementById('vIbd').innerText = d.ibd_no ?? '-';
-document.getElementById('vPo').innerText = d.po_no ?? '-';
+        document.getElementById('vUnits').innerText = d.units_received;
+        document.getElementById('vPack').innerText = d.pack_size_snapshot;
+        document.getElementById('vTotal').innerText = d.total_quantity;
+        document.getElementById('vBalance').innerText = d.balance_quantity;
+        document.getElementById('vPallets').innerText = d.pallets_used ?? '-';
+        document.getElementById('vCartonsPerPallet').innerText = d.product?.cartons_per_pallet ? d.product.cartons_per_pallet + ' ctn/pallet' : 'Not set';
+        document.getElementById('vRemarks').innerText = d.remarks ?? '-';
 
-document.getElementById('vMfg').innerText = d.mfg_date ?? '-';
-document.getElementById('vExpiry').innerText = d.expiry_date ?? '-';
+        new bootstrap.Modal(document.getElementById('viewModal')).show();
+        return;
+    }
 
-document.getElementById('vUnits').innerText = d.units_received;
-document.getElementById('vPack').innerText = d.pack_size_snapshot;
-document.getElementById('vTotal').innerText = d.total_quantity;
-document.getElementById('vBalance').innerText = d.balance_quantity;
-document.getElementById('vPallets').innerText = d.pallets_used ?? '-';
-document.getElementById('vCartonsPerPallet').innerText = d.product?.cartons_per_pallet ? d.product.cartons_per_pallet + ' ctn/pallet' : 'Not set';
-document.getElementById('vRemarks').innerText = d.remarks ?? '-';
+    // VIEW BATCHES BTN
+    let viewBatchesBtn = e.target.closest('.view-batches-btn');
+    if (viewBatchesBtn) {
+        const prodId = viewBatchesBtn.dataset.productId;
+        const prodName = viewBatchesBtn.dataset.productName;
 
-new bootstrap.Modal(document.getElementById('viewModal')).show();
+        document.getElementById('batchModalProductName').innerText = prodName;
+        const tbody = document.getElementById('batchesTableBody');
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4"><span class="spinner-border spinner-border-sm" role="status"></span> Loading batches...</td></tr>';
+
+        new bootstrap.Modal(document.getElementById('batchesModal')).show();
+
+        fetch(`/opening-stock/product/${prodId}/batches`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No batches found</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const warehouseName = item.stock_in?.warehouse?.name ?? '-';
+                const rowName = item.warehouse_row?.row_name ?? '-';
+                const sapBatch = item.sap_batch ?? '-';
+                const vendorBatch = item.vendor_batch ?? '-';
+                const mfg = item.mfg_date ?? '-';
+                const expiry = item.expiry_date ?? '-';
+                const units = item.units_received;
+                const balance = item.balance_quantity;
+                const pallets = item.pallets_used ?? '-';
+                const qc = item.quality_clearance ?? 'pending';
+
+                // Status Badge
+                let statusBadge = '';
+                if (item.balance_quantity == 0) {
+                    statusBadge = '<span class="badge bg-dark">Stock Out</span>';
+                } else if (item.block_stock) {
+                    statusBadge = '<span class="badge bg-danger">Blocked</span>';
+                } else if (item.hold_stock) {
+                    statusBadge = '<span class="badge bg-warning text-dark">Hold</span>';
+                } else {
+                    statusBadge = '<span class="badge bg-success">Available</span>';
+                }
+
+                // QC Badge
+                let qcBadge = '';
+                if (qc === 'approved') {
+                    qcBadge = '<span class="badge bg-success">Approved</span>';
+                } else if (qc === 'rejected') {
+                    qcBadge = '<span class="badge bg-danger">Rejected</span>';
+                } else {
+                    qcBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${warehouseName}</td>
+                    <td>${rowName}</td>
+                    <td>
+                        <div><small>SAP:</small> ${sapBatch}</div>
+                        <div><small>Vendor:</small> ${vendorBatch}</div>
+                    </td>
+                    <td>
+                        <div><small>MFG:</small> ${mfg}</div>
+                        <div><small>EXP:</small> ${expiry}</div>
+                    </td>
+                    <td class="text-end">${units}</td>
+                    <td class="text-end fw-bold">${balance}</td>
+                    <td class="text-center">${pallets}</td>
+                    <td>${qcBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td class="text-center">
+                        <div class="d-flex gap-1 justify-content-center">
+                            <button class="btn btn-sm btn-outline-primary view-btn"
+                                    data-item='${JSON.stringify(item)}' title="View Detail">
+                                👁
+                            </button>
+                            <a href="/opening-stock/${item.id}/edit" class="btn btn-sm btn-outline-warning" title="Edit">
+                                ✏️
+                            </a>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-4">Error loading batches</td></tr>';
+        });
+        return;
+    }
 });
 
 // Filter functionality
@@ -359,31 +462,6 @@ $(document).ready(function() {
                 const totalCount = $(newTableBody).find('tr').length;
                 $('#totalCount').text(totalCount);
                 $('#filterLoadingOverlay').hide();
-
-                // Rebind view button events
-                document.querySelectorAll('.view-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const d = JSON.parse(this.dataset.item);
-                        document.getElementById('vWarehouse').innerText = d.stock_in?.warehouse?.name ?? '-';
-                        document.getElementById('vProduct').innerText = d.product?.name ?? '-';
-                        document.getElementById('vCategory').innerText = d.product?.category?.name ?? '-';
-                        document.getElementById('vUom').innerText = d.product?.uom?.name ?? '-';
-                        document.getElementById('vPacking').innerText = d.product?.packing_type?.name ?? '-';
-                        document.getElementById('vSap').innerText = d.sap_batch ?? '-';
-                        document.getElementById('vVendor').innerText = d.vendor_batch ?? '-';
-                        document.getElementById('vIbd').innerText = d.ibd_no ?? '-';
-                        document.getElementById('vPo').innerText = d.po_no ?? '-';
-                        document.getElementById('vMfg').innerText = d.mfg_date ?? '-';
-                        document.getElementById('vExpiry').innerText = d.expiry_date ?? '-';
-                        document.getElementById('vUnits').innerText = d.units_received;
-                        document.getElementById('vPack').innerText = d.pack_size_snapshot;
-                        document.getElementById('vTotal').innerText = d.total_quantity;
-                        document.getElementById('vBalance').innerText = d.balance_quantity;
-                        document.getElementById('vPallets').innerText = d.pallets_used ?? 0;
-                        document.getElementById('vRemarks').innerText = d.remarks ?? '-';
-                        new bootstrap.Modal(document.getElementById('viewModal')).show();
-                    });
-                });
             },
             error: function(xhr, status, error) {
                 console.error('Filter error:', error);
