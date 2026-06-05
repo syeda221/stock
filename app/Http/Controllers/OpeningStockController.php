@@ -255,7 +255,7 @@ class OpeningStockController extends Controller
     public function export()
     {
         $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
-            ->with('product', 'warehouse', 'stockIn')
+            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn'])
             ->latest()
             ->get();
 
@@ -268,31 +268,36 @@ class OpeningStockController extends Controller
         $callback = function () use ($items) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Warehouse', 'Item Code', 'Product Name', 'SAP Batch', 'Vendor Batch',
-                'Units Received', 'Pack Size', 'Total Qty', 'Balance Qty',
-                'Pallets Used', 'MFG Date', 'Expiry Date', 'Quality Clearance',
-                'Sound', 'Blocked', 'Hold', 'Created At'
+                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
+                'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Clearance',
+                'Sound', 'Blocked', 'Hold'
             ]);
 
             foreach ($items as $item) {
                 fputcsv($file, [
-                    $item->warehouse->name ?? '',
                     $item->product->item_code ?? '',
                     $item->product->name ?? '',
-                    $item->sap_batch ?? '',
+                    $item->warehouse->name ?? '',
+                    $item->product->category->name ?? '',
+                    $item->product->uom->name ?? '',
+                    $item->ibd_no ?? '',
+                    $item->po_no ?? '',
                     $item->vendor_batch ?? '',
-                    $item->units_received,
+                    $item->sap_batch ?? '',
+                    $item->product->packingType->name ?? '',
                     $item->pack_size_snapshot,
+                    $item->units_received,
                     $item->total_quantity,
-                    $item->balance_quantity,
-                    $item->pallets_used ?? 0,
                     $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
                     $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                    $item->balance_quantity,
+                    $item->pallets_used ?? 0,
                     $item->quality_clearance ?? '',
                     $item->sound_stock ? 'Yes' : 'No',
                     $item->block_stock ? 'Yes' : 'No',
                     $item->hold_stock ? 'Yes' : 'No',
-                    $item->created_at->format('Y-m-d'),
                 ]);
             }
 
