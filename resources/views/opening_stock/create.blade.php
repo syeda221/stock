@@ -53,12 +53,13 @@
         <table class="table table-bordered table-sm mb-0" id="itemsTable">
             <thead>
             <tr>
-                <th width="260">Product</th>
-                <th width="160">Product Code</th>
+                <th width="240">Product</th>
+                <th width="140">Product Code</th>
                 <th width="80">Units</th>
                 <th width="70">Pack</th>
                 <th width="80">Total</th>
-                <th width="90">Pallets</th>
+                <th width="80">Pallets</th>
+                <th width="120">QC Clearance</th>
                 <th width="120">Status</th>
                 <th width="40"></th>
             </tr>
@@ -148,7 +149,24 @@ let activeRow = null;
 
 /* ================= FORM SUBMISSION & DISABLE ENTER ================= */
 document.getElementById('openingStockForm').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') e.preventDefault();
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        
+        // If Enter is pressed inside the items table, add a new row
+        if (e.target.closest('#itemsTable')) {
+            document.getElementById('addRowBtn').click();
+            
+            // Focus on the newly added row's product search input
+            setTimeout(() => {
+                let rows = document.querySelectorAll('#itemsTable tbody tr');
+                if (rows.length > 0) {
+                    let lastRow = rows[rows.length - 1];
+                    let input = lastRow.querySelector('.product-input');
+                    if (input) input.focus();
+                }
+            }, 50);
+        }
+    }
 });
 
 document.getElementById('openingStockForm').addEventListener('submit', function(e) {
@@ -265,6 +283,14 @@ document.getElementById('addRowBtn').addEventListener('click', function () {
        placeholder="Auto">
 <input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
 <input type="hidden" class="pallets-per-packing" value="">
+</td>
+
+<td>
+<select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm">
+    <option value="pending">Pending</option>
+    <option value="approved">Approved</option>
+    <option value="rejected">Rejected</option>
+</select>
 </td>
 
 <td>
@@ -416,13 +442,15 @@ document.addEventListener('input', function (e) {
     }
 });
 
-/* ================= REMOVE ================= */
-document.addEventListener('click', function (e) {
-    if (e.target.classList.contains('removeRow')) {
-        e.target.closest('tr').remove();
-    }
-});
+    // Add first row by default
+    document.getElementById('addRowBtn').click();
 
+    /* ================= REMOVE ================= */
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('removeRow')) {
+            e.target.closest('tr').remove();
+        }
+    });
 });
 </script>
 @endpush

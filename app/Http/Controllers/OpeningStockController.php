@@ -24,9 +24,7 @@ class OpeningStockController extends Controller
 
         // Apply warehouse filter
         if ($request->filled('warehouse_id')) {
-            $query->whereHas('stockIn', function ($q) use ($request) {
-                $q->where('warehouse_id', $request->warehouse_id);
-            });
+            $query->where('warehouse_id', $request->warehouse_id);
         }
 
         // Apply product filter
@@ -58,14 +56,17 @@ class OpeningStockController extends Controller
             }
         }
 
-        $items = $query->with([
-                'stockIn.warehouse',
-                'product.category',
-                'product.uom',
-                'product.packingType',
-                'warehouseRow',
-            ])
-            ->latest()
+        $items = $query->select(
+                'product_id',
+                DB::raw('SUM(units_received) as total_units'),
+                DB::raw('SUM(total_quantity) as total_qty'),
+                DB::raw('SUM(balance_quantity) as total_balance'),
+                DB::raw('SUM(pallets_used) as total_pallets'),
+                DB::raw('COUNT(id) as batch_count')
+            )
+            ->groupBy('product_id')
+            ->with(['product.category'])
+            ->latest('product_id')
             ->paginate(20);
 
         // Get filter options
@@ -73,7 +74,28 @@ class OpeningStockController extends Controller
         $products = Product::orderBy('name')->get();
 
         return view('opening_stock.index', compact('items', 'warehouses', 'products'));
+    }
 
+    /**
+     * Get all batches/locations for a specific product
+     */
+    public function productBatches(Request $request, $productId)
+    {
+        $items = StockInItem::whereHas('stockIn', function ($q) {
+                $q->where('source_type', 'opening');
+            })
+            ->where('product_id', $productId)
+            ->with([
+                'stockIn.warehouse',
+                'warehouseRow',
+                'product.category',
+                'product.uom',
+                'product.packingType',
+            ])
+            ->latest()
+            ->get();
+
+        return response()->json($items);
     }
 
     /**
@@ -243,6 +265,133 @@ class OpeningStockController extends Controller
             return redirect()
                 ->route('opening-stock.index')
                 ->with('success', 'Opening stock added successfully');
+
+        } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Show edit form for a single opening stock item
+     */
+    public function edit($id)
+    {
+        $item = StockInItem::whereHas('stockIn', function ($q) {
+            $q->where('source_type', 'opening');
+        })->with(['stockIn.warehouse', 'product', 'warehouseRow'])->findOrFail($id);
+
+        $warehouses = Warehouse::where('status', 1)->orderBy('name')->get();
+        $products = Product::where('status', 1)->orderBy('name')->get();
+
+        return view('opening_stock.edit', compact('item', 'warehouses', 'products'));
+    }
+
+    /**
+     * Update a single opening stock item (all fields editable)
+     */
+    public function update(Request $request, $id)
+    {
+        $item = StockInItem::whereHas('stockIn', function ($q) {
+            $q->where('source_type', 'opening');
+        })->findOrFail($id);
+
+        $request->validate([
+            'warehouse_id'      => 'required|exists:warehouses,id',
+            'product_id'         => 'required|exists:products,id',
+            'units_received'     => 'required|integer|min:1',
+            'pallets_used'       => 'nullable|integer|min:0',
+            'sap_batch'         => 'nullable|string|max:100',
+            'vendor_batch'      => 'nullable|string|max:100',
+            'ibd_no'            => 'nullable|string|max:100',
+            'po_no'             => 'nullable|string|max:100',
+            'mfg_date'          => 'nullable|date',
+            'expiry_date'       => 'nullable|date',
+            'quality_clearance' => 'nullable|in:pending,approved,rejected',
+            'sound_stock'       => 'nullable|boolean',
+            'block_stock'       => 'nullable|boolean',
+            'hold_stock'        => 'nullable|boolean',
+            'remarks'           => 'nullable|string|max:500',
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $item) {
+                $warehouse = Warehouse::findOrFail($request->warehouse_id);
+                $product = Product::findOrFail($request->product_id);
+                $units = (int) $request->units_received;
+                $packSize = (float) $product->pack_size;
+                $totalQty = round($units * $packSize, 4);
+
+                // Calculate pallets
+                $palletsNeeded = (int) ($request->pallets_used ?? 0);
+                if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                    $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
+                }
+
+                // Check capacity (excluding the current item)
+                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                    ->where('id', '!=', $item->id)
+                    ->where('balance_quantity', '>', 0)
+                    ->sum('pallets_used');
+
+                $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
+
+                if ($freePallets < $palletsNeeded) {
+                    throw new \Exception("Warehouse is full. Cannot update opening stock. Only {$freePallets} pallet slots available, but {$palletsNeeded} needed.");
+                }
+
+                // Auto-assignment of Row
+                $splits = WarehouseRowFifo::assign(
+                    $warehouse->id,
+                    $palletsNeeded,
+                    $units,
+                    $packSize
+                );
+
+                $assignedRowId = count($splits) > 0 ? $splits[0]['warehouse_row_id'] : null;
+
+                // Update the item
+                $item->update([
+                    'warehouse_id'       => $warehouse->id,
+                    'product_id'         => $product->id,
+                    'warehouse_row_id'   => $assignedRowId,
+                    'units_received'     => $units,
+                    'pack_size_snapshot' => $packSize,
+                    'total_quantity'     => $totalQty,
+                    'balance_quantity'   => $totalQty, // Reset balance quantity to new total quantity
+                    'use_pallets'        => $palletsNeeded > 0,
+                    'pallets_used'       => $palletsNeeded > 0 ? $palletsNeeded : null,
+                    'sap_batch'         => $request->sap_batch,
+                    'vendor_batch'      => $request->vendor_batch,
+                    'ibd_no'            => $request->ibd_no,
+                    'po_no'             => $request->po_no,
+                    'mfg_date'          => $request->mfg_date ?: null,
+                    'expiry_date'       => $request->expiry_date ?: null,
+                    'quality_clearance' => $request->quality_clearance ?? 'pending',
+                    'sound_stock'       => $request->boolean('sound_stock'),
+                    'block_stock'       => $request->boolean('block_stock'),
+                    'hold_stock'        => $request->boolean('hold_stock'),
+                    'remarks'           => $request->remarks,
+                ]);
+
+                // Also update the stockIn warehouse if needed
+                if ($item->stockIn) {
+                    $item->stockIn->update([
+                        'warehouse_id' => $warehouse->id,
+                    ]);
+                }
+            });
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Opening stock item updated successfully.',
+                ]);
+            }
+
+            return redirect()->route('opening-stock.index')->with('success', 'Opening stock item updated successfully.');
 
         } catch (\Exception $e) {
             if ($request->ajax() || $request->wantsJson()) {
