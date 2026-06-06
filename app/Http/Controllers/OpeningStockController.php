@@ -560,26 +560,27 @@ class OpeningStockController extends Controller
 
         // Determine warehouses to use
         $csvHasWarehouse = isset($headerMap['Warehouse']);
+
+        // Full pool of all active warehouses (for auto-assign mode)
+        $allWarehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
+        if ($allWarehousePool->isEmpty()) {
+            $allWarehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
+        }
+        if ($allWarehousePool->isEmpty()) {
+            fclose($handle);
+            return back()->with('error', 'No active warehouses found.');
+        }
+
         if ($request->warehouse_id) {
-            // User selected a specific warehouse
+            // User selected a specific warehouse — ONLY use that one, no overflow
             $targetWarehouse = Warehouse::findOrFail($request->warehouse_id);
             $warehousePool = collect([$targetWarehouse]);
         } elseif ($csvHasWarehouse) {
-            // CSV has Warehouse column — use it per-row; fall back to auto-assign
-            $warehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
-            if ($warehousePool->isEmpty()) {
-                $warehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
-            }
+            // CSV has Warehouse column — per-row warehouse only, no overflow
+            $warehousePool = $allWarehousePool;
         } else {
-            // Auto-assign across warehouses with rows
-            $warehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
-            if ($warehousePool->isEmpty()) {
-                $warehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
-            }
-            if ($warehousePool->isEmpty()) {
-                fclose($handle);
-                return back()->with('error', 'No active warehouses found for auto-assignment.');
-            }
+            // Auto-assign — try all warehouses, use one with space
+            $warehousePool = $allWarehousePool;
         }
 
         $errors = [];
@@ -661,13 +662,12 @@ class OpeningStockController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, &$imported, &$skipped, &$errors) {
-                $whIndex = 0;
+            DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
 
                 foreach ($items as $item) {
-                    $product = $item['product'];
-                    $units = $item['units'];
-                    $packSize = (float) $product->pack_size;
+                    $product       = $item['product'];
+                    $units         = $item['units'];
+                    $packSize      = (float) $product->pack_size;
                     $palletsNeeded = 0;
 
                     if ($item['pallets_used'] !== '') {
@@ -676,100 +676,107 @@ class OpeningStockController extends Controller
                         $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                     }
 
-                    // Determine target warehouse(s) for this item
+                    // Determine target warehouses for this item
                     if ($item['warehouse']) {
+                        // CSV specified a warehouse — only try that one
                         $targets = collect([$item['warehouse']]);
                     } else {
+                        // Use the pool (specific warehouse or all for auto-assign)
                         $targets = $warehousePool;
                     }
 
                     $assigned = false;
-                    $attempts = 0;
 
-                    while (!$assigned && $attempts < $targets->count() && $palletsNeeded >= 0 && $units > 0) {
-                        $wh = $targets[$whIndex % $targets->count()];
-                        $whIndex++;
-                        $attempts++;
+                    foreach ($targets as $wh) {
+                        // ── Check warehouse pallet capacity BEFORE assigning ──
+                        $usedPallets = StockInItem::where('warehouse_id', $wh->id)
+                            ->where('balance_quantity', '>', 0)
+                            ->sum('pallets_used');
 
-                        // If it's the absolute last attempt, allow overflow so no data is lost
-                        $isLastAttempt = ($attempts == $targets->count());
-                        $allowOverflow = $isLastAttempt;
+                        $freePallets = $wh->total_capacity > 0
+                            ? max(0, $wh->total_capacity - $usedPallets)
+                            : PHP_INT_MAX; // No capacity set = unlimited
 
-                        $splits = WarehouseRowFifo::assign($wh->id, $palletsNeeded, $units, $packSize, $allowOverflow);
-
-                        $hasSpace = false;
-                        foreach ($splits as $s) {
-                            if ($s['warehouse_row_id'] !== null) { $hasSpace = true; break; }
+                        if ($palletsNeeded > 0 && $freePallets < $palletsNeeded) {
+                            // Not enough space in this warehouse — try next (auto-assign) or error (specific)
+                            continue;
                         }
-                        if ($wh->rows()->count() === 0) $hasSpace = true;
 
-                        if ($hasSpace || $isLastAttempt) {
-                            $stockIn = StockIn::firstOrCreate(
-                                [
-                                    'source_type' => 'opening',
-                                    'warehouse_id' => $wh->id,
-                                    'remarks' => 'Imported via CSV on ' . now()->format('Y-m-d H:i'),
-                                ],
-                                ['shipment_type' => 'manual']
-                            );
+                        // ── Warehouse has enough space — assign via FIFO ──
+                        $splits = WarehouseRowFifo::assign(
+                            $wh->id,
+                            $palletsNeeded,
+                            $units,
+                            $packSize,
+                            false  // NEVER allow overflow
+                        );
 
-                            $assignedPalletsThisWh = 0;
-                            $assignedUnitsThisWh = 0;
+                        $stockIn = StockIn::firstOrCreate(
+                            [
+                                'source_type'  => 'opening',
+                                'warehouse_id' => $wh->id,
+                                'remarks'      => 'Imported via CSV on ' . now()->format('Y-m-d H:i'),
+                            ],
+                            ['shipment_type' => 'manual']
+                        );
 
-                            foreach ($splits as $split) {
-                                $splitUnits = $split['units'];
-                                $splitQty = round($splitUnits * $packSize, 4);
+                        foreach ($splits as $split) {
+                            if ($split['units'] <= 0) continue;
 
-                                StockInItem::create([
-                                    'stock_in_id' => $stockIn->id,
-                                    'product_id' => $product->id,
-                                    'warehouse_id' => $wh->id,
-                                    'warehouse_row_id' => $split['warehouse_row_id'],
-                                    'ibd_no' => $item['ibd_no'] ?: null,
-                                    'po_no' => $item['po_no'] ?: null,
-                                    'sap_batch' => $item['sap_batch'] ?: null,
-                                    'vendor_batch' => $item['vendor_batch'] ?: null,
-                                    'mfg_date' => $item['mfg_date'] ?: null,
-                                    'expiry_date' => $item['expiry_date'] ?: null,
-                                    'units_received' => $splitUnits,
-                                    'pack_size_snapshot' => $packSize,
-                                    'total_quantity' => $splitQty,
-                                    'balance_quantity' => $splitQty,
-                                    'use_pallets' => $split['pallets'] > 0,
-                                    'pallets_used' => $split['pallets'] > 0 ? $split['pallets'] : null,
-                                    'sound_stock' => !$item['blocked'] && !$item['hold'],
-                                    'block_stock' => $item['blocked'],
-                                    'hold_stock' => $item['hold'],
-                                    'quality_clearance' => $item['quality_clearance'],
-                                    'remarks' => $item['remarks'] ?: null,
-                                ]);
+                            $splitUnits = $split['units'];
+                            $splitQty   = round($splitUnits * $packSize, 4);
 
-                                $assignedPalletsThisWh += $split['pallets'];
-                                $assignedUnitsThisWh += $splitUnits;
-                            }
-
-                            $palletsNeeded -= $assignedPalletsThisWh;
-                            $units -= $assignedUnitsThisWh;
-
-                            if ($units <= 0) {
-                                $assigned = true;
-                            }
+                            StockInItem::create([
+                                'stock_in_id'        => $stockIn->id,
+                                'product_id'         => $product->id,
+                                'warehouse_id'       => $wh->id,
+                                'warehouse_row_id'   => $split['warehouse_row_id'],
+                                'ibd_no'             => $item['ibd_no'] ?: null,
+                                'po_no'              => $item['po_no'] ?: null,
+                                'sap_batch'          => $item['sap_batch'] ?: null,
+                                'vendor_batch'       => $item['vendor_batch'] ?: null,
+                                'mfg_date'           => $item['mfg_date'] ?: null,
+                                'expiry_date'        => $item['expiry_date'] ?: null,
+                                'units_received'     => $splitUnits,
+                                'pack_size_snapshot' => $packSize,
+                                'total_quantity'     => $splitQty,
+                                'balance_quantity'   => $splitQty,
+                                'use_pallets'        => $split['pallets'] > 0,
+                                'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                                'sound_stock'        => !$item['blocked'] && !$item['hold'],
+                                'block_stock'        => $item['blocked'],
+                                'hold_stock'         => $item['hold'],
+                                'quality_clearance'  => $item['quality_clearance'],
+                                'remarks'            => $item['remarks'] ?: null,
+                            ]);
                         }
+
+                        $assigned = true;
+                        break; // Successfully assigned — don't try more warehouses
                     }
 
                     if ($assigned) {
                         $imported++;
                     } else {
-                        $errors[] = "No warehouse with space for '{$product->item_code}'";
+                        // Build a clear error message
+                        if ($targets->count() === 1) {
+                            $whName = $targets->first()->name;
+                            $usedP  = StockInItem::where('warehouse_id', $targets->first()->id)
+                                ->where('balance_quantity', '>', 0)->sum('pallets_used');
+                            $freeP  = $targets->first()->total_capacity > 0
+                                ? max(0, $targets->first()->total_capacity - $usedP) : 0;
+                            $errors[] = "Warehouse '{$whName}' is full — '{$product->item_code}' needs {$palletsNeeded} pallets but only {$freeP} available";
+                        } else {
+                            $errors[] = "No warehouse has enough space for '{$product->item_code}' ({$palletsNeeded} pallets needed)";
+                        }
                         $skipped++;
                     }
                 }
             });
 
             $message = "Imported {$imported} product(s).";
-            if ($csvHasWarehouse) $message .= " (warehouse from CSV)";
-            elseif ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
-            else $message .= " Auto-assigned.";
+            if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
+            else $message .= " Auto-assigned to warehouses with available space.";
             if ($skipped > 0) $message .= " {$skipped} skipped.";
             if ($errors) $message .= " " . implode(' | ', array_slice($errors, 0, 10));
 
