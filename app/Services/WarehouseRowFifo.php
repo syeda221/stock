@@ -48,7 +48,8 @@ class WarehouseRowFifo
         int   $warehouseId,
         int   $palletsNeeded,
         int   $totalUnits,
-        float $packSize
+        float $packSize,
+        bool  $allowOverflow = true
     ): array {
         // Load rows and sort them using natural sorting
         // This ensures "row 10" comes after "row 2", and "row1" comes before "row 2" despite spaces
@@ -101,8 +102,8 @@ class WarehouseRowFifo
             ];
         }
 
-        // All rows full but still pallets left → overflow into last row
-        if ($remaining > 0 && $rows->isNotEmpty()) {
+        // All rows full but still pallets left → overflow into last row ONLY if allowOverflow is true
+        if ($remaining > 0 && $rows->isNotEmpty() && $allowOverflow) {
             $lastRow = $rows->last();
             $last    = count($splits) - 1;
 

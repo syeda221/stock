@@ -60,12 +60,12 @@
                         <label class="form-label fw-semibold small">CSV Format</label>
                         <div style="font-size: 13px; background: #f8fafc; padding: 1rem; border-radius: 8px;">
                             <p class="mb-2 fw-semibold">Required headers:</p>
-                            <code style="font-size: 12px;">Item Code, Units Received, SAP Batch, Vendor Batch, MFG Date, Expiry Date, Quality Clearance, Blocked, Hold, Remarks</code>
+                            <code style="font-size: 12px;">Item Code, Units Received, IBD, PO, SAP Batch, Vendor Batch, MFG Date, Expiry Date, Pallets Used, Quality Check, Blocked, Hold, Remarks</code>
                             <hr class="my-2">
                             <p class="mb-1 fw-semibold">Notes:</p>
                             <ul class="mb-0" style="font-size: 12px;">
                                 <li><strong>Item Code</strong> must exist in Products</li>
-                                <li><strong>Quality Clearance</strong>: pending / approved / rejected</li>
+                                <li><strong>Quality Check</strong>: pending / approved (or pass) / rejected (or fail)</li>
                                 <li><strong>Blocked / Hold</strong>: Yes or No</li>
                                 <li><strong>Dates</strong>: YYYY-MM-DD format</li>
                             </ul>

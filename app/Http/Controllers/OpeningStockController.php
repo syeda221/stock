@@ -420,7 +420,7 @@ class OpeningStockController extends Controller
                 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Clearance',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold'
             ]);
 
@@ -467,13 +467,13 @@ class OpeningStockController extends Controller
         $callback = function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Units Received', 'SAP Batch', 'Vendor Batch',
-                'MFG Date', 'Expiry Date', 'Quality Clearance',
+                'Item Code', 'Units Received', 'IBD', 'PO', 'SAP Batch', 'Vendor Batch',
+                'MFG Date', 'Expiry Date', 'Pallets Used', 'Quality Check',
                 'Blocked', 'Hold', 'Remarks'
             ]);
             fputcsv($file, [
-                'PRD001', '100', 'SAP-2024-001', 'VENDOR-BATCH-001',
-                '2024-01-15', '2025-01-15', 'approved',
+                'PRD001', '100', 'IBD-001', 'PO-001', 'SAP-2024-001', 'VENDOR-BATCH-001',
+                '2024-01-15', '2025-01-15', '5', 'approved',
                 'No', 'No', 'Initial opening stock'
             ]);
             fclose($file);
@@ -512,11 +512,14 @@ class OpeningStockController extends Controller
         $fieldAliases = [
             'Item Code'      => ['Item Code', 'Item Code', 'item_code', 'ItemCode', 'Code'],
             'Units Received' => ['Units Received', 'Units Received', 'units_received', 'Units'],
+            'IBD'            => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
+            'PO'             => ['PO', 'po', 'po_no', 'PO No'],
             'SAP Batch'      => ['SAP Batch', 'SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
             'Vendor Batch'   => ['Vendor Batch', 'Vendor Batch', 'vendor_batch', 'VendorBatch'],
+            'Pallets Used'   => ['Pallets Used', 'pallets_used', 'Pallets'],
             'MFG Date'       => ['MFG Date', 'MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
             'Expiry Date'    => ['Expiry Date', 'Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
-            'Quality Clearance' => ['Quality Clearance', 'Quality Clearance', 'quality_clearance', 'QC'],
+            'Quality Check'  => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
             'Blocked'        => ['Blocked', 'Blocked', 'block_stock', 'Block'],
             'Hold'           => ['Hold', 'Hold', 'hold_stock', 'Hold'],
             'Remarks'        => ['Remarks', 'Remarks', 'remarks', 'Notes', 'Comment'],
@@ -628,15 +631,23 @@ class OpeningStockController extends Controller
                 continue;
             }
 
+            $qcValue = strtolower($getCell($row, 'Quality Check'));
+            if (in_array($qcValue, ['pass', 'approved'])) $qcValue = 'approved';
+            elseif (in_array($qcValue, ['fail', 'rejected'])) $qcValue = 'rejected';
+            else $qcValue = 'pending';
+
             $items[] = [
                 'product' => $product,
                 'units' => (int) $units,
                 'warehouse' => $rowWarehouse,
+                'ibd_no' => $getCell($row, 'IBD'),
+                'po_no' => $getCell($row, 'PO'),
                 'sap_batch' => $getCell($row, 'SAP Batch'),
                 'vendor_batch' => $getCell($row, 'Vendor Batch'),
+                'pallets_used' => $getCell($row, 'Pallets Used'),
                 'mfg_date' => $getCell($row, 'MFG Date'),
                 'expiry_date' => $getCell($row, 'Expiry Date'),
-                'quality_clearance' => in_array(strtolower($getCell($row, 'Quality Clearance')), ['approved', 'rejected']) ? strtolower($getCell($row, 'Quality Clearance')) : 'pending',
+                'quality_clearance' => $qcValue,
                 'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
                 'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
                 'remarks' => $getCell($row, 'Remarks'),
@@ -659,7 +670,9 @@ class OpeningStockController extends Controller
                     $packSize = (float) $product->pack_size;
                     $palletsNeeded = 0;
 
-                    if ($product->cartons_per_pallet > 0) {
+                    if ($item['pallets_used'] !== '') {
+                        $palletsNeeded = (int) $item['pallets_used'];
+                    } elseif ($product->cartons_per_pallet > 0) {
                         $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                     }
 
@@ -673,11 +686,16 @@ class OpeningStockController extends Controller
                     $assigned = false;
                     $attempts = 0;
 
-                    while (!$assigned && $attempts < $targets->count()) {
+                    while (!$assigned && $attempts < $targets->count() && $palletsNeeded >= 0 && $units > 0) {
                         $wh = $targets[$whIndex % $targets->count()];
                         $whIndex++;
+                        $attempts++;
 
-                        $splits = WarehouseRowFifo::assign($wh->id, $palletsNeeded, $units, $packSize);
+                        // If it's the absolute last attempt, allow overflow so no data is lost
+                        $isLastAttempt = ($attempts == $targets->count());
+                        $allowOverflow = $isLastAttempt;
+
+                        $splits = WarehouseRowFifo::assign($wh->id, $palletsNeeded, $units, $packSize, $allowOverflow);
 
                         $hasSpace = false;
                         foreach ($splits as $s) {
@@ -685,7 +703,7 @@ class OpeningStockController extends Controller
                         }
                         if ($wh->rows()->count() === 0) $hasSpace = true;
 
-                        if ($hasSpace || $attempts >= $targets->count() - 1) {
+                        if ($hasSpace || $isLastAttempt) {
                             $stockIn = StockIn::firstOrCreate(
                                 [
                                     'source_type' => 'opening',
@@ -694,6 +712,9 @@ class OpeningStockController extends Controller
                                 ],
                                 ['shipment_type' => 'manual']
                             );
+
+                            $assignedPalletsThisWh = 0;
+                            $assignedUnitsThisWh = 0;
 
                             foreach ($splits as $split) {
                                 $splitUnits = $split['units'];
@@ -704,6 +725,8 @@ class OpeningStockController extends Controller
                                     'product_id' => $product->id,
                                     'warehouse_id' => $wh->id,
                                     'warehouse_row_id' => $split['warehouse_row_id'],
+                                    'ibd_no' => $item['ibd_no'] ?: null,
+                                    'po_no' => $item['po_no'] ?: null,
                                     'sap_batch' => $item['sap_batch'] ?: null,
                                     'vendor_batch' => $item['vendor_batch'] ?: null,
                                     'mfg_date' => $item['mfg_date'] ?: null,
@@ -720,15 +743,23 @@ class OpeningStockController extends Controller
                                     'quality_clearance' => $item['quality_clearance'],
                                     'remarks' => $item['remarks'] ?: null,
                                 ]);
+
+                                $assignedPalletsThisWh += $split['pallets'];
+                                $assignedUnitsThisWh += $splitUnits;
                             }
 
-                            $assigned = true;
-                            $imported++;
+                            $palletsNeeded -= $assignedPalletsThisWh;
+                            $units -= $assignedUnitsThisWh;
+
+                            if ($units <= 0) {
+                                $assigned = true;
+                            }
                         }
-                        $attempts++;
                     }
 
-                    if (!$assigned) {
+                    if ($assigned) {
+                        $imported++;
+                    } else {
                         $errors[] = "No warehouse with space for '{$product->item_code}'";
                         $skipped++;
                     }
