@@ -122,12 +122,12 @@
 
                     <div class="col-md-2 mb-2">
                         <label class="form-label">Vehicle In</label>
-                        <input type="datetime-local" name="vehicle_in_time" value="{{ $stockIn->vehicle_in_time?->format('Y-m-d\TH:i') }}" class="form-control form-control-sm">
+                        <input type="datetime-local" name="vehicle_in_time" value="{{ $stockIn->vehicle_in_time }}" class="form-control form-control-sm">
                     </div>
 
                     <div class="col-md-2 mb-2">
                         <label class="form-label">Vehicle Out</label>
-                        <input type="datetime-local" name="vehicle_out_time" value="{{ $stockIn->vehicle_out_time?->format('Y-m-d\TH:i') }}" class="form-control form-control-sm">
+                        <input type="datetime-local" name="vehicle_out_time" value="{{ $stockIn->vehicle_out_time }}" class="form-control form-control-sm">
                     </div>
 
                     <div class="col-md-4 mb-2">
