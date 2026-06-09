@@ -33,6 +33,49 @@ class WarehouseRowFifo
     }
 
     /**
+     * Find partial pallets of the same product and return fill data.
+     * Returns ['splits' => [...], 'remaining_units' => int]
+     */
+    public static function fillPartials(
+        int    $warehouseId,
+        ?int   $productId,
+        int    $totalUnits,
+        float  $packSize,
+        int    $cartonsPerPallet
+    ): array {
+        $splits = [];
+        $remaining = $totalUnits;
+
+        if (!$productId || $cartonsPerPallet <= 0) {
+            return ['splits' => $splits, 'remaining_units' => $remaining];
+        }
+
+        $partials = StockInItem::where('warehouse_id', $warehouseId)
+            ->where('product_id', $productId)
+            ->where('balance_quantity', '>', 0)
+            ->where('last_pallet_vacant', '>', 0)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($partials as $partial) {
+            if ($remaining <= 0) break;
+
+            $fill = min($remaining, $partial->last_pallet_vacant);
+            $remaining -= $fill;
+
+            $splits[] = [
+                'stock_in_item_id' => $partial->id,
+                'warehouse_row_id' => $partial->warehouse_row_id,
+                'pallets'          => 0,
+                'units'            => $fill,
+                'qty'              => round($fill * $packSize, 4),
+            ];
+        }
+
+        return ['splits' => $splits, 'remaining_units' => $remaining];
+    }
+
+    /**
      * Assign warehouse rows for a given number of pallets using FIFO.
      *
      * Returns an array of "splits", each with:

@@ -83,6 +83,11 @@ Route::middleware('auth')->group(function () {
     Route::put('/warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('warehouse.update');
     Route::delete('/warehouses/{warehouse}', [WarehouseController::class, 'destroy'])->name('warehouse.destroy');
 
+    // Warehouse Details (Drill-down: Warehouses → Rows → Pallets)
+    Route::get('/warehouses/details', [WarehouseController::class, 'details'])->name('warehouse.details');
+    Route::get('/warehouses/{warehouse}/rows', [WarehouseController::class, 'getRows'])->name('warehouse.rows');
+    Route::get('/warehouses/rows/{row}/pallets', [WarehouseController::class, 'getPallets'])->name('warehouse.row.pallets');
+
     // Vendor Routes
     Route::get('/vendors', [VendorController::class, 'index'])->name('vendor.index');
     Route::get('/vendors/create', [VendorController::class, 'create'])->name('vendor.create');

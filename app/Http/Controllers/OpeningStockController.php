@@ -185,6 +185,26 @@ class OpeningStockController extends Controller
                     throw new \Exception("Warehouse is full. Cannot add opening stock to {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPalletsUsedByNewItems} needed.");
                 }
 
+                // Validate per-item: pallet count must be sufficient for cartons
+                foreach ($request->items as $item) {
+                    if (!empty($item['product_id']) && !empty($item['units_received'])) {
+                        $product = Product::find($item['product_id']);
+                        $pNeeded = (int) ($item['pallets_used'] ?? 0);
+                        if ($pNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
+                            $pNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
+                        }
+                        if ($pNeeded > 0 && $product && $product->cartons_per_pallet > 0) {
+                            $maxUnits = $pNeeded * $product->cartons_per_pallet;
+                            if ((int) $item['units_received'] > $maxUnits) {
+                                throw new \Exception(
+                                    "Product {$product->name}: {$item['units_received']} cartons cannot fit in {$pNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet). Need " .
+                                    ceil((int) $item['units_received'] / $product->cartons_per_pallet) . " pallets."
+                                );
+                            }
+                        }
+                    }
+                }
+
                 /*
                 |--------------------------------------------------------------------------
                 | 3️⃣ Create Stock In Items (BATCH LEVEL) — FIFO Row Auto-Assignment
@@ -196,60 +216,92 @@ class OpeningStockController extends Controller
                     $units    = (int) $item['units_received'];
                     $packSize = (float) $product->pack_size;
 
-                    // Calculate pallets for this item
-                    $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
-
-                    // Auto-calculate if product has cartons_per_pallet set and pallet count is 0
-                    if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
-                        $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
-                    }
-
-                    $splits = WarehouseRowFifo::assign(
+                    // Step 1: Fill partial pallets of the same product first
+                    $partialResult = WarehouseRowFifo::fillPartials(
                         $warehouse->id,
-                        $palletsNeeded,
+                        $product->id,
                         $units,
-                        $packSize
+                        $packSize,
+                        (int) $product->cartons_per_pallet
                     );
 
-                    foreach ($splits as $split) {
-                        $splitUnits = $split['units'];
-                        $splitQty   = round($splitUnits * $packSize, 4);
+                    // Update existing StockInItems for partial fills
+                    foreach ($partialResult['splits'] as $split) {
+                        $existingItem = StockInItem::find($split['stock_in_item_id']);
+                        if ($existingItem) {
+                            $existingItem->increment('units_received', $split['units']);
+                            $existingItem->increment('total_quantity', $split['qty']);
+                            $existingItem->increment('balance_quantity', $split['qty']);
+                            $existingItem->decrement('last_pallet_vacant', $split['units']);
+                        }
+                    }
 
-                        StockInItem::create([
-                            'stock_in_id'        => $stockIn->id,
-                            'product_id'         => $product->id,
-                            'warehouse_id'       => $warehouse->id,
-                            'warehouse_row_id'   => $split['warehouse_row_id'],
+                    $remainingUnits = $partialResult['remaining_units'];
 
-                            // Batch / Reference
-                            'sap_batch'          => $item['sap_batch'] ?? null,
-                            'vendor_batch'       => $item['vendor_batch'] ?? null,
-                            'ibd_no'             => $item['ibd_no'] ?? null,
-                            'po_no'              => $item['po_no'] ?? null,
+                    // Step 2: Handle remaining units with new pallet allocations
+                    if ($remainingUnits > 0) {
+                        $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
 
-                            // Dates
-                            'mfg_date'           => $item['mfg_date'] ?? null,
-                            'expiry_date'        => $item['expiry_date'] ?? null,
+                        if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                            $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+                        }
 
-                            // Quantities
-                            'units_received'     => $splitUnits,
-                            'pack_size_snapshot' => $packSize,
-                            'total_quantity'     => $splitQty,
-                            'balance_quantity'   => $splitQty,
+                        if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
+                            $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
+                            if ($remainingUnits > $maxUnits) {
+                                throw new \Exception(
+                                    "Product {$product->name}: {$remainingUnits} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet)."
+                                );
+                            }
+                        }
 
-                            // Pallets
-                            'use_pallets'        => $split['pallets'] > 0,
-                            'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                        $splits = WarehouseRowFifo::assign(
+                            $warehouse->id,
+                            $palletsNeeded,
+                            $remainingUnits,
+                            $packSize
+                        );
 
-                            // Stock Status
-                            'sound_stock'        => ! empty($item['sound_stock']),
-                            'block_stock'        => ! empty($item['block_stock']),
-                            'hold_stock'         => ! empty($item['hold_stock']),
-                            'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+                        foreach ($splits as $split) {
+                            $splitUnits   = $split['units'];
+                            $splitQty     = round($splitUnits * $packSize, 4);
+                            $splitPallets = $split['pallets'];
 
-                            // Remarks
-                            'remarks'            => $item['remarks'] ?? null,
-                        ]);
+                            $lastVacant = $product->cartons_per_pallet > 0
+                                ? max(0, ($splitPallets * $product->cartons_per_pallet) - $splitUnits)
+                                : 0;
+
+                            StockInItem::create([
+                                'stock_in_id'        => $stockIn->id,
+                                'product_id'         => $product->id,
+                                'warehouse_id'       => $warehouse->id,
+                                'warehouse_row_id'   => $split['warehouse_row_id'],
+
+                                'sap_batch'          => $item['sap_batch'] ?? null,
+                                'vendor_batch'       => $item['vendor_batch'] ?? null,
+                                'ibd_no'             => $item['ibd_no'] ?? null,
+                                'po_no'              => $item['po_no'] ?? null,
+
+                                'mfg_date'           => $item['mfg_date'] ?? null,
+                                'expiry_date'        => $item['expiry_date'] ?? null,
+
+                                'units_received'     => $splitUnits,
+                                'pack_size_snapshot' => $packSize,
+                                'total_quantity'     => $splitQty,
+                                'balance_quantity'   => $splitQty,
+
+                                'use_pallets'        => $splitPallets > 0,
+                                'pallets_used'       => $splitPallets > 0 ? $splitPallets : null,
+                                'last_pallet_vacant' => $lastVacant,
+
+                                'sound_stock'        => ! empty($item['sound_stock']),
+                                'block_stock'        => ! empty($item['block_stock']),
+                                'hold_stock'         => ! empty($item['hold_stock']),
+                                'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+
+                                'remarks'            => $item['remarks'] ?? null,
+                            ]);
+                        }
                     }
                 }
             });
@@ -676,6 +728,16 @@ class OpeningStockController extends Controller
                         $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                     }
 
+                    if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
+                        $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
+                        if ($units > $maxUnits) {
+                            $correctPallets = (int) ceil($units / $product->cartons_per_pallet);
+                            throw new \Exception(
+                                "Row: {$product->name}: {$units} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet). Need {$correctPallets} pallets."
+                            );
+                        }
+                    }
+
                     // Determine target warehouses for this item
                     if ($item['warehouse']) {
                         // CSV specified a warehouse — only try that one
@@ -726,6 +788,10 @@ class OpeningStockController extends Controller
                             $splitUnits = $split['units'];
                             $splitQty   = round($splitUnits * $packSize, 4);
 
+                            $lastVacant = $product->cartons_per_pallet > 0
+                                ? max(0, ($split['pallets'] * $product->cartons_per_pallet) - $splitUnits)
+                                : 0;
+
                             StockInItem::create([
                                 'stock_in_id'        => $stockIn->id,
                                 'product_id'         => $product->id,
@@ -743,6 +809,7 @@ class OpeningStockController extends Controller
                                 'balance_quantity'   => $splitQty,
                                 'use_pallets'        => $split['pallets'] > 0,
                                 'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                                'last_pallet_vacant' => $lastVacant,
                                 'sound_stock'        => !$item['blocked'] && !$item['hold'],
                                 'block_stock'        => $item['blocked'],
                                 'hold_stock'         => $item['hold'],

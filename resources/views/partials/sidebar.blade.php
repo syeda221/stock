@@ -80,9 +80,16 @@
     @can('warehouse-list')
     <li class="nav-item">
         <a href="{{ route('warehouse.index') }}"
-           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('warehouse.*') ? 'active' : '' }}">
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('warehouse.index') ? 'active' : '' }}">
             <i class="bi bi-buildings me-2"></i>
             <span>Warehouses</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('warehouse.details') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('warehouse.details') ? 'active' : '' }}">
+            <i class="bi bi-diagram-3 me-2"></i>
+            <span>Warehouse Details</span>
         </a>
     </li>
     @endcan

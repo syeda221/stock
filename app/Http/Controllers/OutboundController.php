@@ -359,6 +359,18 @@ class OutboundController extends Controller
                             $batch->decrement('pallets_used', $palletsToDeduct);
                         }
 
+                        // Recalculate last_pallet_vacant after dispatch
+                        if ($batch->pallets_used > 0 && $batch->balance_quantity > 0) {
+                            $prod = $batch->product;
+                            if ($prod && $prod->cartons_per_pallet > 0) {
+                                $remainingCartons = (int) round($batch->balance_quantity / max(1, $batch->pack_size_snapshot));
+                                $newVacant = max(0, ($batch->pallets_used * $prod->cartons_per_pallet) - $remainingCartons);
+                                StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => $newVacant]);
+                            }
+                        } else {
+                            StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => 0]);
+                        }
+
                         /* ===== CREATE OUTBOUND ITEM ===== */
                         StockOutItem::create([
                             'stock_out_id'        => $stockOut->id,
@@ -414,6 +426,7 @@ class OutboundController extends Controller
                                     'balance_quantity'   => $split['qty'],
                                     'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
                                     'use_pallets'        => $split['pallets'] > 0,
+                                    'last_pallet_vacant' => 0,
                                     'quality_clearance'  => $batch->quality_clearance ?? 'approved',
                                     'sound_stock'        => $batch->sound_stock ?? true,
                                     'block_stock'        => $batch->block_stock ?? false,
@@ -635,6 +648,18 @@ class OutboundController extends Controller
                         if ($palletsToTake > 0 && $batch->pallets_used > 0) {
                             $palletsToDeduct = min($palletsToTake, $batch->pallets_used);
                             $batch->decrement('pallets_used', $palletsToDeduct);
+                        }
+
+                        // Recalculate last_pallet_vacant after dispatch
+                        if ($batch->pallets_used > 0 && $batch->balance_quantity > 0) {
+                            $prod = $batch->product;
+                            if ($prod && $prod->cartons_per_pallet > 0) {
+                                $remainingCartons = (int) round($batch->balance_quantity / max(1, $batch->pack_size_snapshot));
+                                $newVacant = max(0, ($batch->pallets_used * $prod->cartons_per_pallet) - $remainingCartons);
+                                StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => $newVacant]);
+                            }
+                        } else {
+                            StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => 0]);
                         }
 
                         StockOutItem::create([

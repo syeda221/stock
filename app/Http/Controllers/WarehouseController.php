@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\StockInItem;
 use App\Models\Warehouse;
 use App\Models\WarehouseRow;
 use Illuminate\Http\Request;
@@ -162,6 +163,87 @@ class WarehouseController extends Controller
 
         return redirect()->route('warehouse.index')
             ->with('success', 'Warehouse deleted successfully');
+    }
+
+    public function details()
+    {
+        $warehouses = Warehouse::with('rows')->where('status', 1)->orderBy('name')->get();
+        return view('warehouse.details', compact('warehouses'));
+    }
+
+    public function getRows(Warehouse $warehouse)
+    {
+        $warehouse->load('rows');
+        return response()->json($warehouse->rows);
+    }
+
+    public function getPallets(WarehouseRow $row)
+    {
+        $row->load('warehouse');
+        $items = StockInItem::with('product')
+            ->where('warehouse_row_id', $row->id)
+            ->where('balance_quantity', '>', 0)
+            ->orderBy('id')
+            ->get();
+
+        $palletData = [];
+        $offset = 0;
+
+        foreach ($items as $item) {
+            $start = $offset + 1;
+            $end = $offset + $item->pallets_used;
+
+            $product = $item->product;
+            $maxPerPallet = $product->cartons_per_pallet ?? null;
+            $totalCapacity = $maxPerPallet ? $item->pallets_used * $maxPerPallet : null;
+            $itemIsOverCapacity = $totalCapacity && $item->units_received > $totalCapacity;
+
+            // Distribute cartons: fill earlier pallets to max, last pallet gets remainder
+            $remainingUnits = $item->units_received;
+
+            for ($i = $start; $i <= $end; $i++) {
+                if ($maxPerPallet) {
+                    $cartonQty = min($maxPerPallet, $remainingUnits);
+                    $remainingUnits -= $cartonQty;
+                } else {
+                    $cartonQty = $item->pallets_used > 0
+                        ? round($item->units_received / $item->pallets_used, 2)
+                        : $item->units_received;
+                }
+
+                $palletData[] = [
+                    'pallet_number' => $i,
+                    'product_name' => $product->name ?? '-',
+                    'item_code' => $product->item_code ?? '-',
+                    'carton_qty' => $cartonQty,
+                    'carton_capacity' => $maxPerPallet,
+                    'is_empty' => false,
+                    'is_over_capacity' => $itemIsOverCapacity,
+                ];
+            }
+            $offset = $end;
+        }
+
+        $totalCapacity = $row->pallet_capacity;
+        for ($i = $offset + 1; $i <= $totalCapacity; $i++) {
+            $palletData[] = [
+                'pallet_number' => $i,
+                'product_name' => null,
+                'item_code' => null,
+                'carton_qty' => 0,
+                'carton_capacity' => null,
+                'is_empty' => true,
+                'is_over_capacity' => false,
+            ];
+        }
+
+        return response()->json([
+            'row' => $row,
+            'pallets' => $palletData,
+            'total_capacity' => $totalCapacity,
+            'used' => $offset,
+            'empty' => $totalCapacity - $offset,
+        ]);
     }
 }
 
