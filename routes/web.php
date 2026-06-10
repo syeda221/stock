@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function () {
 
     // Warehouse Details (Drill-down: Warehouses → Rows → Pallets)
     Route::get('/warehouses/details', [WarehouseController::class, 'details'])->name('warehouse.details');
+    Route::get('/warehouses/export/pdf', [WarehouseController::class, 'exportPdf'])->name('warehouse.export.pdf');
     Route::get('/warehouses/{warehouse}/rows', [WarehouseController::class, 'getRows'])->name('warehouse.rows');
     Route::get('/warehouses/rows/{row}/pallets', [WarehouseController::class, 'getPallets'])->name('warehouse.row.pallets');
 

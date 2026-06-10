@@ -270,5 +270,48 @@ class WarehouseController extends Controller
             'empty' => $totalCapacity - $offset,
         ]);
     }
+
+    public function exportPdf()
+    {
+        $warehouses = Warehouse::with('rows')
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($warehouse) {
+                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                    ->where('balance_quantity', '>', 0)
+                    ->sum('pallets_used');
+                $warehouse->used_pallets = (int) $usedPallets;
+                $warehouse->free_pallets = $warehouse->total_capacity
+                    ? max(0, $warehouse->total_capacity - $usedPallets)
+                    : null;
+                $warehouse->is_full = $warehouse->free_pallets !== null && $warehouse->free_pallets === 0;
+
+                $warehouse->rows->each(function ($row) use ($warehouse) {
+                    $used = StockInItem::where('warehouse_row_id', $row->id)
+                        ->where('balance_quantity', '>', 0)
+                        ->sum('pallets_used');
+                    $row->used_pallets = (int) $used;
+                    $row->free_pallets = $row->pallet_capacity
+                        ? max(0, $row->pallet_capacity - $used)
+                        : null;
+                });
+
+                return $warehouse;
+            });
+
+        if (class_exists('\\Barryvdh\\DomPDF\\Facade\\Pdf') || class_exists('PDF')) {
+            try {
+                $pdf = \PDF::loadView('reports.pdf.warehouse-details', compact('warehouses'));
+                $pdf->setPaper('a4', 'landscape');
+                return $pdf->download('warehouse-capacity-' . date('Ymd') . '.pdf');
+            } catch (\Throwable $e) {
+                \Log::error('PDF export failed: ' . $e->getMessage());
+                return back()->with('error', 'PDF generation failed. Please try again.');
+            }
+        }
+
+        return back()->with('error', 'PDF library not available.');
+    }
 }
 

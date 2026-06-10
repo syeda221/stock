@@ -468,7 +468,7 @@ class OpeningStockController extends Controller
                 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Expiry Date', 'Balance Qty', 'Quality Check',
                 'Sound', 'Blocked', 'Hold'
             ]);
 
@@ -518,14 +518,14 @@ class OpeningStockController extends Controller
                 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Expiry Date', 'Balance Qty', 'Quality Check',
                 'Sound', 'Blocked', 'Hold'
             ]);
             fputcsv($file, [
                 '001', 'Sample Product', '', '', '',
                 'IBD-001', 'PO-001', 'VENDOR-001', 'SAP-001', '',
                 '', '100', '', '2024-01-15', '2025-01-15', 
-                '', '5', 'approved', 'Yes', 'No', 'No'
+                '', 'approved', 'Yes', 'No', 'No'
             ]);
             fclose($file);
         };
@@ -567,7 +567,6 @@ class OpeningStockController extends Controller
             'PO'             => ['PO', 'po', 'po_no', 'PO No'],
             'SAP Batch'      => ['SAP Batch', 'SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
             'Vendor Batch'   => ['Vendor Batch', 'Vendor Batch', 'vendor_batch', 'VendorBatch'],
-            'Pallets Used'   => ['Pallets Used', 'pallets_used', 'Pallets'],
             'MFG Date'       => ['MFG Date', 'MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
             'Expiry Date'    => ['Expiry Date', 'Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
             'Quality Check'  => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
@@ -696,7 +695,7 @@ class OpeningStockController extends Controller
                 'po_no' => $getCell($row, 'PO'),
                 'sap_batch' => $getCell($row, 'SAP Batch'),
                 'vendor_batch' => $getCell($row, 'Vendor Batch'),
-                'pallets_used' => $getCell($row, 'Pallets Used'),
+                'pallets_used' => '', // auto-calculated below
                 'mfg_date' => $getCell($row, 'MFG Date'),
                 'expiry_date' => $getCell($row, 'Expiry Date'),
                 'quality_clearance' => $qcValue,
@@ -719,23 +718,9 @@ class OpeningStockController extends Controller
                     $product       = $item['product'];
                     $units         = $item['units'];
                     $packSize      = (float) $product->pack_size;
-                    $palletsNeeded = 0;
-
-                    if ($item['pallets_used'] !== '') {
-                        $palletsNeeded = (int) $item['pallets_used'];
-                    } elseif ($product->cartons_per_pallet > 0) {
-                        $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
-                    }
-
-                    if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
-                        $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
-                        if ($units > $maxUnits) {
-                            $correctPallets = (int) ceil($units / $product->cartons_per_pallet);
-                            throw new \Exception(
-                                "Row: {$product->name}: {$units} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet). Need {$correctPallets} pallets."
-                            );
-                        }
-                    }
+                    $palletsNeeded = $product->cartons_per_pallet > 0
+                        ? (int) ceil($units / $product->cartons_per_pallet)
+                        : 0;
 
                     // Determine target warehouses for this item
                     if ($item['warehouse']) {

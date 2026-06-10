@@ -18,6 +18,9 @@
         <h5 class="mb-0 fw-bold">Warehouse Details</h5>
         <small class="text-muted">Drill down: Warehouse → Rows → Pallets</small>
     </div>
+    <a href="{{ route('warehouse.export.pdf') }}" class="btn btn-sm btn-outline-danger rounded-pill">
+        <i class="bi bi-file-pdf"></i> Export PDF
+    </a>
 </div>
 
 {{-- Level 1: Warehouses --}}
