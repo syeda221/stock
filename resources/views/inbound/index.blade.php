@@ -256,7 +256,6 @@
                                 // Calculate how many pallets are used by earlier items in the same row
                                 $offset = \App\Models\StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
                                     ->where('id', '<', $item->id)
-                                    ->where('balance_quantity', '>', 0)
                                     ->sum('pallets_used');
 
                                 $start = $offset + 1;
@@ -728,60 +727,47 @@
     .qc-bg-rejected { background-color: #f8d7da !important; }
 </style>
 
-<!-- iam adding some colors in to the modal for beautifiction -->
 <style>
-    /* ===== Colorful Modal ===== */
+    /* ===== Minimal Modal ===== */
     #supportiveModal .modal-content {
-        border-radius: 16px;
+        border-radius: 8px;
         border: 0;
-        background: linear-gradient(180deg, #f8f9ff, #ffffff);
+        background: #ffffff;
     }
 
-    /* Header */
     #supportiveModal .modal-header {
-        background: linear-gradient(135deg, #1C0D82, #4f46e5);
-        color: #fff;
-        border-top-left-radius: 16px;
-        border-top-right-radius: 16px;
+        background: #f8f9fa;
+        color: #212529;
+        border-bottom: 1px solid #dee2e6;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
     }
 
     #supportiveModal .modal-title {
         font-weight: 600;
-        letter-spacing: 0.4px;
+        letter-spacing: 0.2px;
     }
 
     #supportiveModal .btn-close {
-        filter: invert(1);
+        filter: none;
     }
 
-    /* Body */
     #supportiveModal .modal-body {
-        background: #f4f6fb;
+        background: #fdfdfd;
     }
 
-    /* Cards */
     #supportiveModal .card {
-        border-radius: 14px;
-        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid #e9ecef !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
 
-    /* Inbound Header Card */
     #supportiveModal .card-header {
-        background: linear-gradient(135deg, #22c55e, #16a34a);
-        color: #fff;
+        background: #f8f9fa !important;
+        color: #495057 !important;
         font-weight: 600;
+        border-bottom: 1px solid #e9ecef !important;
     }
-
-    /* Item Details Card */
-    #supportiveModal .col-md-6:last-child .card-header {
-        background: linear-gradient(135deg, #0ea5e9, #2563eb);
-    }
-
-    /* Tables */
-    #supportiveModal table {
-        background: #fff;
-    }
-
     #supportiveModal table td {
         padding: 10px 12px;
         vertical-align: middle;
