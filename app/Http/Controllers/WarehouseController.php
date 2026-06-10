@@ -167,14 +167,39 @@ class WarehouseController extends Controller
 
     public function details()
     {
-        $warehouses = Warehouse::with('rows')->where('status', 1)->orderBy('name')->get();
+        $warehouses = Warehouse::with('rows')
+            ->where('status', 1)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($warehouse) {
+                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                    ->where('balance_quantity', '>', 0)
+                    ->sum('pallets_used');
+                $warehouse->used_pallets = (int) $usedPallets;
+                $warehouse->free_pallets = $warehouse->total_capacity
+                    ? max(0, $warehouse->total_capacity - $usedPallets)
+                    : null;
+                $warehouse->is_full = $warehouse->free_pallets !== null && $warehouse->free_pallets === 0;
+                return $warehouse;
+            });
         return view('warehouse.details', compact('warehouses'));
     }
 
     public function getRows(Warehouse $warehouse)
     {
         $warehouse->load('rows');
-        return response()->json($warehouse->rows);
+        $rows = $warehouse->rows->map(function ($row) {
+            $usedPallets = StockInItem::where('warehouse_row_id', $row->id)
+                ->where('balance_quantity', '>', 0)
+                ->sum('pallets_used');
+            $row->used_pallets = (int) $usedPallets;
+            $row->free_pallets = $row->pallet_capacity
+                ? max(0, $row->pallet_capacity - $usedPallets)
+                : null;
+            $row->is_full = $row->free_pallets !== null && $row->free_pallets === 0;
+            return $row;
+        });
+        return response()->json($rows);
     }
 
     public function getPallets(WarehouseRow $row)

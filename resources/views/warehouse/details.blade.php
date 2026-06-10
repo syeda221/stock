@@ -25,10 +25,10 @@
     <div class="row g-3" id="warehouseGrid">
         @forelse($warehouses as $warehouse)
             <div class="col-xl-3 col-lg-4 col-md-6">
-                <div class="card border-0 shadow-sm rounded-4 h-100 warehouse-card" data-id="{{ $warehouse->id }}" style="cursor:pointer;">
+                <div class="card border-0 shadow-sm rounded-4 h-100 warehouse-card @if($warehouse->is_full) border-danger @endif" data-id="{{ $warehouse->id }}" style="cursor:pointer;">
                     <div class="card-body p-3 text-center">
-                        <div class="rounded-circle bg-primary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-2" style="width:56px;height:56px;">
-                            <i class="bi bi-building fs-3 text-primary"></i>
+                        <div class="rounded-circle @if($warehouse->is_full) bg-danger @else bg-primary @endif bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-2" style="width:56px;height:56px;">
+                            <i class="bi bi-building fs-3 @if($warehouse->is_full) text-danger @else text-primary @endif"></i>
                         </div>
                         <h6 class="fw-bold mb-1">{{ $warehouse->name }}</h6>
                         <small class="text-muted d-block">{{ $warehouse->city ?? 'N/A' }}</small>
@@ -41,6 +41,17 @@
                             <span class="text-muted">Capacity:</span>
                             <span class="fw-semibold">{{ number_format($warehouse->total_capacity) }} pallets</span>
                         </div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="text-muted">Used:</span>
+                            <span class="fw-semibold @if($warehouse->is_full) text-danger @endif">{{ number_format($warehouse->used_pallets) }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="text-muted">Free:</span>
+                            <span class="fw-semibold @if($warehouse->is_full) text-danger @else text-success @endif">{{ $warehouse->free_pallets !== null ? number_format($warehouse->free_pallets) : '∞' }}</span>
+                        </div>
+                        @if($warehouse->is_full)
+                            <span class="badge bg-danger mt-2 w-100">Full</span>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -127,19 +138,38 @@ $(document).ready(function() {
 
             let html = '';
             rows.forEach(function(row) {
+                const isOver = row.used_pallets > row.pallet_capacity;
+                const isFull = row.is_full || isOver;
+                const cardClass = isFull ? 'border-danger' : '';
+                const iconClass = isFull ? 'bg-danger text-danger' : 'bg-success text-success';
+                const freeClass = isFull ? 'text-danger' : 'text-success';
+                const freeLabel = row.free_pallets !== null ? numberFormat(row.free_pallets) : '∞';
+                const usedClass = isOver ? 'text-danger fw-bold' : (isFull ? 'text-danger' : '');
+                const badge = isOver
+                    ? '<span class="badge bg-danger mt-2 w-100">Over Capacity</span>'
+                    : (row.is_full ? '<span class="badge bg-danger mt-2 w-100">Full</span>' : '');
                 html += `
                     <div class="col-xl-3 col-lg-4 col-md-6">
-                        <div class="card border-0 shadow-sm rounded-4 h-100 row-card" data-id="${row.id}" style="cursor:pointer;">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 row-card ${cardClass}" data-id="${row.id}" style="cursor:pointer;">
                             <div class="card-body p-3 text-center">
-                                <div class="rounded-circle bg-success bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-2" style="width:56px;height:56px;">
-                                    <i class="bi bi-layers fs-3 text-success"></i>
+                                <div class="rounded-circle ${iconClass} bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-2" style="width:56px;height:56px;">
+                                    <i class="bi bi-layers fs-3 ${iconClass}"></i>
                                 </div>
                                 <h6 class="fw-bold mb-1">${row.row_name}</h6>
                                 <hr class="my-2">
                                 <div class="d-flex justify-content-between small">
-                                    <span class="text-muted">Pallet Capacity:</span>
+                                    <span class="text-muted">Capacity:</span>
                                     <span class="fw-semibold">${row.pallet_capacity}</span>
                                 </div>
+                                <div class="d-flex justify-content-between small">
+                                    <span class="text-muted">Used:</span>
+                                    <span class="fw-semibold ${usedClass}">${numberFormat(row.used_pallets)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small">
+                                    <span class="text-muted">Free:</span>
+                                    <span class="fw-semibold ${freeClass}">${freeLabel}</span>
+                                </div>
+                                ${badge}
                             </div>
                         </div>
                     </div>

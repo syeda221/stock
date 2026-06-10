@@ -175,14 +175,10 @@ class OpeningStockController extends Controller
                     }
                 }
 
-                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
-                    ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($warehouse->id);
 
-                $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
-
-                if ($freePallets < $totalPalletsUsedByNewItems) {
-                    throw new \Exception("Warehouse is full. Cannot add opening stock to {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPalletsUsedByNewItems} needed.");
+                if ($freeRowCapacity < $totalPalletsUsedByNewItems) {
+                    throw new \Exception("Warehouse is full. Cannot add opening stock to {$warehouse->name}. Only {$freeRowCapacity} pallet slots available across all rows, but {$totalPalletsUsedByNewItems} needed.");
                 }
 
                 // Validate per-item: pallet count must be sufficient for cartons
@@ -751,15 +747,9 @@ class OpeningStockController extends Controller
 
                     foreach ($targets as $wh) {
                         // ── Check warehouse pallet capacity BEFORE assigning ──
-                        $usedPallets = StockInItem::where('warehouse_id', $wh->id)
-                            ->where('balance_quantity', '>', 0)
-                            ->sum('pallets_used');
+                        $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($wh->id);
 
-                        $freePallets = $wh->total_capacity > 0
-                            ? max(0, $wh->total_capacity - $usedPallets)
-                            : PHP_INT_MAX; // No capacity set = unlimited
-
-                        if ($palletsNeeded > 0 && $freePallets < $palletsNeeded) {
+                        if ($palletsNeeded > 0 && $freeRowCapacity < $palletsNeeded) {
                             // Not enough space in this warehouse — try next (auto-assign) or error (specific)
                             continue;
                         }

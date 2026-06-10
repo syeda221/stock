@@ -76,6 +76,23 @@ class WarehouseRowFifo
     }
 
     /**
+     * Get total free pallet capacity across all rows in a warehouse.
+     * This is the actual available space considering current usage per row.
+     */
+    public static function getFreeRowCapacity(int $warehouseId): int
+    {
+        $rows = WarehouseRow::where('warehouse_id', $warehouseId)->get();
+        $used = self::usedPalletsPerRow($warehouseId);
+        $free = 0;
+        foreach ($rows as $row) {
+            $capacity = (int) $row->pallet_capacity;
+            $alreadyUsed = (int) ($used[$row->id] ?? 0);
+            $free += max(0, $capacity - $alreadyUsed);
+        }
+        return $free;
+    }
+
+    /**
      * Assign warehouse rows for a given number of pallets using FIFO.
      *
      * Returns an array of "splits", each with:

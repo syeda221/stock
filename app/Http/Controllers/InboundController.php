@@ -264,14 +264,10 @@ class InboundController extends Controller
                 }
             }
 
-            $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
-                ->where('balance_quantity', '>', 0)
-                ->sum('pallets_used');
+            $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($warehouse->id);
 
-            $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
-
-            if ($freePallets < $totalPallets) {
-                throw new \Exception("Warehouse is full. Cannot inbound more stock to {$warehouse->name}. Only {$freePallets} pallet slots available, but {$totalPallets} needed.");
+            if ($freeRowCapacity < $totalPallets) {
+                throw new \Exception("Warehouse is full. Cannot inbound more stock to {$warehouse->name}. Only {$freeRowCapacity} pallet slots available across all rows, but {$totalPallets} needed.");
             }
 
             // Validate per-item: pallet count must be sufficient for cartons
