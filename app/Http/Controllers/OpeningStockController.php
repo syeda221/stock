@@ -515,14 +515,17 @@ class OpeningStockController extends Controller
         $callback = function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Units Received', 'IBD', 'PO', 'SAP Batch', 'Vendor Batch',
-                'MFG Date', 'Expiry Date', 'Pallets Used', 'Quality Check',
-                'Blocked', 'Hold', 'Remarks'
+                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
+                'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Sound', 'Blocked', 'Hold'
             ]);
             fputcsv($file, [
-                'PRD001', '100', 'IBD-001', 'PO-001', 'SAP-2024-001', 'VENDOR-BATCH-001',
-                '2024-01-15', '2025-01-15', '5', 'approved',
-                'No', 'No', 'Initial opening stock'
+                '001', 'Sample Product', '', '', '',
+                'IBD-001', 'PO-001', 'VENDOR-001', 'SAP-001', '',
+                '', '100', '', '2024-01-15', '2025-01-15', 
+                '', '5', 'approved', 'Yes', 'No', 'No'
             ]);
             fclose($file);
         };

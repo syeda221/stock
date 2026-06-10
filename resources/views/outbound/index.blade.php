@@ -193,20 +193,73 @@
 
                         $productText = ($item->product->item_code ?? '') . ' - ' . ($item->product->name ?? '-');
 
-                        $modalData = [
+                        $headerData = [
                             'Outbound Type'     => ucfirst($out->source_type),
                             'From Warehouse'    => $out->warehouse->name ?? '-',
                             'To / Customer'     => $target,
-                            'Product'           => $productText,
-                            'Product Group'     => $item->product->group->name ?? '-',
-                            'Dispatch Quantity' => $item->dispatch_quantity,
-                            'Pallets Returned'  => $item->pallets_returned ?? 0,
+                            'Transporter'       => $out->transporter->name ?? '-',
+                            'Shipment No'       => $out->shipment_no ?? '-',
+                            'Delivery No'       => $out->delivery_no ?? '-',
+                            'Gatepass No'       => $out->gatepass_no ?? '-',
+                            'Shipment Type'     => strtoupper($out->shipment_type ?? 'MANUAL'),
                             'Vehicle No'        => $out->vehicle_no ?? '-',
                             'Vehicle Size'      => $out->vehicle_size ?? '-',
+                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d.m.Y H:i') : '-',
+                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d.m.Y H:i') : '-',
                             'Driver Name'       => $out->driver_name ?? '-',
                             'Driver Mobile'     => $out->driver_mobile ?? '-',
-                            'Transporter'       => $out->transporter->name ?? '-',
-                            'Remarks'           => $item->remarks ?? $out->remarks ?? '-',
+                            'Dispatched Invoice No' => $out->dispatched_invoice_no ?? '-',
+                            'Dispatcher Sig'    => $out->dispatcher_sig ?? '-',
+                            'Picker'            => $out->picker ?? '-',
+                            'Header Remarks'    => $out->remarks ?? '-',
+                        ];
+
+                        $sourceItem = $item->sourceStockInItem;
+                        $palletLocationStr = 'Unassigned';
+                        $rowName = $item->warehouseRow->row_name ?? ($sourceItem->warehouseRow->row_name ?? '-');
+
+                        if ($item->warehouse_row_id || ($sourceItem && $sourceItem->warehouse_row_id)) {
+                            $rowId = $item->warehouse_row_id ?? $sourceItem->warehouse_row_id;
+                            $pallets = $item->pallets_returned > 0 ? $item->pallets_returned : ($sourceItem->pallets_used ?? 0);
+                            
+                            if ($pallets > 0) {
+                                $offset = 0;
+                                if ($sourceItem) {
+                                    $offset = \App\Models\StockInItem::where('warehouse_row_id', $rowId)
+                                        ->where('id', '<', $sourceItem->id)
+                                        ->sum('pallets_used'); // Don't filter by balance_quantity > 0 to maintain original position history
+                                }
+                                $start = $offset + 1;
+                                $end = $offset + $pallets;
+                                
+                                if ($start == $end) {
+                                    $palletLocationStr = "Row " . $rowName . " (Pallet " . $start . ")";
+                                } else {
+                                    $palletLocationStr = "Row " . $rowName . " (Pallets " . $start . "-" . $end . ")";
+                                }
+                            } else {
+                                $palletLocationStr = "Row " . $rowName;
+                            }
+                        }
+
+                        $itemData = [
+                            'Product'          => ($item->product->item_code ?? '-') . ' - ' . ($item->product->name ?? '-'),
+                            'Category'         => $item->product->category->name ?? '-',
+                            'UOM'              => $item->product->uom->name ?? ($item->uom_snapshot ?? '-'),
+                            'Packing'          => $item->product->packingType->name ?? ($item->packing_snapshot ?? '-'),
+                            'SAP Batch'        => $item->sap_batch ?? '-',
+                            'Vendor Batch'     => $item->vendor_batch ?? '-',
+                            'PO No'            => $item->po_no ?? '-',
+                            'IBD No'           => $item->ibd_no ?? '-',
+                            'STO No'           => $item->sto_no ?? '-',
+                            'MFG Date'         => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '-',
+                            'Expiry Date'      => $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
+                            'Units Dispatch'   => $item->units_dispatch ?? 0,
+                            'Pack Size'        => $item->pack_size_snapshot ?? 0,
+                            'Dispatch Quantity'=> $item->dispatch_quantity ?? 0,
+                            'Pallet Location'  => $palletLocationStr,
+                            'Pallets Returned' => $item->pallets_returned ?? 0,
+                            'Item Remarks'     => $item->remarks ?? '-',
                         ];
                     @endphp
 
@@ -218,6 +271,9 @@
                                 $free = $warehouseCapacities[$whId] ?? null;
                             @endphp
                             <div class="fw-bold text-nowrap small">{{ $whName }}</div>
+                            <div class="small text-muted" style="font-size: 10px;">
+                                <i class="bi bi-geo-alt me-1"></i>{{ $palletLocationStr }}
+                            </div>
                             @if($free !== null)
                                 <div class="small text-success fw-semibold" style="font-size: 10px;">Free: {{ $free }}</div>
                             @endif
@@ -264,10 +320,12 @@
                         {{-- ACTIONS --}}
                         <td class="text-center text-nowrap">
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-sm btn-outline-primary"
+                                <button class="btn btn-sm btn-outline-primary js-more"
                                     data-bs-toggle="modal"
-                                    data-bs-target="#detailModal"
-                                    data-item='@json($modalData)'
+                                    data-bs-target="#supportiveModal"
+                                    data-title="Outbound Item Details"
+                                    data-header='@json($headerData)'
+                                    data-item='@json($itemData)'
                                     title="View">
                                     <i class="bi bi-eye"></i>
                                 </button>
@@ -322,42 +380,209 @@
     </div>
 </div>
 
-{{-- QUICK VIEW MODAL --}}
-<div class="modal fade" id="detailModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+{{-- SUPPORTIVE MODAL --}}
+<div class="modal fade" id="supportiveModal" tabindex="-1" aria-labelledby="supportiveModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h6 class="modal-title fw-bold"><i class="bi bi-eye me-2"></i>Outbound Details</h6>
-                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-header">
+                <h6 class="modal-title" id="supportiveModalLabel">Details</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-0">
-                <table class="table table-sm table-bordered mb-0">
-                    <tbody id="detailModalBody"></tbody>
-                </table>
+
+            <div class="modal-body">
+
+                {{-- Product Information --}}
+                <div class="card border mb-3">
+                    <div class="card-header bg-light border-bottom">
+                        <i class="bi bi-box-seam me-2"></i><strong>Product Information</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2" id="productInfo"></div>
+                    </div>
+                </div>
+
+                {{-- Warehouse & Location --}}
+                <div class="card border mb-3">
+                    <div class="card-header bg-light border-bottom">
+                        <i class="bi bi-building me-2"></i><strong>Warehouse & Location</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2" id="warehouseInfo"></div>
+                    </div>
+                </div>
+
+                <div class="card border mb-3">
+                    <div class="card-header bg-light border-bottom">
+                        <i class="bi bi-upc-scan me-2"></i><strong>Batch & Reference Numbers</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2" id="batchInfo"></div>
+                    </div>
+                </div>
+
+                {{-- Quantities & Dates --}}
+                <div class="card border mb-3">
+                    <div class="card-header bg-light border-bottom">
+                        <i class="bi bi-boxes me-2"></i><strong>Quantities & Dates</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2" id="quantityInfo"></div>
+                    </div>
+                </div>
+
+                <div class="card border mb-3">
+                    <div class="card-header bg-light border-bottom">
+                        <i class="bi bi-truck me-2"></i><strong>Vehicle & Transport Details</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2" id="vehicleInfo"></div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
 </div>
 
+<style>
+    /* ===== Minimal Modal ===== */
+    #supportiveModal .modal-content {
+        border-radius: 8px;
+        border: 0;
+        background: #ffffff;
+    }
+
+    #supportiveModal .modal-header {
+        background: #f8f9fa;
+        color: #212529;
+        border-bottom: 1px solid #dee2e6;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+    }
+
+    #supportiveModal .modal-title {
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+
+    #supportiveModal .btn-close {
+        filter: none;
+    }
+
+    #supportiveModal .modal-body {
+        background: #fdfdfd;
+    }
+
+    #supportiveModal .card {
+        border-radius: 8px;
+        border: 1px solid #e9ecef !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+
+    #supportiveModal .card-header {
+        background: #f8f9fa !important;
+        color: #495057 !important;
+        font-weight: 600;
+        border-bottom: 1px solid #e9ecef !important;
+    }
+</style>
+
 @endsection
 
 @push('scripts')
 <script>
-document.addEventListener('click', function(e){
-    const btn = e.target.closest('[data-bs-target="#detailModal"]');
-    if(!btn) return;
+document.addEventListener('DOMContentLoaded', function () {
+    const modalTitle = document.getElementById('supportiveModalLabel');
 
-    const data = JSON.parse(btn.getAttribute('data-item') || '{}');
-    const body = document.getElementById('detailModalBody');
-    body.innerHTML = '';
+    function formatValue(value) {
+        if (value === null || value === undefined || value === '') {
+            return '<span class="text-muted">-</span>';
+        }
+        if (typeof value === 'boolean') {
+            return value ?
+                '<span class="badge bg-success rounded-pill">Yes</span>' :
+                '<span class="badge bg-secondary rounded-pill">No</span>';
+        }
+        return `<strong>${String(value)}</strong>`;
+    }
 
-    Object.entries(data).forEach(([k,v]) => {
-        body.insertAdjacentHTML('beforeend', `
-            <tr>
-                <th class="bg-light" style="width:40%">${k}</th>
-                <td class="fw-semibold">${v ?? '-'}</td>
-            </tr>
-        `);
+    function renderSection(containerId, data) {
+        const container = document.getElementById(containerId);
+        if(!container) return;
+        container.innerHTML = '';
+        Object.keys(data || {}).forEach(key => {
+            container.insertAdjacentHTML('beforeend', `
+                <div class="col-md-6">
+                    <div class="p-2 border-bottom">
+                        <small class="text-muted d-block">${key}</small>
+                        <div>${formatValue(data[key])}</div>
+                    </div>
+                </div>
+            `);
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.js-more');
+        if (!btn) return;
+
+        modalTitle.textContent = btn.getAttribute('data-title') || 'Details';
+
+        let headerData = {};
+        let itemData = {};
+
+        try { headerData = JSON.parse(btn.getAttribute('data-header') || '{}'); } catch (e) {}
+        try { itemData = JSON.parse(btn.getAttribute('data-item') || '{}'); } catch (e) {}
+
+        // Product Information
+        renderSection('productInfo', {
+            'Product': itemData['Product'],
+            'Category': itemData['Category'],
+            'UOM': itemData['UOM'],
+            'Packing': itemData['Packing']
+        });
+
+        // Warehouse & Location
+        renderSection('warehouseInfo', {
+            'Outbound Type': headerData['Outbound Type'],
+            'From Warehouse': headerData['From Warehouse'],
+            'To / Customer': headerData['To / Customer'],
+            'Pallet Location': itemData['Pallet Location'],
+            'Transporter': headerData['Transporter']
+        });
+
+        // Batch & Reference
+        renderSection('batchInfo', {
+            'SAP Batch': itemData['SAP Batch'],
+            'Vendor Batch': itemData['Vendor Batch'],
+            'PO No': itemData['PO No'],
+            'IBD No': itemData['IBD No'],
+            'STO No': itemData['STO No'],
+            'Shipment No': headerData['Shipment No'],
+            'Delivery No': headerData['Delivery No'],
+            'Gatepass No': headerData['Gatepass No']
+        });
+
+        // Quantities & Dates
+        renderSection('quantityInfo', {
+            'Units Dispatch': itemData['Units Dispatch'],
+            'Pack Size': itemData['Pack Size'],
+            'Dispatch Quantity': itemData['Dispatch Quantity'],
+            'Pallets Returned': itemData['Pallets Returned'],
+            'MFG Date': itemData['MFG Date'],
+            'Expiry Date': itemData['Expiry Date']
+        });
+
+        // Vehicle & Transport
+        renderSection('vehicleInfo', {
+            'Vehicle No': headerData['Vehicle No'],
+            'Vehicle Size': headerData['Vehicle Size'],
+            'Vehicle In Time': headerData['Vehicle In Time'],
+            'Vehicle Out Time': headerData['Vehicle Out Time'],
+            'Driver Name': headerData['Driver Name'],
+            'Driver Mobile': headerData['Driver Mobile'],
+            'Dispatched Invoice No': headerData['Dispatched Invoice No']
+        });
     });
 });
 
