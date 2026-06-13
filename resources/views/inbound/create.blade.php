@@ -245,8 +245,11 @@
                 itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
 <tr>
 <td>
+<div class="product-search-wrap d-flex align-items-center">
+<input class="form-control form-control-sm product-input me-1" placeholder="Search product" autocomplete="off">
+<button type="button" class="btn btn-sm btn-outline-primary open-batch-btn" title="Batch Details">Batch</button>
+</div>
 <div class="product-search-wrap">
-<input class="form-control form-control-sm product-input" placeholder="Search product" autocomplete="off">
 <input type="hidden" name="items[${rowIndex}][product_id]" class="product-id">
 </div>
 </td>
@@ -275,14 +278,15 @@
 </select>
 </td>
 
-<td><button type="button" class="btn btn-sm btn-danger removeRow">×</button></td>
-
+<td>
+<button type="button" class="btn btn-sm btn-danger removeRow">×</button>
 <input type="hidden" name="items[${rowIndex}][sap_batch]">
 <input type="hidden" name="items[${rowIndex}][vendor_batch]">
 <input type="hidden" name="items[${rowIndex}][ibd_no]">
 <input type="hidden" name="items[${rowIndex}][po_no]">
 <input type="hidden" name="items[${rowIndex}][mfg_date]">
 <input type="hidden" name="items[${rowIndex}][expiry_date]">
+</td>
 </tr>`);
 
                 rowIndex++;
@@ -388,10 +392,24 @@
                 }
             });
 
-            /* HIDE DROPDOWN ON SCROLL */
-            document.addEventListener('scroll', () => {
-                if (productDropdown) hideProductDropdown();
-            }, true);
+            /* Click Batch button to show batch modal */
+            document.addEventListener('click', e => {
+                let btn = e.target.closest('.open-batch-btn');
+                if (btn) {
+                    activeRow = btn.closest('tr');
+                    if(activeRow.querySelector('.product-id').value) {
+                        document.querySelector('.modal-sap').value = activeRow.querySelector('[name$="[sap_batch]"]').value;
+                        document.querySelector('.modal-vendor').value = activeRow.querySelector('[name$="[vendor_batch]"]').value;
+                        document.querySelector('.modal-po').value = activeRow.querySelector('[name$="[po_no]"]').value;
+                        document.querySelector('.modal-ibd').value = activeRow.querySelector('[name$="[ibd_no]"]').value;
+                        document.querySelector('.modal-mfg').value = activeRow.querySelector('[name$="[mfg_date]"]').value;
+                        document.querySelector('.modal-expiry').value = activeRow.querySelector('[name$="[expiry_date]"]').value;
+                        batchModal.show();
+                    } else {
+                        Swal.fire('Info', 'Please select a product first.', 'info');
+                    }
+                }
+            });
 
             /* SAVE MODAL */
             saveBatchBtn.onclick = () => {
