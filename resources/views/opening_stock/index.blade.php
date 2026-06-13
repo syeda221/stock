@@ -288,6 +288,19 @@
 
 @push('scripts')
 <script>
+// Fix for multiple stacked modals in Bootstrap
+document.addEventListener('show.bs.modal', function (event) {
+    var zIndex = 1055 + (10 * document.querySelectorAll('.modal.show').length);
+    event.target.style.zIndex = zIndex;
+    setTimeout(function() {
+        var backdrops = document.querySelectorAll('.modal-backdrop:not(.modal-stack)');
+        backdrops.forEach(function(backdrop) {
+            backdrop.style.zIndex = zIndex - 1;
+            backdrop.classList.add('modal-stack');
+        });
+    }, 0);
+});
+
 document.addEventListener('click',function(e){
     // VIEW BTN
     let viewBtn = e.target.closest('.view-btn');
