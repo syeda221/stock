@@ -713,42 +713,106 @@ class OpeningStockController extends Controller
 
         try {
             DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
-
                 foreach ($items as $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
                     $packSize      = (float) $product->pack_size;
-                    $palletsNeeded = $product->cartons_per_pallet > 0
-                        ? (int) ceil($units / $product->cartons_per_pallet)
-                        : 0;
+                    $cartonsPerPallet = (int) $product->cartons_per_pallet;
 
                     // Determine target warehouses for this item
                     if ($item['warehouse']) {
-                        // CSV specified a warehouse — only try that one
                         $targets = collect([$item['warehouse']]);
                     } else {
-                        // Use the pool (specific warehouse or all for auto-assign)
                         $targets = $warehousePool;
                     }
 
-                    $assigned = false;
+                    $simulatedRemainingUnits = $units;
+                    $warehouseAllocations = [];
+                    $warehousePartials = [];
 
-                    foreach ($targets as $wh) {
-                        // ── Check warehouse pallet capacity BEFORE assigning ──
-                        $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                    // 1. Simulate partial fills
+                    if ($cartonsPerPallet > 0) {
+                        foreach ($targets as $wh) {
+                            if ($simulatedRemainingUnits <= 0) break;
+                            
+                            $partialResult = WarehouseRowFifo::fillPartials(
+                                $wh->id,
+                                $product->id,
+                                $simulatedRemainingUnits,
+                                $packSize,
+                                $cartonsPerPallet
+                            );
 
-                        if ($palletsNeeded > 0 && $freeRowCapacity < $palletsNeeded) {
-                            // Not enough space in this warehouse — try next (auto-assign) or error (specific)
-                            continue;
+                            if (!empty($partialResult['splits'])) {
+                                $warehousePartials[$wh->id] = $partialResult['splits'];
+                                $simulatedRemainingUnits = $partialResult['remaining_units'];
+                            }
                         }
+                    }
 
-                        // ── Warehouse has enough space — assign via FIFO ──
+                    // 2. Simulate new pallet allocations
+                    if ($simulatedRemainingUnits > 0) {
+                        foreach ($targets as $wh) {
+                            if ($simulatedRemainingUnits <= 0) break;
+
+                            $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                            
+                            if ($freeRowCapacity <= 0 && $cartonsPerPallet > 0) continue;
+
+                            $palletsWeNeed = $cartonsPerPallet > 0 ? (int) ceil($simulatedRemainingUnits / $cartonsPerPallet) : 0;
+                            
+                            $palletsToAssign = 0;
+                            $unitsToAssign = $simulatedRemainingUnits;
+
+                            if ($cartonsPerPallet > 0) {
+                                $palletsToAssign = min($freeRowCapacity, $palletsWeNeed);
+                                $maxUnitsThisWarehouse = $palletsToAssign * $cartonsPerPallet;
+                                $unitsToAssign = min($simulatedRemainingUnits, $maxUnitsThisWarehouse);
+                            }
+
+                            if ($unitsToAssign > 0 || $palletsToAssign === 0) {
+                                $warehouseAllocations[$wh->id] = [
+                                    'pallets' => $palletsToAssign,
+                                    'units'   => $unitsToAssign
+                                ];
+                                $simulatedRemainingUnits -= $unitsToAssign;
+                            }
+                        }
+                    }
+
+                    // --- CHECK IF WE CAN FIT IT ---
+                    if ($simulatedRemainingUnits > 0) {
+                        $targetMsg = $request->warehouse_id || $item['warehouse'] ? 'Selected warehouse(s)' : 'No warehouse';
+                        $palletsNeededTotal = $cartonsPerPallet > 0 ? ceil($units / $cartonsPerPallet) : 0;
+                        $errors[] = "{$targetMsg} does not have enough total space for '{$product->item_code}' ({$palletsNeededTotal} pallets needed)";
+                        $skipped++;
+                        continue;
+                    }
+
+                    // --- ACTUALLY SAVE ---
+                    // Process partials
+                    foreach ($warehousePartials as $whId => $splits) {
+                        foreach ($splits as $split) {
+                            $existingItem = StockInItem::find($split['stock_in_item_id']);
+                            if ($existingItem) {
+                                $existingItem->increment('units_received', $split['units']);
+                                $existingItem->increment('total_quantity', $split['qty']);
+                                $existingItem->increment('balance_quantity', $split['qty']);
+                                $existingItem->decrement('last_pallet_vacant', $split['units']);
+                            }
+                        }
+                    }
+
+                    // Process new pallets
+                    foreach ($warehouseAllocations as $whId => $alloc) {
+                        $wh = $targets->firstWhere('id', $whId);
+                        
                         $splits = WarehouseRowFifo::assign(
                             $wh->id,
-                            $palletsNeeded,
-                            $units,
+                            $alloc['pallets'],
+                            $alloc['units'],
                             $packSize,
-                            false  // NEVER allow overflow
+                            false
                         );
 
                         $stockIn = StockIn::firstOrCreate(
@@ -766,8 +830,8 @@ class OpeningStockController extends Controller
                             $splitUnits = $split['units'];
                             $splitQty   = round($splitUnits * $packSize, 4);
 
-                            $lastVacant = $product->cartons_per_pallet > 0
-                                ? max(0, ($split['pallets'] * $product->cartons_per_pallet) - $splitUnits)
+                            $lastVacant = $cartonsPerPallet > 0
+                                ? max(0, ($split['pallets'] * $cartonsPerPallet) - $splitUnits)
                                 : 0;
 
                             StockInItem::create([
@@ -795,27 +859,9 @@ class OpeningStockController extends Controller
                                 'remarks'            => $item['remarks'] ?: null,
                             ]);
                         }
-
-                        $assigned = true;
-                        break; // Successfully assigned — don't try more warehouses
                     }
 
-                    if ($assigned) {
-                        $imported++;
-                    } else {
-                        // Build a clear error message
-                        if ($targets->count() === 1) {
-                            $whName = $targets->first()->name;
-                            $usedP  = StockInItem::where('warehouse_id', $targets->first()->id)
-                                ->where('balance_quantity', '>', 0)->sum('pallets_used');
-                            $freeP  = $targets->first()->total_capacity > 0
-                                ? max(0, $targets->first()->total_capacity - $usedP) : 0;
-                            $errors[] = "Warehouse '{$whName}' is full — '{$product->item_code}' needs {$palletsNeeded} pallets but only {$freeP} available";
-                        } else {
-                            $errors[] = "No warehouse has enough space for '{$product->item_code}' ({$palletsNeeded} pallets needed)";
-                        }
-                        $skipped++;
-                    }
+                    $imported++;
                 }
             });
 
