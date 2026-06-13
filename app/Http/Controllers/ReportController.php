@@ -757,6 +757,7 @@ class ReportController extends Controller
             ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->where('stock_ins.source_type', 'opening')
             ->where('stock_in_items.product_id', $productId)
             ->select(
@@ -783,6 +784,7 @@ class ReportController extends Controller
             ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->where('stock_ins.source_type', 'inbound')
             ->where('stock_in_items.product_id', $productId)
             ->select(
@@ -857,6 +859,7 @@ class ReportController extends Controller
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
                 'stock_in_items.id',
                 'stock_in_items.stock_in_id as transaction_id',
@@ -870,6 +873,7 @@ class ReportController extends Controller
                 'uoms.name as uom_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
@@ -936,6 +940,7 @@ class ReportController extends Controller
             ->leftJoin('customers', 'stock_outs.customer_id', '=', 'customers.id')
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouses as to_wh', 'stock_outs.to_warehouse_id', '=', 'to_wh.id')
+            ->leftJoin('warehouse_rows', 'stock_out_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
                 'stock_out_items.id',
                 'stock_out_items.stock_out_id as transaction_id',
@@ -949,6 +954,7 @@ class ReportController extends Controller
                 'uoms.name as uom_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
                 DB::raw('NULL as vendor_name'),
                 'transporters.name as transporter_name',
                 'stock_outs.vehicle_no',
@@ -1055,6 +1061,7 @@ class ReportController extends Controller
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
                 'stock_in_items.id',
                 'stock_in_items.stock_in_id as transaction_id',
@@ -1068,6 +1075,7 @@ class ReportController extends Controller
                 'uoms.name as uom_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
@@ -1134,6 +1142,7 @@ class ReportController extends Controller
             ->leftJoin('customers', 'stock_outs.customer_id', '=', 'customers.id')
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouses as to_wh', 'stock_outs.to_warehouse_id', '=', 'to_wh.id')
+            ->leftJoin('warehouse_rows', 'stock_out_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
                 'stock_out_items.id',
                 'stock_out_items.stock_out_id as transaction_id',
@@ -1147,6 +1156,7 @@ class ReportController extends Controller
                 'uoms.name as uom_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
                 DB::raw('NULL as vendor_name'),
                 'transporters.name as transporter_name',
                 'stock_outs.vehicle_no',
@@ -1254,11 +1264,16 @@ class ReportController extends Controller
 
                 $productDisplay = ($entry->item_code ? $entry->item_code . ' - ' : '') . $entry->product_name;
 
+                $warehouseDisplay = $entry->warehouse_name ?? '-';
+                if (!empty($entry->row_name)) {
+                    $warehouseDisplay .= ' (' . $entry->row_name . ')';
+                }
+
                 fputcsv($file, [
                     \Carbon\Carbon::parse($entry->created_at)->format('Y-m-d H:i'),
                     strtoupper($entry->source_type ?? $entry->direction),
                     $productDisplay,
-                    $entry->warehouse_name ?? '-',
+                    $warehouseDisplay,
                     $batch,
                     $entry->invoice_no ?? '-',
                     $party,

@@ -235,6 +235,9 @@
                             </td>
                             <td>
                                 <span class="text-primary fw-medium">{{ $entry->warehouse_name }}</span>
+                                @if(!empty($entry->row_name))
+                                    <br><small class="text-muted"><i class="bi bi-geo-alt"></i> Row: {{ $entry->row_name }}</small>
+                                @endif
                                 @if($entry->to_warehouse_name)
                                     <br><small class="text-muted">→ {{ $entry->to_warehouse_name }}</small>
                                 @endif

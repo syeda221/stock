@@ -59,8 +59,8 @@
             transform: none;
             transition: none;
         }
-        .sidebar::-webkit-scrollbar { width: 3px; }
-        .sidebar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .sidebar::-webkit-scrollbar { width: 10px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
 
         .sidebar.open { transform: translateX(0); }
 
