@@ -1282,10 +1282,7 @@ class ReportController extends Controller
 
                 $productDisplay = ($entry->item_code ? $entry->item_code . ' - ' : '') . $entry->product_name;
 
-                $warehouseDisplay = $entry->warehouse_name ?? '-';
-                if (!empty($entry->row_name)) {
-                    $warehouseDisplay .= ' (' . $entry->row_name . ')';
-                }
+                $warehouseDisplay = !empty($entry->row_name) ? $entry->row_name : '-';
 
                 fputcsv($file, [
                     \Carbon\Carbon::parse($entry->created_at)->format('Y-m-d H:i'),
