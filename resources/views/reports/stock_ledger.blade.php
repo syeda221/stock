@@ -237,6 +237,9 @@
                                 <span class="text-primary fw-medium">{{ $entry->warehouse_name }}</span>
                                 @if(!empty($entry->row_name))
                                     <br><small class="text-muted"><i class="bi bi-geo-alt"></i> Row: {{ $entry->row_name }}</small>
+                                    @if($entry->direction == 'IN' && !empty($entry->pallet_start))
+                                        <br><small class="text-muted"><i class="bi bi-box"></i> Pallet: {{ $entry->pallet_start }}{{ $entry->pallet_end > $entry->pallet_start ? '–' . $entry->pallet_end : '' }}</small>
+                                    @endif
                                 @endif
                                 @if($entry->to_warehouse_name)
                                     <br><small class="text-muted">→ {{ $entry->to_warehouse_name }}</small>

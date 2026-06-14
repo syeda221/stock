@@ -874,6 +874,7 @@ class ReportController extends Controller
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
@@ -929,6 +930,22 @@ class ReportController extends Controller
         }
 
         $inboundData = $inboundQuery->get();
+
+        // Compute pallet positions per warehouse row
+        $rowPalletOffsets = [];
+        foreach ($inboundData as $entry) {
+            $entry->pallet_start = null;
+            $entry->pallet_end = null;
+            if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
+                $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                if (!isset($rowPalletOffsets[$rowKey])) {
+                    $rowPalletOffsets[$rowKey] = 0;
+                }
+                $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
+                $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
+                $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+            }
+        }
 
         // ===== OUTBOUND ENTRIES =====
         $outboundQuery = DB::table('stock_out_items')
@@ -1076,6 +1093,7 @@ class ReportController extends Controller
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
