@@ -931,6 +931,16 @@ class ReportController extends Controller
 
         $inboundData = $inboundQuery->get();
 
+        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $rowLetterMap[$whId . '-' . $row->row_name] = chr(65 + $i);
+            }
+        }
+
         // Compute pallet positions per warehouse row and display string
         $rowPalletOffsets = [];
         foreach ($inboundData as $entry) {
@@ -947,11 +957,8 @@ class ReportController extends Controller
                 $rowPalletOffsets[$rowKey] = $entry->pallet_end;
 
                 // Build display: W{warehouse:03d}.{row_letter}{pallet_start:03d} TO {row_letter}{pallet_end:03d}
-                $rowLetter = '';
-                $parts = explode('.', $entry->row_name);
-                if (isset($parts[1]) && strlen($parts[1]) > 0) {
-                    $rowLetter = $parts[1][0];
-                }
+                $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
+                $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
                 $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
                 $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
@@ -1163,7 +1170,17 @@ class ReportController extends Controller
 
         $inboundData = $inboundQuery->get();
 
-        // Compute pallet positions per warehouse row
+        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $rowLetterMap[$whId . '-' . $row->row_name] = chr(65 + $i);
+            }
+        }
+
+        // Compute pallet positions per warehouse row and display string
         $rowPalletOffsets = [];
         foreach ($inboundData as $entry) {
             $entry->pallet_start = null;
@@ -1178,11 +1195,8 @@ class ReportController extends Controller
                 $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
                 $rowPalletOffsets[$rowKey] = $entry->pallet_end;
 
-                $rowLetter = '';
-                $parts = explode('.', $entry->row_name);
-                if (isset($parts[1]) && strlen($parts[1]) > 0) {
-                    $rowLetter = $parts[1][0];
-                }
+                $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
+                $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
                 $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
                 $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
