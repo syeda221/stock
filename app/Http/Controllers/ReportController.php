@@ -941,8 +941,9 @@ class ReportController extends Controller
             }
         }
 
-        // Compute pallet positions per warehouse row and display string
+        // Compute pallet positions per warehouse row and expand into per-pallet rows
         $rowPalletOffsets = [];
+        $expandedInbound = collect();
         foreach ($inboundData as $entry) {
             $entry->pallet_start = null;
             $entry->pallet_end = null;
@@ -956,16 +957,33 @@ class ReportController extends Controller
                 $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
                 $rowPalletOffsets[$rowKey] = $entry->pallet_end;
 
-                // Build display: W{warehouse:03d}.{row_letter}{pallet_start:03d} TO {row_letter}{pallet_end:03d}
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
-                $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
-                $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
-                $suffix = $entry->pallet_end > $entry->pallet_start ? " TO {$rowLetter}{$pePadded}" : '';
-                $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}{$suffix}";
+
+                // Expand: one row per pallet
+                $numPallets = $entry->pallets_used;
+                $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
+                $perPalletQty = $numPallets > 0 ? $entry->quantity / $numPallets : $entry->quantity;
+                $perPalletBalance = $numPallets > 0 ? $entry->balance_quantity / $numPallets : $entry->balance_quantity;
+
+                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
+                    $clone = clone $entry;
+                    $clone->pallet_start = $p;
+                    $clone->pallet_end = $p;
+                    $clone->pallets_used = 1;
+                    $clone->units = $perPalletUnits;
+                    $clone->quantity = $perPalletQty;
+                    $clone->balance_quantity = $perPalletBalance;
+                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                    $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    $expandedInbound->push($clone);
+                }
+            } else {
+                $expandedInbound->push($entry);
             }
         }
+        $inboundData = $expandedInbound;
 
         // ===== OUTBOUND ENTRIES =====
         $outboundQuery = DB::table('stock_out_items')
@@ -1180,8 +1198,9 @@ class ReportController extends Controller
             }
         }
 
-        // Compute pallet positions per warehouse row and display string
+        // Compute pallet positions per warehouse row and expand into per-pallet rows
         $rowPalletOffsets = [];
+        $expandedInbound = collect();
         foreach ($inboundData as $entry) {
             $entry->pallet_start = null;
             $entry->pallet_end = null;
@@ -1198,12 +1217,29 @@ class ReportController extends Controller
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
-                $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
-                $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
-                $suffix = $entry->pallet_end > $entry->pallet_start ? " TO {$rowLetter}{$pePadded}" : '';
-                $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}{$suffix}";
+
+                $numPallets = $entry->pallets_used;
+                $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
+                $perPalletQty = $numPallets > 0 ? $entry->quantity / $numPallets : $entry->quantity;
+                $perPalletBalance = $numPallets > 0 ? $entry->balance_quantity / $numPallets : $entry->balance_quantity;
+
+                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
+                    $clone = clone $entry;
+                    $clone->pallet_start = $p;
+                    $clone->pallet_end = $p;
+                    $clone->pallets_used = 1;
+                    $clone->units = $perPalletUnits;
+                    $clone->quantity = $perPalletQty;
+                    $clone->balance_quantity = $perPalletBalance;
+                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                    $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    $expandedInbound->push($clone);
+                }
+            } else {
+                $expandedInbound->push($entry);
             }
         }
+        $inboundData = $expandedInbound;
 
         // ===== OUTBOUND ENTRIES =====
         $outboundQuery = DB::table('stock_out_items')
