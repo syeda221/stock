@@ -875,6 +875,7 @@ class ReportController extends Controller
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
+                'products.cartons_per_pallet',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
@@ -966,22 +967,35 @@ class ReportController extends Controller
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
+                $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
-                // Expand: one row per pallet
+                // Expand: one row per pallet with sequential carton fill
                 $numPallets = $entry->pallets_used;
-                $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
-                $perPalletQty = $numPallets > 0 ? $entry->quantity / $numPallets : $entry->quantity;
-                $perPalletBalance = $numPallets > 0 ? $entry->balance_quantity / $numPallets : $entry->balance_quantity;
+                $maxPerPallet = $entry->cartons_per_pallet ?? null;
+                $remainingUnits = (float) $entry->units;
+                $remainingQty = (float) $entry->quantity;
+                $remainingBalance = (float) $entry->balance_quantity;
+                $palletIndex = 0;
 
-                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
+                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++, $palletIndex++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
                     $clone->pallet_end = $p;
                     $clone->pallets_used = 1;
+
+                    if ($maxPerPallet) {
+                        $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                    } else {
+                        $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
+                    }
+                    $isLast = ($p == $entry->pallet_end);
                     $clone->units = $perPalletUnits;
-                    $clone->quantity = $perPalletQty;
-                    $clone->balance_quantity = $perPalletBalance;
+                    $clone->quantity = $isLast ? $remainingQty : round($perPalletUnits * $entry->pack_size, 4);
+                    $clone->balance_quantity = $isLast ? $remainingBalance : round($remainingBalance * ($perPalletUnits / $entry->units), 4);
+                    $remainingUnits -= $perPalletUnits;
+                    $remainingQty -= $clone->quantity;
+                    $remainingBalance -= $clone->balance_quantity;
+
                     $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);
@@ -1139,6 +1153,7 @@ class ReportController extends Controller
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
+                'products.cartons_per_pallet',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
                 'stock_ins.vehicle_no',
@@ -1230,7 +1245,7 @@ class ReportController extends Controller
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
+                $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
                 $numPallets = $entry->pallets_used;
                 $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
