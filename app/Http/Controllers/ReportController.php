@@ -931,11 +931,12 @@ class ReportController extends Controller
 
         $inboundData = $inboundQuery->get();
 
-        // Compute pallet positions per warehouse row
+        // Compute pallet positions per warehouse row and display string
         $rowPalletOffsets = [];
         foreach ($inboundData as $entry) {
             $entry->pallet_start = null;
             $entry->pallet_end = null;
+            $entry->warehouse_display = null;
             if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
                 $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
                 if (!isset($rowPalletOffsets[$rowKey])) {
@@ -944,6 +945,18 @@ class ReportController extends Controller
                 $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
                 $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
                 $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+
+                // Build display: W{warehouse:03d}.{row_letter}{pallet_start:03d} TO {row_letter}{pallet_end:03d}
+                $rowLetter = '';
+                $parts = explode('.', $entry->row_name);
+                if (isset($parts[1]) && strlen($parts[1]) > 0) {
+                    $rowLetter = $parts[1][0];
+                }
+                $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
+                $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
+                $suffix = $entry->pallet_end > $entry->pallet_start ? " TO {$rowLetter}{$pePadded}" : '';
+                $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}{$suffix}";
             }
         }
 
@@ -1150,6 +1163,34 @@ class ReportController extends Controller
 
         $inboundData = $inboundQuery->get();
 
+        // Compute pallet positions per warehouse row
+        $rowPalletOffsets = [];
+        foreach ($inboundData as $entry) {
+            $entry->pallet_start = null;
+            $entry->pallet_end = null;
+            $entry->warehouse_display = null;
+            if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
+                $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                if (!isset($rowPalletOffsets[$rowKey])) {
+                    $rowPalletOffsets[$rowKey] = 0;
+                }
+                $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
+                $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
+                $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+
+                $rowLetter = '';
+                $parts = explode('.', $entry->row_name);
+                if (isset($parts[1]) && strlen($parts[1]) > 0) {
+                    $rowLetter = $parts[1][0];
+                }
+                $whPadded = str_pad($entry->warehouse_id, 3, '0', STR_PAD_LEFT);
+                $psPadded = str_pad($entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                $pePadded = str_pad($entry->pallet_end, 3, '0', STR_PAD_LEFT);
+                $suffix = $entry->pallet_end > $entry->pallet_start ? " TO {$rowLetter}{$pePadded}" : '';
+                $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}{$suffix}";
+            }
+        }
+
         // ===== OUTBOUND ENTRIES =====
         $outboundQuery = DB::table('stock_out_items')
             ->join('stock_outs', 'stock_out_items.stock_out_id', '=', 'stock_outs.id')
@@ -1282,7 +1323,7 @@ class ReportController extends Controller
 
                 $productDisplay = ($entry->item_code ? $entry->item_code . ' - ' : '') . $entry->product_name;
 
-                $warehouseDisplay = !empty($entry->row_name) ? $entry->row_name : '-';
+                $warehouseDisplay = !empty($entry->warehouse_display) ? $entry->warehouse_display : (!empty($entry->row_name) ? $entry->row_name : '-');
 
                 fputcsv($file, [
                     \Carbon\Carbon::parse($entry->created_at)->format('Y-m-d H:i'),

@@ -234,7 +234,9 @@
                                 </small>
                             </td>
                             <td>
-                                @if(!empty($entry->row_name))
+                                @if(!empty($entry->warehouse_display))
+                                    <small class="fw-semibold">{{ $entry->warehouse_display }}</small>
+                                @elseif(!empty($entry->row_name))
                                     <small class="text-muted"><i class="bi bi-geo-alt"></i> {{ $entry->row_name }}</small>
                                 @else
                                     <span class="text-muted">—</span>
