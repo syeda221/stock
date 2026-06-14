@@ -236,9 +236,6 @@
                             <td>
                                 @if(!empty($entry->row_name))
                                     <small class="text-muted"><i class="bi bi-geo-alt"></i> {{ $entry->row_name }}</small>
-                                    @if($entry->direction == 'IN' && !empty($entry->pallet_start))
-                                        <br><small class="text-muted"><i class="bi bi-box"></i> Pallet: {{ $entry->pallet_start }}{{ $entry->pallet_end > $entry->pallet_start ? '–' . $entry->pallet_end : '' }}</small>
-                                    @endif
                                 @else
                                     <span class="text-muted">—</span>
                                 @endif
