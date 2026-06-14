@@ -937,7 +937,14 @@ class ReportController extends Controller
         foreach ($allRows as $whId => $rows) {
             $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
             foreach ($rows as $i => $row) {
-                $rowLetterMap[$whId . '-' . $row->row_name] = chr(65 + $i);
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
             }
         }
 
@@ -1194,7 +1201,14 @@ class ReportController extends Controller
         foreach ($allRows as $whId => $rows) {
             $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
             foreach ($rows as $i => $row) {
-                $rowLetterMap[$whId . '-' . $row->row_name] = chr(65 + $i);
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
             }
         }
 
