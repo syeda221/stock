@@ -30,7 +30,7 @@
                                 <td class="fw-semibold">{{ $item->product->name ?? '-' }} <small class="text-muted">({{ $item->product->item_code ?? '' }})</small></td>
                                 <td>{{ $item->warehouse->name ?? $item->stockIn->warehouse->name ?? '-' }}</td>
                                 <td>{{ $item->vendor_batch ?? $item->sap_batch ?? '-' }}</td>
-                                <td><span class="badge bg-danger">{{ $item->expiry_date?->format('d/m/Y') }}</span></td>
+                                <td><span class="badge bg-danger">{{ $item->expiry_date?->format('d.m.Y') }}</span></td>
                                 <td class="text-end fw-bold">{{ number_format($item->balance_quantity, 2) }}</td>
                                 <td><span class="badge bg-danger">Expired</span></td>
                             </tr>
@@ -81,11 +81,11 @@
                                 <td>{{ $item->vendor_batch ?? $item->sap_batch ?? '-' }}</td>
                                 <td>
                                     @if($daysLeft <= 7)
-                                        <span class="badge bg-danger">{{ $item->expiry_date?->format('d/m/Y') }}</span>
+                                        <span class="badge bg-danger">{{ $item->expiry_date?->format('d.m.Y') }}</span>
                                     @elseif($daysLeft <= 15)
-                                        <span class="badge bg-warning text-dark">{{ $item->expiry_date?->format('d/m/Y') }}</span>
+                                        <span class="badge bg-warning text-dark">{{ $item->expiry_date?->format('d.m.Y') }}</span>
                                     @else
-                                        <span class="badge bg-warning-subtle text-dark border">{{ $item->expiry_date?->format('d/m/Y') }}</span>
+                                        <span class="badge bg-warning-subtle text-dark border">{{ $item->expiry_date?->format('d.m.Y') }}</span>
                                     @endif
                                 </td>
                                 <td class="text-end fw-bold">{{ number_format($item->balance_quantity, 2) }}</td>

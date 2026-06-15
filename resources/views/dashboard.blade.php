@@ -13,7 +13,7 @@
                 </nav>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <span style="font-size: 13px; color: #64748b;">{{ date('d/m/Y') }}</span>
+                <span style="font-size: 13px; color: #64748b;">{{ date('d.m.Y') }}</span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
                     <i class="bi bi-arrow-clockwise"></i> Refresh
                 </button>
@@ -299,7 +299,7 @@
                             <tr>
                                 <td>{{ Str::limit($item->product->name ?? 'N/A', 18) }}</td>
                                 <td>{{ Str::limit($item->warehouse->name ?? 'N/A', 12) }}</td>
-                                <td>{{ optional($item->expiry_date)->format('d/m/Y') }}</td>
+                                <td>{{ optional($item->expiry_date)->format('d.m.Y') }}</td>
                                 <td class="text-end fw-semibold">{{ $item->balance_quantity }}</td>
                             </tr>
                             @endforeach
@@ -333,7 +333,7 @@
                                     <tr>
                                         <td style="padding: 0.5rem 0.75rem; color: #0d6efd;">{{ $inbound->inbound_invoice_no ?? 'N/A' }}</td>
                                         <td style="padding: 0.5rem 0.75rem;">{{ Str::limit($inbound->warehouse->name ?? 'N/A', 20) }}</td>
-                                        <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $inbound->created_at->format('d/m/Y') }}</td>
+                                        <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $inbound->created_at->format('d.m.Y') }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -369,7 +369,7 @@
                                     <tr>
                                         <td style="padding: 0.5rem 0.75rem; color: #dc3545;">#{{ $outbound->dispatched_invoice_no ?? 'N/A' }}</td>
                                         <td style="padding: 0.5rem 0.75rem;">{{ Str::limit($outbound->customer->name ?? 'N/A', 20) }}</td>
-                                        <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $outbound->created_at->format('d/m/Y') }}</td>
+                                        <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $outbound->created_at->format('d.m.Y') }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -491,7 +491,7 @@
                                     </td>
                                     <td style="padding: 0.5rem 0.75rem;">{{ $feed['ref'] }}</td>
                                     <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['location'] }}</td>
-                                    <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['date']->format('d/m/Y H:i') }}</td>
+                                    <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['date']->format('d.m.Y H:i') }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>

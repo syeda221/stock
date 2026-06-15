@@ -155,7 +155,7 @@
                     <tbody>
                         @forelse($stockOuts as $stockOut)
                         <tr>
-                            <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockOut->created_at)->format('d/m/Y') }}</td>
+                            <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockOut->created_at)->format('d.m.Y') }}</td>
                             <td class="fw-semibold">
                                 @if($stockOut->dispatched_invoice_no)
                                     {{ $stockOut->dispatched_invoice_no }}

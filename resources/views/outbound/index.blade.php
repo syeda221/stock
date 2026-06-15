@@ -204,8 +204,8 @@
                             'Shipment Type'     => strtoupper($out->shipment_type ?? 'MANUAL'),
                             'Vehicle No'        => $out->vehicle_no ?? '-',
                             'Vehicle Size'      => $out->vehicle_size ?? '-',
-                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d/m/Y H:i') : '-',
-                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d/m/Y H:i') : '-',
+                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d.m.Y H:i') : '-',
+                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d.m.Y H:i') : '-',
                             'Driver Name'       => $out->driver_name ?? '-',
                             'Driver Mobile'     => $out->driver_mobile ?? '-',
                             'Dispatched Invoice No' => $out->dispatched_invoice_no ?? '-',
@@ -252,8 +252,8 @@
                             'PO No'            => $item->po_no ?? '-',
                             'IBD No'           => $item->ibd_no ?? '-',
                             'STO No'           => $item->sto_no ?? '-',
-                            'MFG Date'         => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d/m/Y') : '-',
-                            'Expiry Date'      => $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d/m/Y') : '-',
+                            'MFG Date'         => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '-',
+                            'Expiry Date'      => $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
                             'Units Dispatch'   => $item->units_dispatch ?? 0,
                             'Pack Size'        => $item->pack_size_snapshot ?? 0,
                             'Dispatch Quantity'=> $item->dispatch_quantity ?? 0,
@@ -315,7 +315,7 @@
                             </div>
                         </td>
 
-                        <td class="small text-nowrap">{{ $item->created_at->format('d/m/Y') }}</td>
+                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y') }}</td>
 
                         {{-- ACTIONS --}}
                         <td class="text-center text-nowrap">

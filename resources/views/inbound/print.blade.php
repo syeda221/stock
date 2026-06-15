@@ -56,7 +56,7 @@
         <td>{{ $it->vendor_batch ?? '-' }}</td>
         <td>{{ $it->po_no ?? '-' }}</td>
         <td>{{ $it->ibd_no ?? '-' }}</td>
-        <td>{{ $it->mfg_date ? \Carbon\Carbon::parse($it->mfg_date)->format('d/m/Y') : '-' }} / {{ $it->expiry_date ? \Carbon\Carbon::parse($it->expiry_date)->format('d/m/Y') : '-' }}</td>
+        <td>{{ $it->mfg_date ? \Carbon\Carbon::parse($it->mfg_date)->format('d.m.Y') : '-' }} / {{ $it->expiry_date ? \Carbon\Carbon::parse($it->expiry_date)->format('d.m.Y') : '-' }}</td>
         <td class="right">{{ $it->units_received ?? 0 }}</td>
         <td class="right">{{ $it->pack_size_snapshot ?? 0 }}</td>
         <td class="right">{{ $it->total_quantity ?? 0 }}</td>

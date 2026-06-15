@@ -207,7 +207,7 @@
                             <td>
                                 @if($item->expiry_date)
                                     <span class="badge {{ \Carbon\Carbon::parse($item->expiry_date)->isPast() ? 'bg-danger' : 'bg-success' }} bg-opacity-10 text-dark">
-                                        {{ \Carbon\Carbon::parse($item->expiry_date)->format('d/m/Y') }}
+                                        {{ \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') }}
                                     </span>
                                 @else
                                     <span class="text-muted">—</span>
@@ -238,10 +238,10 @@
                                     data-pallets_used="{{ $item->pallets_used ? number_format($item->pallets_used) : '—' }}"
                                     data-sap_batch="{{ $item->sap_batch ?: '—' }}"
                                     data-vendor_batch="{{ $item->vendor_batch ?: '—' }}"
-                                    data-expiry_date="{{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d/m/Y') : '—' }}"
+                                    data-expiry_date="{{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '—' }}"
                                     data-balance_quantity="{{ number_format($item->balance_quantity, 2) }}"
                                     data-quality_clearance="{{ $item->quality_clearance ?: '—' }}"
-                                    data-mfg_date="{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d/m/Y') : '—' }}"
+                                    data-mfg_date="{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '—' }}"
                                     data-total_quantity="{{ number_format($item->total_quantity, 2) }}"
                                     title="Quick View">
                                     <i class="bi bi-eye"></i>

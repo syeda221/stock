@@ -42,7 +42,7 @@
                 </td>
                 <td width="40%" class="text-end">
                     <strong>Invoice</strong><br>
-                    Date: {{ $stockOut->created_at->format('d/m/Y H:i') }}
+                    Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}
                 </td>
             </tr>
         </table>
@@ -91,10 +91,10 @@
 
             <tr>
                 <th>Vehicle In</th>
-                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_in_time)->format('d/m/Y H:i:s')}}</td>
+                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_in_time)->format('d.m.Y H:i:s')}}</td>
 
                 <th>Vehicle Out</th>
-                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_out_time)->format('d/m/Y H:i:s') }}</td>
+                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_out_time)->format('d.m.Y H:i:s') }}</td>
             </tr>
 
             <tr>
@@ -142,8 +142,8 @@
                         <td>{{ $item->sap_batch ?? $item->vendor_batch }}</td>
                         {{-- <td>{{ $item->po_no ?? $item->sourceStockInItem->po_no ?? '-' }}</td> --}}
                         <td>{{ $item->ibd_no ?? $item->sourceStockInItem->ibd_no ?? '-' }}</td>
-                        <td>{{ optional($item->mfg_date)->format('d/m/Y') }}</td>
-                        <td>{{ optional($item->expiry_date)->format('d/m/Y') }}</td>
+                        <td>{{ optional($item->mfg_date)->format('d.m.Y') }}</td>
+                        <td>{{ optional($item->expiry_date)->format('d.m.Y') }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
                         <td class="text-end">{{ $item->units_dispatch }}</td>
                         <td class="text-end fw-bold">{{ $item->dispatch_quantity }}</td>

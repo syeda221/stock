@@ -124,7 +124,7 @@
 
                         <td>{{ $item->product->category->name ?? '-' }}</td>
 
-                        <td>{{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d/m/Y') : '-' }}</td>
+                        <td>{{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d.m.Y') : '-' }}</td>
 
                         <td class="text-center">
                             <span class="badge bg-secondary">{{ $item->batch_count }}</span>

@@ -135,7 +135,7 @@
             </div>
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
-                <span class="info-value">{{ optional($stockOut->created_at)->format('d/m/Y H:i') }}</span>
+                <span class="info-value">{{ optional($stockOut->created_at)->format('d.m.Y H:i') }}</span>
             </div>
         </div>
         <div class="info-row">
@@ -231,11 +231,11 @@
         <div class="info-row">
             <div class="info-cell">
                 <span class="info-label">Vehicle In Time:</span>
-                <span class="info-value">{{ $stockOut->vehicle_in_time ? \Carbon\Carbon::parse($stockOut->vehicle_in_time)->format('d/m/Y H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockOut->vehicle_in_time ? \Carbon\Carbon::parse($stockOut->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</span>
             </div>
             <div class="info-cell">
                 <span class="info-label">Vehicle Out Time:</span>
-                <span class="info-value">{{ $stockOut->vehicle_out_time ? \Carbon\Carbon::parse($stockOut->vehicle_out_time)->format('d/m/Y H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockOut->vehicle_out_time ? \Carbon\Carbon::parse($stockOut->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</span>
             </div>
         </div>
     </div>
@@ -303,7 +303,7 @@
 
     <!-- Footer -->
     <div class="footer">
-        Generated on {{ now()->format('d/m/Y H:i:s') }} | Warehouse Management System
+        Generated on {{ now()->format('d.m.Y H:i:s') }} | Warehouse Management System
     </div>
 </body>
 </html>

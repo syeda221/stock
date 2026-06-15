@@ -197,7 +197,7 @@
                             ];
                         @endphp
                         <tr>
-                            <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockIn->created_at)->format('d/m/Y') }}</td>
+                            <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockIn->created_at)->format('d.m.Y') }}</td>
                             <td class="fw-semibold">
                                 @if($stockIn->dispatched_invoice_no)
                                     {{ $stockIn->dispatched_invoice_no }}

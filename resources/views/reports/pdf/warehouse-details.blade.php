@@ -36,7 +36,7 @@ table.rows tr:nth-child(even) td { background: #fafafa; }
 <body>
     <div class="header">
         <h1>Warehouse Capacity Report</h1>
-        <div class="subtitle">Generated on {{ date('d/m/Y H:i') }}</div>
+        <div class="subtitle">Generated on {{ date('d.m.Y H:i') }}</div>
     </div>
 
     @php
@@ -129,7 +129,7 @@ table.rows tr:nth-child(even) td { background: #fafafa; }
     </div>
 
     <div class="footer">
-        Warehouse Capacity Report &mdash; {{ date('d/m/Y H:i') }}
+        Warehouse Capacity Report &mdash; {{ date('d.m.Y H:i') }}
     </div>
 </body>
 </html>

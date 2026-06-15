@@ -17,7 +17,7 @@
 
 <p>
 <strong>DC No:</strong> {{ $stockOut->dispatched_invoice_no }} <br>
-<strong>Date:</strong> {{ $stockOut->created_at->format('d/m/Y') }} <br>
+<strong>Date:</strong> {{ $stockOut->created_at->format('d.m.Y') }} <br>
 <strong>From:</strong> {{ $stockOut->warehouse->name }} <br>
 <strong>To:</strong>
 {{ $stockOut->customer->name ?? $stockOut->toWarehouse->name ?? '-' }}
