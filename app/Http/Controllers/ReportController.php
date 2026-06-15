@@ -190,7 +190,7 @@ class ReportController extends Controller
 
     public function inboundExport(Request $request)
     {
-        $query = StockIn::with(['vendor', 'warehouse', 'transporter', 'arrivedFrom', 'items.product'])
+        $query = StockIn::with(['vendor', 'warehouse', 'transporter', 'arrivedFrom', 'items.product', 'items.warehouseRow'])
             ->where('source_type', 'inbound');
 
         // Apply same filters as inbound report
@@ -220,6 +220,53 @@ class ReportController extends Controller
 
         $stockIns = $query->orderBy('created_at', 'desc')->get();
 
+        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        // Pre-compute pallet positions across ALL items (opening + inbound) so they match stock ledger
+        $rowPalletOffsets = [];
+        $inboundPositions = [];
+        $allItems = \App\Models\StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
+            ->where('balance_quantity', '>', 0)
+            ->where('pallets_used', '>', 0)
+            ->whereNotNull('warehouse_row_id')
+            ->with('stockIn', 'warehouseRow')
+            ->orderBy('created_at')
+            ->get();
+        foreach ($allItems as $item) {
+            $whId = $item->warehouse_id;
+            $row = $item->warehouseRow;
+            if (!$whId || !$row || !$row->row_name) continue;
+            $palletCount = (int)$item->pallets_used;
+            $rowKey = $whId . '-' . $row->row_name;
+            if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+            $palletStart = $rowPalletOffsets[$rowKey] + 1;
+            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
+            $rowPalletOffsets[$rowKey] = $palletEnd;
+            if ($item->stockIn->source_type === 'inbound') {
+                $rw = $rowLetterMap[$rowKey] ?? '';
+                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                $inboundPositions[$item->id] = [
+                    'start' => $palletStart, 'end' => $palletEnd,
+                    'letter' => $rw, 'wh_padded' => $wp,
+                ];
+            }
+        }
+
         // Generate CSV
         $filename = 'inbound_report_' . date('Y-m-d_His') . '.csv';
         $headers = [
@@ -227,7 +274,7 @@ class ReportController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function() use ($stockIns) {
+        $callback = function() use ($stockIns, $inboundPositions) {
             $file = fopen('php://output', 'w');
             
             // Header row
@@ -246,51 +293,140 @@ class ReportController extends Controller
             // Data rows
             foreach ($stockIns as $stockIn) {
                 foreach ($stockIn->items as $item) {
-                    fputcsv($file, [
-                        $item->product->item_code ?? '',
-                        $item->product->name ?? '',
-                        $stockIn->warehouse->name ?? '',
-                        $item->product->category->name ?? '',
-                        $item->product->uom->name ?? ($item->uom_snapshot ?? ''),
-                        $stockIn->ibd_no ?? $item->ibd_no ?? '',
-                        $stockIn->po_no ?? $item->po_no ?? '',
-                        $item->vendor_batch ?? '',
-                        $item->sap_batch ?? '',
-                        $item->product->packingType->name ?? ($item->packing_snapshot ?? ''),
-                        $item->pack_size_snapshot ?? '',
-                        $item->units_received ?? '',
-                        $item->total_quantity ?? '',
-                        $item->mfg_date ?? '',
-                        $item->expiry_date ?? '',
-                        $item->balance_quantity ?? '',
-                        $item->pallets_used ?? '',
-                        $item->quality_clearance ?? '',
-                        $item->sound_stock ? 'Yes' : 'No',
-                        $item->block_stock ? 'Yes' : 'No',
-                        $item->hold_stock ? 'Yes' : 'No',
-                        $stockIn->id,
-                        $stockIn->created_at->format('Y-m-d H:i'),
-                        $stockIn->source_type ?? '',
-                        $stockIn->vendor->name ?? '',
-                        $stockIn->arrivedFrom->name ?? '',
-                        $stockIn->transporter->name ?? '',
-                        $stockIn->inbound_invoice_no ?? '',
-                        $stockIn->dispatched_invoice_no ?? '',
-                        $stockIn->shipment_no ?? '',
-                        $stockIn->sto_no ?? '',
-                        $stockIn->delivery_no ?? '',
-                        $stockIn->vehicle_no ?? '',
-                        $stockIn->vehicle_size ?? '',
-                        $stockIn->driver_name ?? '',
-                        $stockIn->driver_mobile ?? '',
-                        $stockIn->vehicle_in_time ?? '',
-                        $stockIn->vehicle_out_time ?? '',
-                        $stockIn->picker ?? '',
-                        $stockIn->shipment_type ?? '',
-                        $item->warehouseRow->name ?? '',
-                        $item->remarks ?? '',
-                        $stockIn->remarks ?? ''
-                    ]);
+                    $warehouseDisplay = $stockIn->warehouse->name ?? '';
+                    $unitsVal = $item->units_received ?? 0;
+                    $qtyVal = $item->total_quantity ?? 0;
+                    $balVal = $item->balance_quantity ?? 0;
+                    $palletsVal = $item->pallets_used ?? 0;
+                    $rowNameVal = $item->warehouseRow->name ?? '';
+
+                    $pos = $inboundPositions[$item->id] ?? null;
+
+                    if ($pos) {
+                        $whPadded = $pos['wh_padded'];
+                        $rowLetter = $pos['letter'];
+                        $palletStart = $pos['start'];
+                        $palletEnd = $pos['end'];
+                        $numPallets = $palletEnd - $palletStart + 1;
+
+                        $maxPerPallet = $item->product->cartons_per_pallet ?? null;
+                        $totalUnits = (float) $unitsVal;
+                        $totalQty = (float) $qtyVal;
+                        $totalBalance = (float) $balVal;
+                        $remainingUnits = $totalUnits;
+                        $assignedQty = 0.0;
+                        $assignedBalance = 0.0;
+
+                        for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                            $isLast = ($p == $palletEnd);
+                            if ($maxPerPallet) {
+                                $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                            } else {
+                                $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                            }
+                            $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                            $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                            $palletBalance = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                            $remainingUnits -= $perPalletUnits;
+                            $assignedQty += $palletQty;
+                            $assignedBalance += $palletBalance;
+
+                            $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                            $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+
+                            fputcsv($file, [
+                                $item->product->item_code ?? '',
+                                $item->product->name ?? '',
+                                $warehouseDisplay,
+                                $item->product->category->name ?? '',
+                                $item->product->uom->name ?? ($item->uom_snapshot ?? ''),
+                                $stockIn->ibd_no ?? $item->ibd_no ?? '',
+                                $stockIn->po_no ?? $item->po_no ?? '',
+                                $item->vendor_batch ?? '',
+                                $item->sap_batch ?? '',
+                                $item->product->packingType->name ?? ($item->packing_snapshot ?? ''),
+                                $item->pack_size_snapshot ?? '',
+                                $perPalletUnits,
+                                $palletQty,
+                                $item->mfg_date ?? '',
+                                $item->expiry_date ?? '',
+                                $palletBalance,
+                                1,
+                                $item->quality_clearance ?? '',
+                                $item->sound_stock ? 'Yes' : 'No',
+                                $item->block_stock ? 'Yes' : 'No',
+                                $item->hold_stock ? 'Yes' : 'No',
+                                $stockIn->id,
+                                $stockIn->created_at->format('Y-m-d H:i'),
+                                $stockIn->source_type ?? '',
+                                $stockIn->vendor->name ?? '',
+                                $stockIn->arrivedFrom->name ?? '',
+                                $stockIn->transporter->name ?? '',
+                                $stockIn->inbound_invoice_no ?? '',
+                                $stockIn->dispatched_invoice_no ?? '',
+                                $stockIn->shipment_no ?? '',
+                                $stockIn->sto_no ?? '',
+                                $stockIn->delivery_no ?? '',
+                                $stockIn->vehicle_no ?? '',
+                                $stockIn->vehicle_size ?? '',
+                                $stockIn->driver_name ?? '',
+                                $stockIn->driver_mobile ?? '',
+                                $stockIn->vehicle_in_time ?? '',
+                                $stockIn->vehicle_out_time ?? '',
+                                $stockIn->picker ?? '',
+                                $stockIn->shipment_type ?? '',
+                                $rowNameVal,
+                                $item->remarks ?? '',
+                                $stockIn->remarks ?? ''
+                            ]);
+                        }
+                    } else {
+                        fputcsv($file, [
+                            $item->product->item_code ?? '',
+                            $item->product->name ?? '',
+                            $warehouseDisplay,
+                            $item->product->category->name ?? '',
+                            $item->product->uom->name ?? ($item->uom_snapshot ?? ''),
+                            $stockIn->ibd_no ?? $item->ibd_no ?? '',
+                            $stockIn->po_no ?? $item->po_no ?? '',
+                            $item->vendor_batch ?? '',
+                            $item->sap_batch ?? '',
+                            $item->product->packingType->name ?? ($item->packing_snapshot ?? ''),
+                            $item->pack_size_snapshot ?? '',
+                            $unitsVal,
+                            $qtyVal,
+                            $item->mfg_date ?? '',
+                            $item->expiry_date ?? '',
+                            $balVal,
+                            $palletsVal,
+                            $item->quality_clearance ?? '',
+                            $item->sound_stock ? 'Yes' : 'No',
+                            $item->block_stock ? 'Yes' : 'No',
+                            $item->hold_stock ? 'Yes' : 'No',
+                            $stockIn->id,
+                            $stockIn->created_at->format('Y-m-d H:i'),
+                            $stockIn->source_type ?? '',
+                            $stockIn->vendor->name ?? '',
+                            $stockIn->arrivedFrom->name ?? '',
+                            $stockIn->transporter->name ?? '',
+                            $stockIn->inbound_invoice_no ?? '',
+                            $stockIn->dispatched_invoice_no ?? '',
+                            $stockIn->shipment_no ?? '',
+                            $stockIn->sto_no ?? '',
+                            $stockIn->delivery_no ?? '',
+                            $stockIn->vehicle_no ?? '',
+                            $stockIn->vehicle_size ?? '',
+                            $stockIn->driver_name ?? '',
+                            $stockIn->driver_mobile ?? '',
+                            $stockIn->vehicle_in_time ?? '',
+                            $stockIn->vehicle_out_time ?? '',
+                            $stockIn->picker ?? '',
+                            $stockIn->shipment_type ?? '',
+                            $rowNameVal,
+                            $item->remarks ?? '',
+                            $stockIn->remarks ?? ''
+                        ]);
+                    }
                 }
             }
 
@@ -330,6 +466,49 @@ class ReportController extends Controller
 
         $stockOuts = $query->orderBy('created_at', 'desc')->get();
 
+        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        // Pre-compute pallet positions across ALL outbound items for consistency
+        $rowPalletOffsets = [];
+        $outboundPositions = [];
+        $allOutItems = \App\Models\StockOutItem::where('pallets_returned', '>', 0)
+            ->whereNotNull('warehouse_row_id')
+            ->with('warehouseRow')
+            ->orderBy('created_at')
+            ->get();
+        foreach ($allOutItems as $item) {
+            $whId = $item->warehouse_id;
+            $row = $item->warehouseRow;
+            if (!$whId || !$row || !$row->row_name) continue;
+            $palletCount = (int)$item->pallets_returned;
+            $rowKey = $whId . '-' . $row->row_name;
+            if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+            $palletStart = $rowPalletOffsets[$rowKey] + 1;
+            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
+            $rowPalletOffsets[$rowKey] = $palletEnd;
+            $rw = $rowLetterMap[$rowKey] ?? '';
+            $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+            $outboundPositions[$item->id] = [
+                'start' => $palletStart, 'end' => $palletEnd,
+                'letter' => $rw, 'wh_padded' => $wp,
+            ];
+        }
+
         // Generate CSV
         $filename = 'outbound_report_' . date('Y-m-d_His') . '.csv';
         $headers = [
@@ -337,14 +516,14 @@ class ReportController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function() use ($stockOuts) {
+        $callback = function() use ($stockOuts, $outboundPositions) {
             $file = fopen('php://output', 'w');
             
             // Header row
             fputcsv($file, [
                 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
-                'Units Received', 'Total Qty', 'MFG Date', 'Expiry Date',
+                'Units Dispatch', 'Dispatch Qty', 'MFG Date', 'Expiry Date',
                 'Balance Qty', 'Pallets Used', 'Quality Check', 'Sound', 'Blocked', 'Hold',
                 'Entry ID', 'Date', 'Source Type', 'To Warehouse', 'Customer', 'Transporter',
                 'Dispatched Invoice', 'Delivery No', 'Gatepass No', 'STO No', 'Shipment No',
@@ -356,50 +535,133 @@ class ReportController extends Controller
             // Data rows
             foreach ($stockOuts as $stockOut) {
                 foreach ($stockOut->items as $item) {
-                    fputcsv($file, [
-                        $item->product->item_code ?? '',
-                        $item->product->name ?? '',
-                        $stockOut->warehouse->name ?? '',
-                        $item->product->category->name ?? '',
-                        $item->product->uom->name ?? '',
-                        $stockOut->ibd_no ?? $item->ibd_no ?? '',
-                        $stockOut->po_no ?? $item->po_no ?? '',
-                        $item->vendor_batch ?? '',
-                        $item->sap_batch ?? '',
-                        $item->product->packingType->name ?? '',
-                        $item->pack_size_snapshot ?? '',
-                        $item->units_dispatch ?? '',
-                        $item->dispatch_quantity ?? '',
-                        $item->mfg_date ?? '',
-                        $item->expiry_date ?? '',
-                        '', // Balance Qty N/A
-                        $item->pallets_returned ?? '', // Using pallets returned for pallets
-                        '', // Quality Check N/A
-                        '', // Sound N/A
-                        '', // Blocked N/A
-                        '', // Hold N/A
-                        $stockOut->id,
-                        $stockOut->created_at->format('Y-m-d H:i'),
-                        $stockOut->source_type ?? '',
-                        $stockOut->toWarehouse->name ?? '',
-                        $stockOut->customer->name ?? 'Transfer',
-                        $stockOut->transporter->name ?? '',
-                        $stockOut->dispatched_invoice_no ?? '',
-                        $stockOut->delivery_no ?? '',
-                        $stockOut->gatepass_no ?? '',
-                        $stockOut->sto_no ?? '',
-                        $stockOut->shipment_no ?? '',
-                        $stockOut->vehicle_no ?? '',
-                        $stockOut->vehicle_size ?? '',
-                        $stockOut->driver_name ?? '',
-                        $stockOut->driver_mobile ?? '',
-                        $stockOut->vehicle_in_time ?? '',
-                        $stockOut->vehicle_out_time ?? '',
-                        $stockOut->picker ?? '',
-                        $item->warehouseRow->name ?? '',
-                        $item->remarks ?? '',
-                        $stockOut->remarks ?? ''
-                    ]);
+                    $warehouseDisplay = $stockOut->warehouse->name ?? '';
+                    $unitsVal = $item->units_dispatch ?? 0;
+                    $qtyVal = $item->dispatch_quantity ?? 0;
+                    $palletsVal = $item->pallets_returned ?? 0;
+                    $rowNameVal = $item->warehouseRow->name ?? '';
+
+                    $pos = $outboundPositions[$item->id] ?? null;
+
+                    if ($pos) {
+                        $whPadded = $pos['wh_padded'];
+                        $rowLetter = $pos['letter'];
+                        $palletStart = $pos['start'];
+                        $palletEnd = $pos['end'];
+                        $numPallets = $palletEnd - $palletStart + 1;
+
+                        $maxPerPallet = $item->product->cartons_per_pallet ?? null;
+                        $totalUnits = (float) $unitsVal;
+                        $totalQty = (float) $qtyVal;
+                        $remainingUnits = $totalUnits;
+                        $assignedQty = 0.0;
+
+                        for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                            $isLast = ($p == $palletEnd);
+                            if ($maxPerPallet) {
+                                $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                            } else {
+                                $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                            }
+                            $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                            $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                            $remainingUnits -= $perPalletUnits;
+                            $assignedQty += $palletQty;
+
+                            $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                            $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+
+                            fputcsv($file, [
+                                $item->product->item_code ?? '',
+                                $item->product->name ?? '',
+                                $warehouseDisplay,
+                                $item->product->category->name ?? '',
+                                $item->product->uom->name ?? '',
+                                $stockOut->ibd_no ?? $item->ibd_no ?? '',
+                                $stockOut->po_no ?? $item->po_no ?? '',
+                                $item->vendor_batch ?? '',
+                                $item->sap_batch ?? '',
+                                $item->product->packingType->name ?? '',
+                                $item->pack_size_snapshot ?? '',
+                                $perPalletUnits,
+                                $palletQty,
+                                $item->mfg_date ?? '',
+                                $item->expiry_date ?? '',
+                                '', // Balance Qty N/A
+                                1,
+                                '', // Quality Check N/A
+                                '', // Sound N/A
+                                '', // Blocked N/A
+                                '', // Hold N/A
+                                $stockOut->id,
+                                $stockOut->created_at->format('Y-m-d H:i'),
+                                $stockOut->source_type ?? '',
+                                $stockOut->toWarehouse->name ?? '',
+                                $stockOut->customer->name ?? 'Transfer',
+                                $stockOut->transporter->name ?? '',
+                                $stockOut->dispatched_invoice_no ?? '',
+                                $stockOut->delivery_no ?? '',
+                                $stockOut->gatepass_no ?? '',
+                                $stockOut->sto_no ?? '',
+                                $stockOut->shipment_no ?? '',
+                                $stockOut->vehicle_no ?? '',
+                                $stockOut->vehicle_size ?? '',
+                                $stockOut->driver_name ?? '',
+                                $stockOut->driver_mobile ?? '',
+                                $stockOut->vehicle_in_time ?? '',
+                                $stockOut->vehicle_out_time ?? '',
+                                $stockOut->picker ?? '',
+                                $rowNameVal,
+                                $item->remarks ?? '',
+                                $stockOut->remarks ?? ''
+                            ]);
+                        }
+                    } else {
+                        fputcsv($file, [
+                            $item->product->item_code ?? '',
+                            $item->product->name ?? '',
+                            $warehouseDisplay,
+                            $item->product->category->name ?? '',
+                            $item->product->uom->name ?? '',
+                            $stockOut->ibd_no ?? $item->ibd_no ?? '',
+                            $stockOut->po_no ?? $item->po_no ?? '',
+                            $item->vendor_batch ?? '',
+                            $item->sap_batch ?? '',
+                            $item->product->packingType->name ?? '',
+                            $item->pack_size_snapshot ?? '',
+                            $unitsVal,
+                            $qtyVal,
+                            $item->mfg_date ?? '',
+                            $item->expiry_date ?? '',
+                            '', // Balance Qty N/A
+                            $palletsVal,
+                            '', // Quality Check N/A
+                            '', // Sound N/A
+                            '', // Blocked N/A
+                            '', // Hold N/A
+                            $stockOut->id,
+                            $stockOut->created_at->format('Y-m-d H:i'),
+                            $stockOut->source_type ?? '',
+                            $stockOut->toWarehouse->name ?? '',
+                            $stockOut->customer->name ?? 'Transfer',
+                            $stockOut->transporter->name ?? '',
+                            $stockOut->dispatched_invoice_no ?? '',
+                            $stockOut->delivery_no ?? '',
+                            $stockOut->gatepass_no ?? '',
+                            $stockOut->sto_no ?? '',
+                            $stockOut->shipment_no ?? '',
+                            $stockOut->vehicle_no ?? '',
+                            $stockOut->vehicle_size ?? '',
+                            $stockOut->driver_name ?? '',
+                            $stockOut->driver_mobile ?? '',
+                            $stockOut->vehicle_in_time ?? '',
+                            $stockOut->vehicle_out_time ?? '',
+                            $stockOut->picker ?? '',
+                            $rowNameVal,
+                            $item->remarks ?? '',
+                            $stockOut->remarks ?? ''
+                        ]);
+                    }
                 }
             }
 
@@ -972,12 +1234,14 @@ class ReportController extends Controller
                 // Expand: one row per pallet with sequential carton fill
                 $numPallets = $entry->pallets_used;
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
-                $remainingUnits = (float) $entry->units;
-                $remainingQty = (float) $entry->quantity;
-                $remainingBalance = (float) $entry->balance_quantity;
-                $palletIndex = 0;
+                $totalUnits = (float) $entry->units;
+                $totalQty = (float) $entry->quantity;
+                $totalBalance = (float) $entry->balance_quantity;
+                $remainingUnits = $totalUnits;
+                $assignedQty = 0.0;
+                $assignedBalance = 0.0;
 
-                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++, $palletIndex++) {
+                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
                     $clone->pallet_end = $p;
@@ -989,12 +1253,13 @@ class ReportController extends Controller
                         $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
                     }
                     $isLast = ($p == $entry->pallet_end);
+                    $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
                     $clone->units = $perPalletUnits;
-                    $clone->quantity = $isLast ? $remainingQty : round($perPalletUnits * $entry->pack_size, 4);
-                    $clone->balance_quantity = $isLast ? $remainingBalance : round($remainingBalance * ($perPalletUnits / $entry->units), 4);
+                    $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
                     $remainingUnits -= $perPalletUnits;
-                    $remainingQty -= $clone->quantity;
-                    $remainingBalance -= $clone->balance_quantity;
+                    $assignedQty += $clone->quantity;
+                    $assignedBalance += $clone->balance_quantity;
 
                     $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
@@ -1247,19 +1512,36 @@ class ReportController extends Controller
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
+                // Expand: one row per pallet with sequential carton fill
                 $numPallets = $entry->pallets_used;
-                $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
-                $perPalletQty = $numPallets > 0 ? $entry->quantity / $numPallets : $entry->quantity;
-                $perPalletBalance = $numPallets > 0 ? $entry->balance_quantity / $numPallets : $entry->balance_quantity;
+                $maxPerPallet = $entry->cartons_per_pallet ?? null;
+                $totalUnits = (float) $entry->units;
+                $totalQty = (float) $entry->quantity;
+                $totalBalance = (float) $entry->balance_quantity;
+                $remainingUnits = $totalUnits;
+                $assignedQty = 0.0;
+                $assignedBalance = 0.0;
 
                 for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
                     $clone->pallet_end = $p;
                     $clone->pallets_used = 1;
+
+                    if ($maxPerPallet) {
+                        $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                    } else {
+                        $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
+                    }
+                    $isLast = ($p == $entry->pallet_end);
+                    $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
                     $clone->units = $perPalletUnits;
-                    $clone->quantity = $perPalletQty;
-                    $clone->balance_quantity = $perPalletBalance;
+                    $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                    $remainingUnits -= $perPalletUnits;
+                    $assignedQty += $clone->quantity;
+                    $assignedBalance += $clone->balance_quantity;
+
                     $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);

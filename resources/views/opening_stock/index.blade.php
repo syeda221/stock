@@ -102,6 +102,7 @@
                     <th>Item Code</th>
                     <th>Description</th>
                     <th>Category</th>
+                    <th>Date</th>
                     <th class="text-center">Entries</th>
                     <th class="text-end">Total Units</th>
                     <th class="text-center">Total Pallets</th>
@@ -122,6 +123,8 @@
                         <td>{{ $item->product->name }}</td>
 
                         <td>{{ $item->product->category->name ?? '-' }}</td>
+
+                        <td>{{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d/m/Y') : '-' }}</td>
 
                         <td class="text-center">
                             <span class="badge bg-secondary">{{ $item->batch_count }}</span>
@@ -154,9 +157,9 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9"
-                            class="text-center text-muted py-4">
-                            No opening stock found
+                    <td colspan="10"
+                        class="text-center text-muted py-4">
+                        No opening stock found
                         </td>
                     </tr>
                 @endforelse

@@ -62,7 +62,8 @@ class OpeningStockController extends Controller
                 DB::raw('SUM(total_quantity) as total_qty'),
                 DB::raw('SUM(balance_quantity) as total_balance'),
                 DB::raw('SUM(pallets_used) as total_pallets'),
-                DB::raw('COUNT(id) as batch_count')
+                DB::raw('COUNT(id) as batch_count'),
+                DB::raw('MAX(created_at) as latest_date')
             )
             ->groupBy('product_id')
             ->with(['product.category'])
@@ -451,8 +452,56 @@ class OpeningStockController extends Controller
 
     public function export()
     {
+        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        // Compute pallet positions across ALL stock items (opening + inbound) so positions match stock ledger
+        $rowPalletOffsets = [];
+        $openingPositions = []; // id => { pallet_start, pallet_end, row_letter, wh_padded }
+        $allItems = \App\Models\StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
+            ->where('balance_quantity', '>', 0)
+            ->where('pallets_used', '>', 0)
+            ->whereNotNull('warehouse_row_id')
+            ->with('stockIn', 'warehouseRow')
+            ->orderBy('created_at')
+            ->get();
+        foreach ($allItems as $item) {
+            $whId = $item->warehouse_id;
+            $row = $item->warehouseRow;
+            if (!$whId || !$row || !$row->row_name) continue;
+            $palletCount = (int)$item->pallets_used;
+            $rowKey = $whId . '-' . $row->row_name;
+            if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+            $palletStart = $rowPalletOffsets[$rowKey] + 1;
+            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
+            $rowPalletOffsets[$rowKey] = $palletEnd;
+            if ($item->stockIn->source_type === 'opening') {
+                $rw = $rowLetterMap[$rowKey] ?? '';
+                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                $openingPositions[$item->id] = [
+                    'start' => $palletStart, 'end' => $palletEnd,
+                    'letter' => $rw, 'wh_padded' => $wp,
+                ];
+            }
+        }
+
+        // Now fetch only opening stock items for CSV output
         $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
-            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn'])
+            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn', 'warehouseRow'])
             ->latest()
             ->get();
 
@@ -462,40 +511,109 @@ class OpeningStockController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function () use ($items) {
+        $callback = function () use ($items, $openingPositions) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Quality Check',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold'
             ]);
 
             foreach ($items as $item) {
-                fputcsv($file, [
-                    $item->product->item_code ?? '',
-                    $item->product->name ?? '',
-                    $item->warehouse->name ?? '',
-                    $item->product->category->name ?? '',
-                    $item->product->uom->name ?? '',
-                    $item->ibd_no ?? '',
-                    $item->po_no ?? '',
-                    $item->vendor_batch ?? '',
-                    $item->sap_batch ?? '',
-                    $item->product->packingType->name ?? '',
-                    $item->pack_size_snapshot,
-                    $item->units_received,
-                    $item->total_quantity,
-                    $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
-                    $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
-                    $item->balance_quantity,
-                    $item->pallets_used ?? 0,
-                    $item->quality_clearance ?? '',
-                    $item->sound_stock ? 'Yes' : 'No',
-                    $item->block_stock ? 'Yes' : 'No',
-                    $item->hold_stock ? 'Yes' : 'No',
-                ]);
+                $warehouseDisplay = $item->warehouse->name ?? '';
+                $unitsVal = $item->units_received;
+                $qtyVal = $item->total_quantity;
+                $balVal = $item->balance_quantity;
+                $palletsVal = $item->pallets_used ?? 0;
+                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d/m/Y H:i') : $item->created_at) : '';
+
+                $pos = $openingPositions[$item->id] ?? null;
+
+                if ($pos) {
+                    $whPadded = $pos['wh_padded'];
+                    $rowLetter = $pos['letter'];
+                    $palletStart = $pos['start'];
+                    $palletEnd = $pos['end'];
+
+                    $maxPerPallet = $item->product->cartons_per_pallet ?? null;
+                    $numPallets = $palletEnd - $palletStart + 1;
+                    $totalUnits = (float) $item->units_received;
+                    $totalQty = (float) $item->total_quantity;
+                    $totalBalance = (float) $item->balance_quantity;
+                    $remainingUnits = $totalUnits;
+                    $assignedQty = 0.0;
+                    $assignedBalance = 0.0;
+
+                    for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                        $isLast = ($p == $palletEnd);
+                        if ($maxPerPallet) {
+                            $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                        } else {
+                            $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                        }
+                        $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                        $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                        $palletBalance = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                        $remainingUnits -= $perPalletUnits;
+                        $assignedQty += $palletQty;
+                        $assignedBalance += $palletBalance;
+
+                        $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                        $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+
+                        fputcsv($file, [
+                            $item->product->item_code ?? '',
+                            $item->product->name ?? '',
+                            $dateVal,
+                            $warehouseDisplay,
+                            $item->product->category->name ?? '',
+                            $item->product->uom->name ?? '',
+                            $item->ibd_no ?? '',
+                            $item->po_no ?? '',
+                            $item->vendor_batch ?? '',
+                            $item->sap_batch ?? '',
+                            $item->product->packingType->name ?? '',
+                            $item->pack_size_snapshot,
+                            $perPalletUnits,
+                            $palletQty,
+                            $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
+                            $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                            $palletBalance,
+                            1,
+                            $item->quality_clearance ?? '',
+                            $item->sound_stock ? 'Yes' : 'No',
+                            $item->block_stock ? 'Yes' : 'No',
+                            $item->hold_stock ? 'Yes' : 'No',
+                        ]);
+                    }
+                } else {
+                    fputcsv($file, [
+                        $item->product->item_code ?? '',
+                        $item->product->name ?? '',
+                        $dateVal,
+                        $warehouseDisplay,
+                        $item->product->category->name ?? '',
+                        $item->product->uom->name ?? '',
+                        $item->ibd_no ?? '',
+                        $item->po_no ?? '',
+                        $item->vendor_batch ?? '',
+                        $item->sap_batch ?? '',
+                        $item->product->packingType->name ?? '',
+                        $item->pack_size_snapshot,
+                        $unitsVal,
+                        $qtyVal,
+                        $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
+                        $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                        $balVal,
+                        $palletsVal,
+                        $item->quality_clearance ?? '',
+                        $item->sound_stock ? 'Yes' : 'No',
+                        $item->block_stock ? 'Yes' : 'No',
+                        $item->hold_stock ? 'Yes' : 'No',
+                    ]);
+                }
             }
 
             fclose($file);
