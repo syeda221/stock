@@ -357,17 +357,17 @@ class ReportController extends Controller
                                 $item->block_stock ? 'Yes' : 'No',
                                 $item->hold_stock ? 'Yes' : 'No',
                                 $stockIn->id,
-                                $stockIn->created_at->format('Y-m-d H:i'),
-                                $stockIn->source_type ?? '',
-                                $stockIn->vendor->name ?? '',
-                                $stockIn->arrivedFrom->name ?? '',
-                                $stockIn->transporter->name ?? '',
-                                $stockIn->inbound_invoice_no ?? '',
-                                $stockIn->dispatched_invoice_no ?? '',
-                                $stockIn->shipment_no ?? '',
-                                $stockIn->sto_no ?? '',
-                                $stockIn->delivery_no ?? '',
-                                $stockIn->vehicle_no ?? '',
+$stockIn->created_at->format('d/m/Y H:i'),
+                    $stockIn->source_type ?? '',
+                    $stockIn->vendor->name ?? '',
+                    $stockIn->arrivedFrom->name ?? '',
+                    $stockIn->transporter->name ?? '',
+                    $stockIn->inbound_invoice_no ?? '',
+                    $stockIn->dispatched_invoice_no ?? '',
+                    $stockIn->shipment_no ?? '',
+                    $stockIn->sto_no ?? '',
+                    $stockIn->delivery_no ?? '',
+                    $stockIn->vehicle_no ?? '',
                                 $stockIn->vehicle_size ?? '',
                                 $stockIn->driver_name ?? '',
                                 $stockIn->driver_mobile ?? '',
@@ -402,19 +402,19 @@ class ReportController extends Controller
                             $item->quality_clearance ?? '',
                             $item->sound_stock ? 'Yes' : 'No',
                             $item->block_stock ? 'Yes' : 'No',
-                            $item->hold_stock ? 'Yes' : 'No',
-                            $stockIn->id,
-                            $stockIn->created_at->format('Y-m-d H:i'),
-                            $stockIn->source_type ?? '',
-                            $stockIn->vendor->name ?? '',
-                            $stockIn->arrivedFrom->name ?? '',
-                            $stockIn->transporter->name ?? '',
-                            $stockIn->inbound_invoice_no ?? '',
-                            $stockIn->dispatched_invoice_no ?? '',
-                            $stockIn->shipment_no ?? '',
-                            $stockIn->sto_no ?? '',
-                            $stockIn->delivery_no ?? '',
-                            $stockIn->vehicle_no ?? '',
+$item->hold_stock ? 'Yes' : 'No',
+                                $stockIn->id,
+                                $stockIn->created_at->format('d/m/Y H:i'),
+                                $stockIn->source_type ?? '',
+                                $stockIn->vendor->name ?? '',
+                                $stockIn->arrivedFrom->name ?? '',
+                                $stockIn->transporter->name ?? '',
+                                $stockIn->inbound_invoice_no ?? '',
+                                $stockIn->dispatched_invoice_no ?? '',
+                                $stockIn->shipment_no ?? '',
+                                $stockIn->sto_no ?? '',
+                                $stockIn->delivery_no ?? '',
+                                $stockIn->vehicle_no ?? '',
                             $stockIn->vehicle_size ?? '',
                             $stockIn->driver_name ?? '',
                             $stockIn->driver_mobile ?? '',
@@ -594,7 +594,7 @@ class ReportController extends Controller
                                 '', // Blocked N/A
                                 '', // Hold N/A
                                 $stockOut->id,
-                                $stockOut->created_at->format('Y-m-d H:i'),
+                                $stockOut->created_at->format('d/m/Y H:i'),
                                 $stockOut->source_type ?? '',
                                 $stockOut->toWarehouse->name ?? '',
                                 $stockOut->customer->name ?? 'Transfer',
@@ -640,7 +640,7 @@ class ReportController extends Controller
                             '', // Blocked N/A
                             '', // Hold N/A
                             $stockOut->id,
-                            $stockOut->created_at->format('Y-m-d H:i'),
+                            $stockOut->created_at->format('d/m/Y H:i'),
                             $stockOut->source_type ?? '',
                             $stockOut->toWarehouse->name ?? '',
                             $stockOut->customer->name ?? 'Transfer',
@@ -762,8 +762,8 @@ class ReportController extends Controller
                     'id' => $stockIn->id,
                     'invoice' => $invoice,
                     'vendor' => $stockIn->vendor->name ?? 'N/A',
-                    'date' => $stockIn->created_at->format('d M Y'),
-                    'label' => $invoice . ' - ' . ($stockIn->vendor->name ?? 'N/A') . ' (' . $stockIn->created_at->format('d M Y') . ')'
+                    'date' => $stockIn->created_at->format('d/m/Y'),
+                    'label' => $invoice . ' - ' . ($stockIn->vendor->name ?? 'N/A') . ' (' . $stockIn->created_at->format('d/m/Y') . ')'
                 ];
             })
             ->values();
@@ -806,8 +806,8 @@ class ReportController extends Controller
                     'id' => $stockOut->id,
                     'invoice' => $invoice,
                     'customer' => $stockOut->customer->name ?? 'Transfer',
-                    'date' => $stockOut->created_at->format('d M Y'),
-                    'label' => $invoice . ' - ' . ($stockOut->customer->name ?? 'Transfer') . ' (' . $stockOut->created_at->format('d M Y') . ')'
+                    'date' => $stockOut->created_at->format('d/m/Y'),
+                    'label' => $invoice . ' - ' . ($stockOut->customer->name ?? 'Transfer') . ' (' . $stockOut->created_at->format('d/m/Y') . ')'
                 ];
             })
             ->values();
@@ -1687,7 +1687,7 @@ class ReportController extends Controller
                 $warehouseDisplay = !empty($entry->warehouse_display) ? $entry->warehouse_display : (!empty($entry->row_name) ? $entry->row_name : '-');
 
                 fputcsv($file, [
-                    \Carbon\Carbon::parse($entry->created_at)->format('Y-m-d H:i'),
+                        \Carbon\Carbon::parse($entry->created_at)->format('d/m/Y H:i'),
                     strtoupper($entry->source_type ?? $entry->direction),
                     $productDisplay,
                     $warehouseDisplay,
@@ -1697,7 +1697,7 @@ class ReportController extends Controller
                     $entry->direction === 'IN' ? ($entry->quantity ?? 0) : '-',
                     $entry->direction === 'OUT' ? ($entry->quantity ?? 0) : '-',
                     $entry->balance_quantity ?? '-',
-                    $entry->expiry_date ? \Carbon\Carbon::parse($entry->expiry_date)->format('Y-m-d') : '-'
+                    $entry->expiry_date ? \Carbon\Carbon::parse($entry->expiry_date)->format('d/m/Y') : '-'
                 ]);
             }
 

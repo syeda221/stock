@@ -154,7 +154,7 @@
             </div>
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
-                <span class="info-value">{{ optional($stockIn->created_at)->format('d M Y, H:i') }}</span>
+                <span class="info-value">{{ optional($stockIn->created_at)->format('d/m/Y H:i') }}</span>
             </div>
         </div>
         <div class="info-row">
@@ -226,11 +226,11 @@
         <div class="info-row">
             <div class="info-cell">
                 <span class="info-label">Vehicle In Time:</span>
-                <span class="info-value">{{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d M Y, H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d/m/Y H:i') : '-' }}</span>
             </div>
             <div class="info-cell">
                 <span class="info-label">Vehicle Out Time:</span>
-                <span class="info-value">{{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d M Y, H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d/m/Y H:i') : '-' }}</span>
             </div>
         </div>
     </div>
@@ -320,7 +320,7 @@
                 <td class="text-center">{{ number_format($item->units_received) }}</td>
                 <td class="text-center">{{ $item->pack_size_snapshot ?? '-' }}</td>
                 <td class="text-center">{{ number_format($item->total_quantity, 2) }}</td>
-                <td class="text-center">{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '-' }} / {{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-' }}</td>
+                <td class="text-center">{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d/m/Y') : '-' }} / {{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d/m/Y') : '-' }}</td>
                 <td class="text-center">
                     @if($item->quality_clearance == 'pending')
                         <span class="badge badge-pending">PENDING</span>
@@ -390,7 +390,7 @@
 
     <!-- Footer -->
     <div class="footer">
-        Generated on {{ now()->format('d M Y, H:i:s') }} | Warehouse Management System
+        Generated on {{ now()->format('d/m/Y H:i:s') }} | Warehouse Management System
     </div>
 </body>
 </html>

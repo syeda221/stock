@@ -578,8 +578,8 @@ class OpeningStockController extends Controller
                             $item->pack_size_snapshot,
                             $perPalletUnits,
                             $palletQty,
-                            $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
-                            $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                            $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d/m/Y') : $item->mfg_date) : '',
+                            $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d/m/Y') : $item->expiry_date) : '',
                             $palletBalance,
                             1,
                             $item->quality_clearance ?? '',
@@ -604,8 +604,8 @@ class OpeningStockController extends Controller
                         $item->pack_size_snapshot,
                         $unitsVal,
                         $qtyVal,
-                        $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('Y-m-d') : $item->mfg_date) : '',
-                        $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('Y-m-d') : $item->expiry_date) : '',
+                        $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d/m/Y') : $item->mfg_date) : '',
+                        $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d/m/Y') : $item->expiry_date) : '',
                         $balVal,
                         $palletsVal,
                         $item->quality_clearance ?? '',
@@ -937,7 +937,7 @@ class OpeningStockController extends Controller
                             [
                                 'source_type'  => 'opening',
                                 'warehouse_id' => $wh->id,
-                                'remarks'      => 'Imported via CSV on ' . now()->format('Y-m-d H:i'),
+                                'remarks'      => 'Imported via CSV on ' . now()->format('d/m/Y H:i'),
                             ],
                             ['shipment_type' => 'manual']
                         );

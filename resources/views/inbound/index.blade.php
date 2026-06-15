@@ -235,10 +235,10 @@
                             'Vehicle No' => $item->stockIn->vehicle_no ?? '-',
                             'Vehicle Size' => $item->stockIn->vehicle_size ?? '-',
                             'Vehicle In Time' => $item->stockIn->vehicle_in_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_in_time)->format('d.m.Y H:i')
+                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_in_time)->format('d/m/Y H:i')
                             : '-',
                             'Vehicle Out Time' => $item->stockIn->vehicle_out_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_out_time)->format('d.m.Y H:i')
+                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_out_time)->format('d/m/Y H:i')
                             : '-',
 
                             'Driver Name' => $item->stockIn->driver_name ?? '-',
@@ -282,10 +282,10 @@
                             'IBD No' => $item->ibd_no ?? '-',
                             'PO No' => $item->po_no ?? '-',
 
-                            'MFG Date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') :
+                            'MFG Date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d/m/Y') :
                             '-',
                             'Expiry Date' => $item->expiry_date ?
-                            \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
+                            \Carbon\Carbon::parse($item->expiry_date)->format('d/m/Y') : '-',
                             'Days in Warehouse' => $item->created_at ? (int) $item->created_at->diffInDays(now()) : 0,
 
                             'Units Received' => $item->units_received ?? 0,
@@ -398,7 +398,7 @@
                             </td>
 
                             <td class="text-nowrap">
-                                {{ $item->created_at ? $item->created_at->format('d.m.Y') : '-' }}
+                                {{ $item->created_at ? $item->created_at->format('d/m/Y') : '-' }}
                             </td>
 
                             <td>

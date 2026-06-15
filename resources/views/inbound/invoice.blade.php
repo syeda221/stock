@@ -45,7 +45,7 @@
                 </td>
                 <td width="40%" class="text-end">
                     <strong>Receipt</strong><br>
-                    Date: {{ optional($stockIn->created_at)->format('d.m.Y H:i') ?? '-' }}
+                    Date: {{ optional($stockIn->created_at)->format('d/m/Y H:i') ?? '-' }}
                 </td>
             </tr>
         </table>
@@ -99,9 +99,9 @@
 
             <tr class="print-hidden">
                 <th>Vehicle In</th>
-                <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</td>
+                <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d/m/Y H:i') : '-' }}</td>
                 <th>Vehicle Out</th>
-                <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</td>
+                <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d/m/Y H:i') : '-' }}</td>
             </tr>
 
             <tr class="print-hidden">
@@ -163,7 +163,7 @@
                         <td>{{ $stockIn->sto_no ?? '-' }}</td>
                         <td>{{ $item->po_no ?? $stockIn->po_no ?? '-' }}</td>
                         <td>{{ $item->ibd_no ?? $stockIn->ibd_no ?? '-' }}</td>
-                        <td>{{ optional($item->mfg_date)->format('d.m.Y') }} / {{ optional($item->expiry_date)->format('d.m.Y') }}</td>
+                        <td>{{ optional($item->mfg_date)->format('d/m/Y') }} / {{ optional($item->expiry_date)->format('d/m/Y') }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
                         <td class="text-end">{{ $item->units_received ?? 0 }}</td>
                         <td class="text-end fw-bold">{{ $item->total_quantity ?? 0 }}</td>

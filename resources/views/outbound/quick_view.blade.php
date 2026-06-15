@@ -11,7 +11,7 @@
         <div class="row mb-3">
             <div class="col-md-6">
                 <b>Invoice:</b> {{ $stockOut->dispatched_invoice_no }} <br>
-                <b>Date:</b> {{ $stockOut->created_at->format('d.m.Y') }} <br>
+                <b>Date:</b> {{ $stockOut->created_at->format('d/m/Y') }} <br>
                 <b>Type:</b> {{ ucfirst($stockOut->source_type) }}
             </div>
             <div class="col-md-6 text-end">

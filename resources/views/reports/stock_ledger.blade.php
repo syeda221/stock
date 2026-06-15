@@ -203,7 +203,7 @@
                         <tr>
                             <td class="text-muted fw-semibold">{{ $ledgerPaginated->firstItem() + $index }}</td>
                             <td>
-                                <small class="text-muted">{{ \Carbon\Carbon::parse($entry->created_at)->format('d M Y') }}</small>
+                                <small class="text-muted">{{ \Carbon\Carbon::parse($entry->created_at)->format('d/m/Y') }}</small>
                                 <br>
                                 <small class="text-muted opacity-75">{{ \Carbon\Carbon::parse($entry->created_at)->format('H:i') }}</small>
                             </td>
@@ -325,11 +325,11 @@
                                     @if($daysToExpiry < 0)
                                         <span class="badge bg-danger">Expired</span>
                                     @elseif($daysToExpiry <= 30)
-                                        <span class="badge bg-warning text-dark">{{ $expiry->format('d M Y') }}</span>
+                                        <span class="badge bg-warning text-dark">{{ $expiry->format('d/m/Y') }}</span>
                                     @elseif($daysToExpiry <= 90)
-                                        <span class="badge bg-info">{{ $expiry->format('d M Y') }}</span>
+                                        <span class="badge bg-info">{{ $expiry->format('d/m/Y') }}</span>
                                     @else
-                                        <small class="text-muted">{{ $expiry->format('d M Y') }}</small>
+                                        <small class="text-muted">{{ $expiry->format('d/m/Y') }}</small>
                                     @endif
                                 @else
                                     <span class="text-muted">-</span>
