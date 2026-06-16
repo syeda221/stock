@@ -218,7 +218,7 @@ class ReportController extends Controller
             });
         }
 
-        $stockIns = $query->orderBy('created_at', 'desc')->get();
+        $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
         $rowLetterMap = [];
@@ -254,9 +254,15 @@ class ReportController extends Controller
             $palletCount = (int)$item->pallets_used;
             $rowKey = $whId . '-' . $row->row_name;
             if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
-            $palletStart = $rowPalletOffsets[$rowKey] + 1;
-            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
-            $rowPalletOffsets[$rowKey] = $palletEnd;
+            if ($item->pallet_start !== null) {
+                $palletStart = (int)$item->pallet_start;
+                $palletEnd = $palletStart + $palletCount - 1;
+                $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $palletEnd);
+            } else {
+                $palletStart = $rowPalletOffsets[$rowKey] + 1;
+                $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
+                $rowPalletOffsets[$rowKey] = $palletEnd;
+            }
             if ($item->stockIn->source_type === 'inbound') {
                 $rw = $rowLetterMap[$rowKey] ?? '';
                 $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
@@ -842,10 +848,12 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.vendor_batch',
                 'stock_in_items.expiry_date',
                 'stock_in_items.mfg_date',
+                'stock_in_items.pack_size_snapshot',
                 'stock_in_items.pallets_used',
                 'stock_in_items.total_quantity',
                 'stock_in_items.balance_quantity',
-                'stock_in_items.quality_clearance'
+                'stock_in_items.quality_clearance',
+                'products.cartons_per_pallet'
             )
             ->where('stock_in_items.balance_quantity', '>', 0);
 
@@ -878,7 +886,16 @@ $item->hold_stock ? 'Yes' : 'No',
         $summary = [
             'total_products' => $stockReport->unique('product_id')->count(),
             'total_warehouses' => $stockReport->unique('warehouse_id')->count(),
-            'total_pallets' => $stockReport->sum('pallets_used'),
+            'total_pallets' => $stockReport->sum(function ($item) {
+                $maxPerPallet = $item->cartons_per_pallet ?? null;
+                if ($maxPerPallet && $maxPerPallet > 0 && ($item->pallets_used ?? 0) > 0) {
+                    $packSize = ($item->pack_size_snapshot ?? 0) > 0 ? $item->pack_size_snapshot : 1;
+                    $remainingCartons = (int) ceil(($item->balance_quantity ?? 0) / $packSize);
+                    $computed = (int) ceil($remainingCartons / $maxPerPallet);
+                    return max(1, min($computed, $item->pallets_used));
+                }
+                return $item->pallets_used ?? 0;
+            }),
             'total_balance' => $stockReport->sum('balance_quantity'),
         ];
 
@@ -1137,6 +1154,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
+                'stock_in_items.pallet_start',
                 'products.cartons_per_pallet',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
@@ -1192,7 +1210,7 @@ $item->hold_stock ? 'Yes' : 'No',
             });
         }
 
-        $inboundData = $inboundQuery->get();
+        $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
         $rowLetterMap = [];
@@ -1215,7 +1233,6 @@ $item->hold_stock ? 'Yes' : 'No',
         $rowPalletOffsets = [];
         $expandedInbound = collect();
         foreach ($inboundData as $entry) {
-            $entry->pallet_start = null;
             $entry->pallet_end = null;
             $entry->warehouse_display = null;
             if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
@@ -1223,9 +1240,14 @@ $item->hold_stock ? 'Yes' : 'No',
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;
                 }
-                $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
-                $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
-                $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+                if ($entry->pallet_start !== null) {
+                    $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
+                    $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $entry->pallet_end);
+                } else {
+                    $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
+                    $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
+                    $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+                }
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
@@ -1266,6 +1288,15 @@ $item->hold_stock ? 'Yes' : 'No',
                     $expandedInbound->push($clone);
                 }
             } else {
+                if ($entry->pallet_start !== null && $entry->warehouse_id && $entry->row_name) {
+                    $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
+                    $rowLetter = $rowLetterMap[$mapKey] ?? '';
+                    if ($rowLetter) {
+                        $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                        $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    }
+                }
                 $expandedInbound->push($entry);
             }
         }
@@ -1296,6 +1327,8 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'stock_out_items.stock_in_item_id',
+                'stock_out_items.pallet_position',
                 DB::raw('NULL as vendor_name'),
                 'transporters.name as transporter_name',
                 'stock_outs.vehicle_no',
@@ -1352,6 +1385,58 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = $outboundQuery->get();
         } else {
             $outboundData = collect();
+        }
+
+        // Format warehouse_display for outbound entries using source stock_in_item pallet position
+        if ($outboundData->isNotEmpty()) {
+            $stockInItemIds = $outboundData->pluck('stock_in_item_id')->filter()->unique();
+            if ($stockInItemIds->isNotEmpty()) {
+                $sourceItems = DB::table('stock_in_items')
+                    ->whereIn('id', $stockInItemIds)
+                    ->get()
+                    ->keyBy('id');
+                $warehouseRowIds = $sourceItems->pluck('warehouse_row_id')->filter()->unique();
+                $allRowItems = collect();
+                if ($warehouseRowIds->isNotEmpty()) {
+                    $allRowItems = DB::table('stock_in_items')
+                        ->whereIn('warehouse_row_id', $warehouseRowIds)
+                        ->orderBy('warehouse_row_id')
+                        ->orderBy('id')
+                        ->get();
+                }
+                $palletStartMap = [];
+                $currentRowId = null;
+                $offset = 0;
+                foreach ($allRowItems as $item) {
+                    if ($item->warehouse_row_id !== $currentRowId) {
+                        $currentRowId = $item->warehouse_row_id;
+                        $offset = 0;
+                    }
+                    if ($item->pallet_start !== null) {
+                        $start = (int)$item->pallet_start;
+                        $offset = max($offset, $start + $item->pallets_used - 1);
+                    } else {
+                        $start = $offset + 1;
+                        $offset = $start + $item->pallets_used - 1;
+                    }
+                    $palletStartMap[$item->id] = $start;
+                }
+                foreach ($outboundData as $entry) {
+                    if ($entry->stock_in_item_id && isset($palletStartMap[$entry->stock_in_item_id])) {
+                        $basePosition = $palletStartMap[$entry->stock_in_item_id];
+                        $palletNum = $entry->pallet_position
+                            ? $basePosition + $entry->pallet_position - 1
+                            : $basePosition;
+                        $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                        $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                        if ($rowLetter) {
+                            $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                            $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                            $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                        }
+                    }
+                }
+            }
         }
 
         // Merge and sort by date
@@ -1391,6 +1476,10 @@ $item->hold_stock ? 'Yes' : 'No',
     /**
      * Export Stock Ledger Report to CSV
      */
+
+    /**
+     * Export Stock Ledger Report to CSV
+     */
     public function stockLedgerExport(Request $request)
     {
         // ===== INBOUND ENTRIES (Opening + Inbound) =====
@@ -1418,6 +1507,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
+                'stock_in_items.pallet_start',
                 'products.cartons_per_pallet',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
@@ -1473,7 +1563,7 @@ $item->hold_stock ? 'Yes' : 'No',
             });
         }
 
-        $inboundData = $inboundQuery->get();
+        $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
         $rowLetterMap = [];
@@ -1496,7 +1586,6 @@ $item->hold_stock ? 'Yes' : 'No',
         $rowPalletOffsets = [];
         $expandedInbound = collect();
         foreach ($inboundData as $entry) {
-            $entry->pallet_start = null;
             $entry->pallet_end = null;
             $entry->warehouse_display = null;
             if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
@@ -1504,9 +1593,14 @@ $item->hold_stock ? 'Yes' : 'No',
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;
                 }
-                $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
-                $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
-                $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+                if ($entry->pallet_start !== null) {
+                    $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
+                    $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $entry->pallet_end);
+                } else {
+                    $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
+                    $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
+                    $rowPalletOffsets[$rowKey] = $entry->pallet_end;
+                }
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
@@ -1547,6 +1641,15 @@ $item->hold_stock ? 'Yes' : 'No',
                     $expandedInbound->push($clone);
                 }
             } else {
+                if ($entry->pallet_start !== null && $entry->warehouse_id && $entry->row_name) {
+                    $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
+                    $rowLetter = $rowLetterMap[$mapKey] ?? '';
+                    if ($rowLetter) {
+                        $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                        $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    }
+                }
                 $expandedInbound->push($entry);
             }
         }
@@ -1577,6 +1680,8 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'stock_out_items.stock_in_item_id',
+                'stock_out_items.pallet_position',
                 DB::raw('NULL as vendor_name'),
                 'transporters.name as transporter_name',
                 'stock_outs.vehicle_no',
@@ -1633,6 +1738,58 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = $outboundQuery->get();
         } else {
             $outboundData = collect();
+        }
+
+        // Format warehouse_display for outbound entries using source stock_in_item pallet position
+        if ($outboundData->isNotEmpty()) {
+            $stockInItemIds = $outboundData->pluck('stock_in_item_id')->filter()->unique();
+            if ($stockInItemIds->isNotEmpty()) {
+                $sourceItems = DB::table('stock_in_items')
+                    ->whereIn('id', $stockInItemIds)
+                    ->get()
+                    ->keyBy('id');
+                $warehouseRowIds = $sourceItems->pluck('warehouse_row_id')->filter()->unique();
+                $allRowItems = collect();
+                if ($warehouseRowIds->isNotEmpty()) {
+                    $allRowItems = DB::table('stock_in_items')
+                        ->whereIn('warehouse_row_id', $warehouseRowIds)
+                        ->orderBy('warehouse_row_id')
+                        ->orderBy('id')
+                        ->get();
+                }
+                $palletStartMap = [];
+                $currentRowId = null;
+                $offset = 0;
+                foreach ($allRowItems as $item) {
+                    if ($item->warehouse_row_id !== $currentRowId) {
+                        $currentRowId = $item->warehouse_row_id;
+                        $offset = 0;
+                    }
+                    if ($item->pallet_start !== null) {
+                        $start = (int)$item->pallet_start;
+                        $offset = max($offset, $start + $item->pallets_used - 1);
+                    } else {
+                        $start = $offset + 1;
+                        $offset = $start + $item->pallets_used - 1;
+                    }
+                    $palletStartMap[$item->id] = $start;
+                }
+                foreach ($outboundData as $entry) {
+                    if ($entry->stock_in_item_id && isset($palletStartMap[$entry->stock_in_item_id])) {
+                        $basePosition = $palletStartMap[$entry->stock_in_item_id];
+                        $palletNum = $entry->pallet_position
+                            ? $basePosition + $entry->pallet_position - 1
+                            : $basePosition;
+                        $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                        $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                        if ($rowLetter) {
+                            $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                            $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                            $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                        }
+                    }
+                }
+            }
         }
 
         // Merge and sort by date
@@ -1719,10 +1876,11 @@ $item->hold_stock ? 'Yes' : 'No',
 
         foreach ($warehouses as $wh) {
             // Get total occupied pallets in this warehouse
-            $whUsedPallets = DB::table('stock_in_items')
+            $whUsedPallets = \App\Models\StockInItem::with('product')
                 ->where('warehouse_id', $wh->id)
                 ->where('balance_quantity', '>', 0)
-                ->sum('pallets_used') ?? 0;
+                ->get()
+                ->sum(fn($i) => \App\Models\StockInItem::computeActivePallets($i));
 
             // Get used pallets grouped by row
             $rowUsage = \App\Services\WarehouseRowFifo::usedPalletsPerRow($wh->id);

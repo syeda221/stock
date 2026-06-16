@@ -23,6 +23,7 @@ class StockInItem extends Model
         'balance_quantity',
         'use_pallets',
         'pallets_used',
+        'pallet_start',
         'last_pallet_vacant',
         'sound_stock',
         'block_stock',
@@ -40,11 +41,26 @@ class StockInItem extends Model
         'balance_quantity' => 'decimal:4',
         'use_pallets' => 'boolean',
         'pallets_used' => 'integer',
+        'pallet_start' => 'integer',
         'last_pallet_vacant' => 'integer',
         'sound_stock' => 'boolean',
         'block_stock' => 'boolean',
         'hold_stock' => 'boolean',
     ];
+
+    public static function computeActivePallets($item): int
+    {
+        $maxPerPallet = $item->product?->cartons_per_pallet ?? null;
+
+        if ($maxPerPallet && $maxPerPallet > 0 && $item->pallets_used > 0) {
+            $packSize = $item->pack_size_snapshot > 0 ? $item->pack_size_snapshot : 1;
+            $remainingCartons = (int) ceil($item->balance_quantity / $packSize);
+            $computed = (int) ceil($remainingCartons / $maxPerPallet);
+            return max(1, min($computed, $item->pallets_used));
+        }
+
+        return $item->pallets_used ?? 0;
+    }
 
     public function stockIn()
     {

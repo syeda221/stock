@@ -136,9 +136,11 @@ class InboundController extends Controller
         $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name')->get();
 
         $warehouseData = $warehouses->map(function ($w) {
-            $usedPallets = StockInItem::where('warehouse_id', $w->id)
+            $usedPallets = StockInItem::with('product')
+                ->where('warehouse_id', $w->id)
                 ->where('balance_quantity', '>', 0)
-                ->sum('pallets_used');
+                ->get()
+                ->sum(fn($i) => StockInItem::computeActivePallets($i));
             $freePallets = $w->total_capacity ? max(0, $w->total_capacity - $usedPallets) : PHP_INT_MAX;
             return [
                 'id' => $w->id,
@@ -375,6 +377,7 @@ class InboundController extends Controller
 
                             'use_pallets'        => $splitPallets > 0,
                             'pallets_used'       => $splitPallets > 0 ? $splitPallets : null,
+                            'pallet_start'       => $split['pallet_start'] ?? null,
                             'last_pallet_vacant' => $lastVacant,
 
                             'sound_stock'        => ! empty($item['sound_stock']),
@@ -491,9 +494,11 @@ class InboundController extends Controller
 
         $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name')->get();
         $warehouseData = $warehouses->map(function ($w) {
-            $usedPallets = StockInItem::where('warehouse_id', $w->id)
+            $usedPallets = StockInItem::with('product')
+                ->where('warehouse_id', $w->id)
                 ->where('balance_quantity', '>', 0)
-                ->sum('pallets_used');
+                ->get()
+                ->sum(fn($i) => StockInItem::computeActivePallets($i));
             $freePallets = $w->total_capacity ? max(0, $w->total_capacity - $usedPallets) : PHP_INT_MAX;
             return [
                 'id' => $w->id,
@@ -502,19 +507,20 @@ class InboundController extends Controller
                 'used_pallets' => $usedPallets,
                 'free_pallets' => $freePallets,
                 'has_space' => $freePallets > 0,
-            ];
-        });
 
-        return view('inbound.edit', [
-            'stockIn' => $stockIn,
-            'groupedItems' => $groupedItems,
-            'warehouses' => $warehouses,
-            'warehouseData' => $warehouseData,
-            'products' => Product::where('status', 1)->orderBy('name')->get(),
-            'vendors' => Vendor::where('status', 1)->orderBy('name')->get(),
-            'transporters' => Transporter::where('status', 1)->orderBy('name')->get(),
-            'arrivedFroms' => ArrivedFrom::where('status', 1)->orderBy('name')->get(),
-        ]);
+            ];
+        })->values();
+
+        $vendors = Vendor::orderBy('name')->get();
+        $transporters = Transporter::orderBy('name')->get();
+        $arrivedFroms = ArrivedFrom::orderBy('name')->get();
+        $products = Product::with('uom', 'productGroup')->orderBy('name')->get();
+        $productGroups = ProductGroup::where('status', 1)->orderBy('name')->get();
+
+        return view('inbound.create', compact(
+            'warehouseData', 'vendors', 'transporters', 'arrivedFroms',
+            'products', 'productGroups'
+        ));
     }
 
     /**
@@ -730,6 +736,7 @@ class InboundController extends Controller
                     'balance_quantity'   => $splitQty,
                     'use_pallets'        => $splitPallets > 0,
                     'pallets_used'       => $splitPallets > 0 ? $splitPallets : null,
+                    'pallet_start'       => $split['pallet_start'] ?? null,
                     'last_pallet_vacant' => $lastVacant,
                     'sound_stock'        => !empty($itemData['sound_stock']),
                     'block_stock'        => !empty($itemData['block_stock']),

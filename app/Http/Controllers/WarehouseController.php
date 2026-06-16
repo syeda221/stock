@@ -172,9 +172,11 @@ class WarehouseController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function ($warehouse) {
-                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                $items = StockInItem::with('product')
+                    ->where('warehouse_id', $warehouse->id)
                     ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                    ->get();
+                $usedPallets = $items->sum(fn($i) => StockInItem::computeActivePallets($i));
                 $warehouse->used_pallets = (int) $usedPallets;
                 $warehouse->free_pallets = $warehouse->total_capacity
                     ? max(0, $warehouse->total_capacity - $usedPallets)
@@ -189,9 +191,11 @@ class WarehouseController extends Controller
     {
         $warehouse->load('rows');
         $rows = $warehouse->rows->map(function ($row) {
-            $usedPallets = StockInItem::where('warehouse_row_id', $row->id)
+            $items = StockInItem::with('product')
+                ->where('warehouse_row_id', $row->id)
                 ->where('balance_quantity', '>', 0)
-                ->sum('pallets_used');
+                ->get();
+            $usedPallets = $items->sum(fn($i) => StockInItem::computeActivePallets($i));
             $row->used_pallets = (int) $usedPallets;
             $row->free_pallets = $row->pallet_capacity
                 ? max(0, $row->pallet_capacity - $usedPallets)
@@ -208,66 +212,90 @@ class WarehouseController extends Controller
         $items = StockInItem::with('product')
             ->where('warehouse_row_id', $row->id)
             ->where('balance_quantity', '>', 0)
+            ->orderBy('pallet_start')
             ->orderBy('id')
             ->get();
 
-        $palletData = [];
-        $offset = 0;
+        $totalCapacity = $row->pallet_capacity;
+        $occupied = [];
+        $cumulativeOffset = 0;
 
         foreach ($items as $item) {
-            $start = $offset + 1;
-            $end = $offset + $item->pallets_used;
-
             $product = $item->product;
             $maxPerPallet = $product->cartons_per_pallet ?? null;
-            $totalCapacity = $maxPerPallet ? $item->pallets_used * $maxPerPallet : null;
-            $itemIsOverCapacity = $totalCapacity && $item->units_received > $totalCapacity;
 
-            // Distribute cartons: fill earlier pallets to max, last pallet gets remainder
-            $remainingUnits = $item->units_received;
+            if ($item->pallet_start !== null) {
+                $start = $item->pallet_start;
+            } else {
+                $start = $cumulativeOffset + 1;
+            }
 
-            for ($i = $start; $i <= $end; $i++) {
+            $activePallets = StockInItem::computeActivePallets($item);
+
+            $end = $start + $activePallets - 1;
+            $totalCapacityCheck = $maxPerPallet ? $item->pallets_used * $maxPerPallet : null;
+            $itemIsOverCapacity = $totalCapacityCheck && $item->units_received > $totalCapacityCheck;
+
+            $remainingUnits = $item->balance_quantity;
+
+            for ($i = $start; $i <= $end && $i <= $totalCapacity; $i++) {
                 if ($maxPerPallet) {
-                    $cartonQty = min($maxPerPallet, $remainingUnits);
-                    $remainingUnits -= $cartonQty;
+                    $maxPerPalletInUnits = $maxPerPallet * $item->pack_size_snapshot;
+                    $qty = min($maxPerPalletInUnits, $remainingUnits);
+                    $remainingUnits -= $qty;
                 } else {
-                    $cartonQty = $item->pallets_used > 0
-                        ? round($item->units_received / $item->pallets_used, 2)
-                        : $item->units_received;
+                    $qty = $activePallets > 0
+                        ? round($item->balance_quantity / $activePallets, 2)
+                        : $item->balance_quantity;
                 }
 
-                $palletData[] = [
+                $cartonQtyDisplay = $maxPerPallet ? $qty / $item->pack_size_snapshot : $qty;
+
+                $occupied[$i] = [
                     'pallet_number' => $i,
                     'product_name' => $product->name ?? '-',
                     'item_code' => $product->item_code ?? '-',
-                    'carton_qty' => $cartonQty,
+                    'carton_qty' => round($cartonQtyDisplay, 2),
                     'carton_capacity' => $maxPerPallet,
                     'is_empty' => false,
                     'is_over_capacity' => $itemIsOverCapacity,
                 ];
             }
-            $offset = $end;
+
+            $blockStart = $item->pallet_start !== null ? $item->pallet_start : $start;
+            if ($item->pallets_used > 0) {
+                $blockEnd = $blockStart + $item->pallets_used - 1;
+                if ($blockEnd > $cumulativeOffset) {
+                    $cumulativeOffset = $blockEnd;
+                }
+            }
         }
 
-        $totalCapacity = $row->pallet_capacity;
-        for ($i = $offset + 1; $i <= $totalCapacity; $i++) {
-            $palletData[] = [
-                'pallet_number' => $i,
-                'product_name' => null,
-                'item_code' => null,
-                'carton_qty' => 0,
-                'carton_capacity' => null,
-                'is_empty' => true,
-                'is_over_capacity' => false,
-            ];
+        $palletData = [];
+        for ($i = 1; $i <= $totalCapacity; $i++) {
+            if (isset($occupied[$i])) {
+                $palletData[] = $occupied[$i];
+            } else {
+                $palletData[] = [
+                    'pallet_number' => $i,
+                    'product_name' => null,
+                    'item_code' => null,
+                    'carton_qty' => 0,
+                    'carton_capacity' => null,
+                    'is_empty' => true,
+                    'is_over_capacity' => false,
+                ];
+            }
         }
+
+        $totalActive = count($occupied);
 
         return response()->json([
             'row' => $row,
             'pallets' => $palletData,
             'total_capacity' => $totalCapacity,
-            'used' => $offset,
-            'empty' => $totalCapacity - $offset,
+            'used' => $totalActive,
+            'empty' => $totalCapacity - $totalActive,
         ]);
     }
 
@@ -278,19 +306,23 @@ class WarehouseController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function ($warehouse) {
-                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                $items = StockInItem::with('product')
+                    ->where('warehouse_id', $warehouse->id)
                     ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                    ->get();
+
+                $byRow = $items->groupBy('warehouse_row_id');
+
+                $usedPallets = $items->sum(fn($i) => StockInItem::computeActivePallets($i));
                 $warehouse->used_pallets = (int) $usedPallets;
                 $warehouse->free_pallets = $warehouse->total_capacity
                     ? max(0, $warehouse->total_capacity - $usedPallets)
                     : null;
                 $warehouse->is_full = $warehouse->free_pallets !== null && $warehouse->free_pallets === 0;
 
-                $warehouse->rows->each(function ($row) use ($warehouse) {
-                    $used = StockInItem::where('warehouse_row_id', $row->id)
-                        ->where('balance_quantity', '>', 0)
-                        ->sum('pallets_used');
+                $warehouse->rows->each(function ($row) use ($byRow) {
+                    $rowItems = $byRow->get($row->id, collect());
+                    $used = $rowItems->sum(fn($i) => StockInItem::computeActivePallets($i));
                     $row->used_pallets = (int) $used;
                     $row->free_pallets = $row->pallet_capacity
                         ? max(0, $row->pallet_capacity - $used)

@@ -289,6 +289,7 @@ class OpeningStockController extends Controller
 
                                 'use_pallets'        => $splitPallets > 0,
                                 'pallets_used'       => $splitPallets > 0 ? $splitPallets : null,
+                                'pallet_start'       => $split['pallet_start'] ?? null,
                                 'last_pallet_vacant' => $lastVacant,
 
                                 'sound_stock'        => ! empty($item['sound_stock']),
@@ -380,10 +381,12 @@ class OpeningStockController extends Controller
                 }
 
                 // Check capacity (excluding the current item)
-                $usedPallets = StockInItem::where('warehouse_id', $warehouse->id)
+                $usedPallets = StockInItem::with('product')
+                    ->where('warehouse_id', $warehouse->id)
                     ->where('id', '!=', $item->id)
                     ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                    ->get()
+                    ->sum(fn($i) => StockInItem::computeActivePallets($i));
 
                 $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
 
@@ -969,6 +972,7 @@ class OpeningStockController extends Controller
                                 'balance_quantity'   => $splitQty,
                                 'use_pallets'        => $split['pallets'] > 0,
                                 'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                                'pallet_start'       => $split['pallet_start'] ?? null,
                                 'last_pallet_vacant' => $lastVacant,
                                 'sound_stock'        => !$item['blocked'] && !$item['hold'],
                                 'block_stock'        => $item['blocked'],

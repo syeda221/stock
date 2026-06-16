@@ -23,13 +23,18 @@ class WarehouseRowFifo
      */
     public static function usedPalletsPerRow(int $warehouseId): array
     {
-        return StockInItem::where('warehouse_id', $warehouseId)
+        $items = StockInItem::with('product')
+            ->where('warehouse_id', $warehouseId)
             ->where('balance_quantity', '>', 0)
             ->whereNotNull('warehouse_row_id')
-            ->groupBy('warehouse_row_id')
-            ->selectRaw('warehouse_row_id, COALESCE(SUM(pallets_used), 0) as total_used')
-            ->pluck('total_used', 'warehouse_row_id')
-            ->toArray();
+            ->get();
+
+        $result = [];
+        foreach ($items as $item) {
+            $rowId = $item->warehouse_row_id;
+            $result[$rowId] = ($result[$rowId] ?? 0) + StockInItem::computeActivePallets($item);
+        }
+        return $result;
     }
 
     /**
@@ -131,6 +136,7 @@ class WarehouseRowFifo
         $remaining      = $palletsNeeded;
         $remainingUnits = $totalUnits;
         $splits         = [];
+        $palletOffsets  = $used; // running offset per row (copied from current usage)
 
         foreach ($rows as $row) {
             if ($remaining <= 0) break;
@@ -151,11 +157,16 @@ class WarehouseRowFifo
                 $unitsHere = min($unitsHere, $remainingUnits);
             }
 
+            $currentOffset = (int) ($palletOffsets[$row->id] ?? 0);
+            $palletStart   = $currentOffset + 1;
+            $palletOffsets[$row->id] = $currentOffset + $palletsHere;
+
             $remaining      -= $palletsHere;
             $remainingUnits -= $unitsHere;
 
             $splits[] = [
                 'warehouse_row_id' => $row->id,
+                'pallet_start'     => $palletStart,
                 'pallets'          => $palletsHere,
                 'units'            => $unitsHere,
                 'qty'              => round($unitsHere * $packSize, 4),
@@ -168,12 +179,18 @@ class WarehouseRowFifo
             $last    = count($splits) - 1;
 
             if ($splits && $splits[$last]['warehouse_row_id'] === $lastRow->id) {
-                $splits[$last]['pallets'] += $remaining;
-                $splits[$last]['units']   += $remainingUnits;
-                $splits[$last]['qty']     += round($remainingUnits * $packSize, 4);
+                $currentOffset = (int) ($palletOffsets[$lastRow->id] ?? 0);
+                $palletStart   = $currentOffset + 1;
+                $splits[$last]['pallets']      += $remaining;
+                $splits[$last]['units']        += $remainingUnits;
+                $splits[$last]['qty']          += round($remainingUnits * $packSize, 4);
+                $splits[$last]['pallet_start']  = $palletStart;
             } else {
+                $currentOffset = (int) ($palletOffsets[$lastRow->id] ?? 0);
+                $palletStart   = $currentOffset + 1;
                 $splits[] = [
                     'warehouse_row_id' => $lastRow->id,
+                    'pallet_start'     => $palletStart,
                     'pallets'          => $remaining,
                     'units'            => $remainingUnits,
                     'qty'              => round($remainingUnits * $packSize, 4),

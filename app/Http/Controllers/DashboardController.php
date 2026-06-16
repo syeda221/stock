@@ -116,9 +116,11 @@ class DashboardController extends Controller
         $warehouseCapacity = Warehouse::withCount('rows')
             ->get()
             ->map(function ($w) {
-                $used = \App\Models\StockInItem::where('warehouse_id', $w->id)
+                $used = \App\Models\StockInItem::with('product')
+                    ->where('warehouse_id', $w->id)
                     ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                    ->get()
+                    ->sum(fn($i) => \App\Models\StockInItem::computeActivePallets($i));
                 $total = $w->rows->sum('pallet_capacity');
                 return [
                     'name' => $w->name,

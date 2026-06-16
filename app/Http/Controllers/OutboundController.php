@@ -118,9 +118,11 @@ class OutboundController extends Controller
             $wh = Warehouse::find($wid);
             if ($wh) {
                 $totalCapacity = $wh->total_capacity ?: $wh->rows()->sum('pallet_capacity');
-                $usedPallets = StockInItem::where('warehouse_id', $wid)
+                $usedPallets = StockInItem::with('product')
+                    ->where('warehouse_id', $wid)
                     ->where('balance_quantity', '>', 0)
-                    ->sum('pallets_used');
+                    ->get()
+                    ->sum(fn($i) => StockInItem::computeActivePallets($i));
                 $warehouseCapacities[$wid] = max(0, $totalCapacity - $usedPallets);
             }
         }
@@ -239,9 +241,11 @@ class OutboundController extends Controller
                             $totalPalletsNeeded += (int) ($it['pallets_returned'] ?? 0);
                         }
 
-                        $usedPallets = \App\Models\StockInItem::where('warehouse_id', $destinationWarehouse->id)
+                        $usedPallets = \App\Models\StockInItem::with('product')
+                            ->where('warehouse_id', $destinationWarehouse->id)
                             ->where('balance_quantity', '>', 0)
-                            ->sum('pallets_used');
+                            ->get()
+                            ->sum(fn($i) => \App\Models\StockInItem::computeActivePallets($i));
                         $freePallets = max(0, $destinationWarehouse->total_capacity - $usedPallets);
 
                         if ($freePallets < $totalPalletsNeeded) {
@@ -353,43 +357,40 @@ class OutboundController extends Controller
                         }
                         $palletsDistributed += $palletsToTake;
 
-                        // Decrement pallets_used from source batch if applicable
-                        if ($palletsToTake > 0 && $batch->pallets_used > 0) {
-                            $palletsToDeduct = min($palletsToTake, $batch->pallets_used);
-                            $batch->decrement('pallets_used', $palletsToDeduct);
-                        }
+                        /* ===== CREATE OUTBOUND ITEMS (one per pallet consumed) ===== */
+                        $effectivePallets = max(1, $palletsToTake);
+                        $perPalletUnits = $unitsToTake / $effectivePallets;
+                        $perPalletQty = $qtyToTake / $effectivePallets;
+                        $palletUnitsRemaining = $unitsToTake;
+                        $palletQtyRemaining = $qtyToTake;
 
-                        // Recalculate last_pallet_vacant after dispatch
-                        if ($batch->pallets_used > 0 && $batch->balance_quantity > 0) {
-                            $prod = $batch->product;
-                            if ($prod && $prod->cartons_per_pallet > 0) {
-                                $remainingCartons = (int) round($batch->balance_quantity / max(1, $batch->pack_size_snapshot));
-                                $newVacant = max(0, ($batch->pallets_used * $prod->cartons_per_pallet) - $remainingCartons);
-                                StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => $newVacant]);
-                            }
-                        } else {
-                            StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => 0]);
-                        }
+                        for ($p = 0; $p < $effectivePallets; $p++) {
+                            $isLastPallet = ($p === $effectivePallets - 1);
+                            $thisUnits = $isLastPallet ? $palletUnitsRemaining : round($perPalletUnits);
+                            $thisQty = $isLastPallet ? $palletQtyRemaining : round($perPalletQty, 3);
+                            $palletUnitsRemaining -= $thisUnits;
+                            $palletQtyRemaining -= $thisQty;
 
-                        /* ===== CREATE OUTBOUND ITEM ===== */
-                        StockOutItem::create([
-                            'stock_out_id'        => $stockOut->id,
-                            'stock_in_item_id'    => $batch->id,
-                            'product_id'          => $batch->product_id,
-                            'warehouse_id'        => $batch->warehouse_id,
-                            'warehouse_row_id'    => $batch->warehouse_row_id,
-                            'sap_batch'           => $batch->sap_batch,
-                            'vendor_batch'        => $batch->vendor_batch,
-                            'units_dispatch'      => $unitsToTake,
-                            'pack_size_snapshot'  => $pack,
-                            'dispatch_quantity'   => $qtyToTake,
-                            'po_no'               => $userPo ?: $batch->po_no,
-                            'ibd_no'              => $userIbd ?: $batch->ibd_no,
-                            'sto_no'              => $stoNo,
-                            'mfg_date'            => $batch->mfg_date,
-                            'expiry_date'         => $batch->expiry_date,
-                            'pallets_returned'    => $palletsToTake,
-                        ]);
+                            StockOutItem::create([
+                                'stock_out_id'        => $stockOut->id,
+                                'stock_in_item_id'    => $batch->id,
+                                'product_id'          => $batch->product_id,
+                                'warehouse_id'        => $batch->warehouse_id,
+                                'warehouse_row_id'    => $batch->warehouse_row_id,
+                                'sap_batch'           => $batch->sap_batch,
+                                'vendor_batch'        => $batch->vendor_batch,
+                                'units_dispatch'      => $thisUnits,
+                                'pack_size_snapshot'  => $pack,
+                                'dispatch_quantity'   => $thisQty,
+                                'po_no'               => $userPo ?: $batch->po_no,
+                                'ibd_no'              => $userIbd ?: $batch->ibd_no,
+                                'sto_no'              => $stoNo,
+                                'mfg_date'            => $batch->mfg_date,
+                                'expiry_date'         => $batch->expiry_date,
+                                'pallets_returned'    => 1,
+                                'pallet_position'     => $palletsToTake > 0 ? ($p + 1) : null,
+                            ]);
+                        }
 
                         /* ===== TRANSFER → CREATE INBOUND ITEM ===== */
                         if ($request->outbound_type === 'warehouse') {
@@ -426,6 +427,7 @@ class OutboundController extends Controller
                                     'balance_quantity'   => $split['qty'],
                                     'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
                                     'use_pallets'        => $split['pallets'] > 0,
+                                    'pallet_start'       => $split['pallet_start'] ?? null,
                                     'last_pallet_vacant' => 0,
                                     'quality_clearance'  => $batch->quality_clearance ?? 'approved',
                                     'sound_stock'        => $batch->sound_stock ?? true,
@@ -551,14 +553,11 @@ class OutboundController extends Controller
 
                 $firstItem = collect($request->items)->first();
 
-                // 1. Revert Existing Items
+                // 1. Revert Existing Items (balance only — never modify inbound pallets_used)
                 foreach ($stockOut->items as $item) {
                     $sourceBatch = StockInItem::lockForUpdate()->find($item->stock_in_item_id);
                     if ($sourceBatch) {
                         $sourceBatch->increment('balance_quantity', $item->dispatch_quantity);
-                        if ($item->pallets_returned > 0) {
-                            $sourceBatch->increment('pallets_used', $item->pallets_returned);
-                        }
                     }
                 }
                 
@@ -645,41 +644,40 @@ class OutboundController extends Controller
                         }
                         $palletsDistributed += $palletsToTake;
 
-                        if ($palletsToTake > 0 && $batch->pallets_used > 0) {
-                            $palletsToDeduct = min($palletsToTake, $batch->pallets_used);
-                            $batch->decrement('pallets_used', $palletsToDeduct);
-                        }
+                        /* ===== CREATE OUTBOUND ITEMS (one per pallet consumed) ===== */
+                        $effectivePallets = max(1, $palletsToTake);
+                        $perPalletUnits = $unitsToTake / $effectivePallets;
+                        $perPalletQty = $qtyToTake / $effectivePallets;
+                        $palletUnitsRemaining = $unitsToTake;
+                        $palletQtyRemaining = $qtyToTake;
 
-                        // Recalculate last_pallet_vacant after dispatch
-                        if ($batch->pallets_used > 0 && $batch->balance_quantity > 0) {
-                            $prod = $batch->product;
-                            if ($prod && $prod->cartons_per_pallet > 0) {
-                                $remainingCartons = (int) round($batch->balance_quantity / max(1, $batch->pack_size_snapshot));
-                                $newVacant = max(0, ($batch->pallets_used * $prod->cartons_per_pallet) - $remainingCartons);
-                                StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => $newVacant]);
-                            }
-                        } else {
-                            StockInItem::where('id', $batch->id)->update(['last_pallet_vacant' => 0]);
-                        }
+                        for ($p = 0; $p < $effectivePallets; $p++) {
+                            $isLastPallet = ($p === $effectivePallets - 1);
+                            $thisUnits = $isLastPallet ? $palletUnitsRemaining : round($perPalletUnits);
+                            $thisQty = $isLastPallet ? $palletQtyRemaining : round($perPalletQty, 3);
+                            $palletUnitsRemaining -= $thisUnits;
+                            $palletQtyRemaining -= $thisQty;
 
-                        StockOutItem::create([
-                            'stock_out_id'        => $stockOut->id,
-                            'stock_in_item_id'    => $batch->id,
-                            'product_id'          => $batch->product_id,
-                            'warehouse_id'        => $batch->warehouse_id,
-                            'warehouse_row_id'    => $batch->warehouse_row_id,
-                            'sap_batch'           => $batch->sap_batch,
-                            'vendor_batch'        => $batch->vendor_batch,
-                            'units_dispatch'      => $unitsToTake,
-                            'pack_size_snapshot'  => $pack,
-                            'dispatch_quantity'   => $qtyToTake,
-                            'po_no'               => $userPo ?: $batch->po_no,
-                            'ibd_no'              => $userIbd ?: $batch->ibd_no,
-                            'sto_no'              => $stoNo,
-                            'mfg_date'            => $batch->mfg_date,
-                            'expiry_date'         => $batch->expiry_date,
-                            'pallets_returned'    => $palletsToTake,
-                        ]);
+                            StockOutItem::create([
+                                'stock_out_id'        => $stockOut->id,
+                                'stock_in_item_id'    => $batch->id,
+                                'product_id'          => $batch->product_id,
+                                'warehouse_id'        => $batch->warehouse_id,
+                                'warehouse_row_id'    => $batch->warehouse_row_id,
+                                'sap_batch'           => $batch->sap_batch,
+                                'vendor_batch'        => $batch->vendor_batch,
+                                'units_dispatch'      => $thisUnits,
+                                'pack_size_snapshot'  => $pack,
+                                'dispatch_quantity'   => $thisQty,
+                                'po_no'               => $userPo ?: $batch->po_no,
+                                'ibd_no'              => $userIbd ?: $batch->ibd_no,
+                                'sto_no'              => $stoNo,
+                                'mfg_date'            => $batch->mfg_date,
+                                'expiry_date'         => $batch->expiry_date,
+                                'pallets_returned'    => 1,
+                                'pallet_position'     => $palletsToTake > 0 ? ($p + 1) : null,
+                            ]);
+                        }
 
                         $unitsRemaining -= $unitsToTake;
                     }

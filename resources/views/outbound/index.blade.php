@@ -220,25 +220,34 @@
 
                         if ($item->warehouse_row_id || ($sourceItem && $sourceItem->warehouse_row_id)) {
                             $rowId = $item->warehouse_row_id ?? $sourceItem->warehouse_row_id;
-                            $pallets = $item->pallets_returned > 0 ? $item->pallets_returned : ($sourceItem->pallets_used ?? 0);
-                            
-                            if ($pallets > 0) {
+
+                            if ($item->pallet_position) {
                                 $offset = 0;
                                 if ($sourceItem) {
                                     $offset = \App\Models\StockInItem::where('warehouse_row_id', $rowId)
                                         ->where('id', '<', $sourceItem->id)
-                                        ->sum('pallets_used'); // Don't filter by balance_quantity > 0 to maintain original position history
+                                        ->sum('pallets_used');
                                 }
-                                $start = $offset + 1;
-                                $end = $offset + $pallets;
-                                
-                                if ($start == $end) {
-                                    $palletLocationStr = "Row " . $rowName . " (Pallet " . $start . ")";
-                                } else {
-                                    $palletLocationStr = "Row " . $rowName . " (Pallets " . $start . "-" . $end . ")";
-                                }
+                                $palletLocationStr = "Row " . $rowName . " (Pallet " . ($offset + $item->pallet_position) . ")";
                             } else {
-                                $palletLocationStr = "Row " . $rowName;
+                                $pallets = $item->pallets_returned > 0 ? $item->pallets_returned : 0;
+                                if ($pallets > 0) {
+                                    $offset = 0;
+                                    if ($sourceItem) {
+                                        $offset = \App\Models\StockInItem::where('warehouse_row_id', $rowId)
+                                            ->where('id', '<', $sourceItem->id)
+                                            ->sum('pallets_used');
+                                    }
+                                    $start = $offset + 1;
+                                    $end = $offset + $pallets;
+                                    if ($start == $end) {
+                                        $palletLocationStr = "Row " . $rowName . " (Pallet " . $start . ")";
+                                    } else {
+                                        $palletLocationStr = "Row " . $rowName . " (Pallets " . $start . "-" . $end . ")";
+                                    }
+                                } else {
+                                    $palletLocationStr = "Row " . $rowName;
+                                }
                             }
                         }
 
