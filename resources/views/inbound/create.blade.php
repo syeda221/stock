@@ -57,7 +57,7 @@
                         </select>
                         @if($autoSelectWarehouseId)
                             <small class="text-muted" id="warehouseHint">
-                                <i class="bi bi-info-circle"></i> Auto-selected warehouse with most free space
+                                <i class="bi bi-info-circle"></i> Auto-selected first available warehouse by priority
                             </small>
                         @endif
                     </div>

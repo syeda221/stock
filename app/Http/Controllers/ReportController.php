@@ -962,7 +962,7 @@ $item->hold_stock ? 'Yes' : 'No',
             // Apply warehouse filter
             if ($request->filled('warehouse_id')) {
                 $openingQuery->where('stock_ins.warehouse_id', $request->warehouse_id);
-                $inboundQuery->where('stock_ins.warehouse_id', $request->warehouse_id);
+                $inboundQuery->where('stock_in_items.warehouse_id', $request->warehouse_id);
                 $outboundQuery->join('stock_outs', 'stock_out_items.stock_out_id', '=', 'stock_outs.id')
                     ->where('stock_outs.warehouse_id', $request->warehouse_id);
                 $balanceQuery->join('stock_ins as si', 'stock_in_items.stock_in_id', '=', 'si.id')
@@ -1133,7 +1133,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $inboundQuery = DB::table('stock_in_items')
             ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
             ->join('products', 'stock_in_items.product_id', '=', 'products.id')
-            ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('product_categories', 'products.product_category_id', '=', 'product_categories.id')
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
@@ -1179,7 +1179,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Apply filters to inbound
         if ($request->filled('warehouse_id')) {
-            $inboundQuery->where('stock_ins.warehouse_id', $request->warehouse_id);
+            $inboundQuery->where('stock_in_items.warehouse_id', $request->warehouse_id);
         }
         if ($request->filled('product_id')) {
             $inboundQuery->where('stock_in_items.product_id', $request->product_id);
@@ -1486,7 +1486,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $inboundQuery = DB::table('stock_in_items')
             ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
             ->join('products', 'stock_in_items.product_id', '=', 'products.id')
-            ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('product_categories', 'products.product_category_id', '=', 'product_categories.id')
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
@@ -1532,7 +1532,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Apply filters to inbound
         if ($request->filled('warehouse_id')) {
-            $inboundQuery->where('stock_ins.warehouse_id', $request->warehouse_id);
+            $inboundQuery->where('stock_in_items.warehouse_id', $request->warehouse_id);
         }
         if ($request->filled('product_id')) {
             $inboundQuery->where('stock_in_items.product_id', $request->product_id);

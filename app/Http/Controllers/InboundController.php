@@ -152,7 +152,7 @@ class InboundController extends Controller
             ];
         });
 
-        $autoSelectId = $warehouseData->where('has_space', true)->sortByDesc('free_pallets')->first()['id'] ?? null;
+        $autoSelectId = $warehouseData->firstWhere('has_space', true)['id'] ?? null;
 
         return view('inbound.create', [
             'warehouses' => $warehouses,
@@ -216,12 +216,26 @@ class InboundController extends Controller
         try {
             DB::transaction(function () use ($request, &$stockIn) {
 
+                // Determine warehouse sequence: primary (user-selected/auto) first, then others by name
+                $primaryWarehouse = Warehouse::findOrFail($request->warehouse_id);
+                $otherWarehouses = Warehouse::where('status', 1)
+                    ->where('id', '!=', $primaryWarehouse->id)
+                    ->orderBy('name')
+                    ->get();
+                $whSequence = collect([$primaryWarehouse])->concat($otherWarehouses);
+
+                // Pre-compute free capacity for each warehouse
+                $freeCapacity = [];
+                foreach ($whSequence as $wh) {
+                    $freeCapacity[$wh->id] = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                }
+
                 /** -----------------------------
                  *  1️⃣ Inbound Header
                  * ----------------------------- */
                 $stockIn = StockIn::create([
                     'source_type' => 'inbound',
-                    'warehouse_id' => $request->warehouse_id,
+                    'warehouse_id' => $primaryWarehouse->id,
                     'inbound_invoice_no' => $this->generateDispatchedInvoiceNo(),
                     'vendor_id' => $request->vendor_id,
                     'arrived_from_id' => $request->arrived_from_id,
@@ -250,9 +264,8 @@ class InboundController extends Controller
                 ]);
 
             /** -----------------------------
-             * 2️⃣ Pallet Capacity Validation
+             * 2️⃣ Pallet Capacity Validation (multi-warehouse)
              * ----------------------------- */
-            $warehouse = Warehouse::findOrFail($request->warehouse_id);
             $totalPallets = 0;
 
             foreach ($request->items as $item) {
@@ -266,10 +279,9 @@ class InboundController extends Controller
                 }
             }
 
-            $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($warehouse->id);
-
-            if ($freeRowCapacity < $totalPallets) {
-                throw new \Exception("Warehouse is full. Cannot inbound more stock to {$warehouse->name}. Only {$freeRowCapacity} pallet slots available across all rows, but {$totalPallets} needed.");
+            $totalFree = array_sum($freeCapacity);
+            if ($totalFree < $totalPallets) {
+                throw new \Exception("Insufficient total warehouse capacity. Need {$totalPallets} pallets, but only {$totalFree} available across all warehouses.");
             }
 
             // Validate per-item: pallet count must be sufficient for cartons
@@ -293,8 +305,10 @@ class InboundController extends Controller
             }
 
             /** -----------------------------
-             *  3️⃣ Stock Items (Batch Wise) — FIFO Row Auto-Assignment
+             *  3️⃣ Stock Items — Sequential Multi-Warehouse Fill
              * ----------------------------- */
+            $remainingFree = $freeCapacity;
+
             foreach ($request->items as $item) {
                 if (empty($item['product_id']) || empty($item['units_received'])) continue;
 
@@ -302,9 +316,9 @@ class InboundController extends Controller
                 $units    = (int) $item['units_received'];
                 $packSize = (float) $product->pack_size;
 
-                // Step 1: Fill partial pallets of the same product first
+                // Step 1: Fill partial pallets of the same product in the primary warehouse
                 $partialResult = WarehouseRowFifo::fillPartials(
-                    $warehouse->id,
+                    $primaryWarehouse->id,
                     $product->id,
                     $units,
                     $packSize,
@@ -322,28 +336,41 @@ class InboundController extends Controller
                 }
 
                 $remainingUnits = $partialResult['remaining_units'];
+                if ($remainingUnits <= 0) continue;
 
-                // Step 2: Handle remaining units with new pallets
-                if ($remainingUnits > 0) {
-                    $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                // Compute pallets needed for remaining units
+                $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                    $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+                }
 
-                    if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
-                        $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+                if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
+                    $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
+                    if ($remainingUnits > $maxUnits) {
+                        throw new \Exception(
+                            "Product {$product->name}: {$remainingUnits} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet)."
+                        );
                     }
+                }
 
-                    if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
-                        $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
-                        if ($remainingUnits > $maxUnits) {
-                            throw new \Exception(
-                                "Product {$product->name}: {$remainingUnits} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet)."
-                            );
-                        }
-                    }
+                // Step 2: Allocate remaining units across warehouses in priority sequence
+                foreach ($whSequence as $wh) {
+                    if ($remainingUnits <= 0) break;
+
+                    $available = max(0, $remainingFree[$wh->id]);
+                    if ($available <= 0) continue;
+
+                    $palletsHere = min($palletsNeeded, $available);
+                    if ($palletsHere <= 0) continue;
+
+                    $unitsHere = (int) round($remainingUnits * ($palletsHere / $palletsNeeded));
+                    $unitsHere = min($unitsHere, $remainingUnits);
+                    if ($unitsHere <= 0) continue;
 
                     $splits = WarehouseRowFifo::assign(
-                        $warehouse->id,
-                        $palletsNeeded,
-                        $remainingUnits,
+                        $wh->id,
+                        $palletsHere,
+                        $unitsHere,
                         $packSize
                     );
 
@@ -359,7 +386,7 @@ class InboundController extends Controller
                         StockInItem::create([
                             'stock_in_id'        => $stockIn->id,
                             'product_id'         => $product->id,
-                            'warehouse_id'       => $warehouse->id,
+                            'warehouse_id'       => $wh->id,
                             'warehouse_row_id'   => $split['warehouse_row_id'],
 
                             'sap_batch'          => $item['sap_batch'] ?? null,
@@ -390,6 +417,10 @@ class InboundController extends Controller
                             'packing_snapshot'   => optional($product->packingType)->name,
                         ]);
                     }
+
+                    $remainingFree[$wh->id] -= $palletsHere;
+                    $palletsNeeded -= $palletsHere;
+                    $remainingUnits -= $unitsHere;
                 }
             }
         });
@@ -674,14 +705,26 @@ class InboundController extends Controller
     /**
      * Helper to create FIFO split items
      */
-    private function createItemSplits($stockIn, $warehouse, $product, $itemData)
+    private function createItemSplits($stockIn, $primaryWarehouse, $product, $itemData)
     {
+        // Build warehouse sequence: primary first, then others by name
+        $otherWarehouses = Warehouse::where('status', 1)
+            ->where('id', '!=', $primaryWarehouse->id)
+            ->orderBy('name')
+            ->get();
+        $whSequence = collect([$primaryWarehouse])->concat($otherWarehouses);
+
+        $freeCapacity = [];
+        foreach ($whSequence as $wh) {
+            $freeCapacity[$wh->id] = \App\Services\WarehouseRowFifo::getFreeRowCapacity($wh->id);
+        }
+
         $units = (float) $itemData['units_received'];
         $packSize = (float) $product->pack_size;
 
-        // Step 1: Fill partial pallets first
+        // Step 1: Fill partial pallets in the primary warehouse
         $partialResult = \App\Services\WarehouseRowFifo::fillPartials(
-            $warehouse->id,
+            $primaryWarehouse->id,
             $product->id,
             $units,
             $packSize,
@@ -699,16 +742,30 @@ class InboundController extends Controller
         }
 
         $remainingUnits = $partialResult['remaining_units'];
+        if ($remainingUnits <= 0) return;
 
-        // Step 2: New pallets for remaining units
-        if ($remainingUnits > 0) {
-            $palletsNeeded = (int) ($itemData['pallets_used'] ?? 0);
+        $palletsNeeded = (int) ($itemData['pallets_used'] ?? 0);
+        if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+            $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+        }
 
-            if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
-                $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
-            }
+        // Step 2: Allocate remaining units across warehouses in priority sequence
+        $remainingFree = $freeCapacity;
 
-            $splits = \App\Services\WarehouseRowFifo::assign($warehouse->id, $palletsNeeded, $remainingUnits, $packSize);
+        foreach ($whSequence as $wh) {
+            if ($remainingUnits <= 0) break;
+
+            $available = max(0, $remainingFree[$wh->id]);
+            if ($available <= 0) continue;
+
+            $palletsHere = min($palletsNeeded, $available);
+            if ($palletsHere <= 0) continue;
+
+            $unitsHere = (int) round($remainingUnits * ($palletsHere / $palletsNeeded));
+            $unitsHere = min($unitsHere, $remainingUnits);
+            if ($unitsHere <= 0) continue;
+
+            $splits = \App\Services\WarehouseRowFifo::assign($wh->id, $palletsHere, $unitsHere, $packSize);
 
             foreach ($splits as $split) {
                 $splitUnits   = $split['units'];
@@ -722,7 +779,7 @@ class InboundController extends Controller
                 StockInItem::create([
                     'stock_in_id'        => $stockIn->id,
                     'product_id'         => $product->id,
-                    'warehouse_id'       => $warehouse->id,
+                    'warehouse_id'       => $wh->id,
                     'warehouse_row_id'   => $split['warehouse_row_id'],
                     'sap_batch'          => $itemData['sap_batch'] ?? null,
                     'vendor_batch'       => $itemData['vendor_batch'] ?? null,
@@ -748,6 +805,10 @@ class InboundController extends Controller
                     'packing_snapshot'   => optional($product->packingType)->name,
                 ]);
             }
+
+            $remainingFree[$wh->id] -= $palletsHere;
+            $palletsNeeded -= $palletsHere;
+            $remainingUnits -= $unitsHere;
         }
     }
 }
