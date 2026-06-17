@@ -1251,7 +1251,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
                 // Expand: one row per pallet with sequential carton fill
                 $numPallets = $entry->pallets_used;
@@ -1284,7 +1284,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $assignedBalance += $clone->balance_quantity;
 
                     $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
-                    $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);
                 }
             } else {
@@ -1292,9 +1292,9 @@ $item->hold_stock ? 'Yes' : 'No',
                     $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
-                        $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                         $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
-                        $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                        $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     }
                 }
                 $expandedInbound->push($entry);
@@ -1430,9 +1430,9 @@ $item->hold_stock ? 'Yes' : 'No',
                         $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
                         $rowLetter = $rowLetterMap[$rowKey] ?? '';
                         if ($rowLetter) {
-                            $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                            $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                             $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
-                            $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                            $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                         }
                     }
                 }
@@ -1604,7 +1604,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
                 // Expand: one row per pallet with sequential carton fill
                 $numPallets = $entry->pallets_used;
@@ -1637,7 +1637,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $assignedBalance += $clone->balance_quantity;
 
                     $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
-                    $clone->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                    $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);
                 }
             } else {
@@ -1645,9 +1645,9 @@ $item->hold_stock ? 'Yes' : 'No',
                     $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
-                        $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                         $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
-                        $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                        $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     }
                 }
                 $expandedInbound->push($entry);
@@ -1783,9 +1783,9 @@ $item->hold_stock ? 'Yes' : 'No',
                         $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
                         $rowLetter = $rowLetterMap[$rowKey] ?? '';
                         if ($rowLetter) {
-                            $whPadded = str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                            $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                             $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
-                            $entry->warehouse_display = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                            $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                         }
                     }
                 }

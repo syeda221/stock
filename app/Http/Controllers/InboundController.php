@@ -545,12 +545,12 @@ class InboundController extends Controller
         $vendors = Vendor::orderBy('name')->get();
         $transporters = Transporter::orderBy('name')->get();
         $arrivedFroms = ArrivedFrom::orderBy('name')->get();
-        $products = Product::with('uom', 'productGroup')->orderBy('name')->get();
+        $products = Product::with('uom', 'group')->orderBy('name')->get();
         $productGroups = ProductGroup::where('status', 1)->orderBy('name')->get();
 
-        return view('inbound.create', compact(
-            'warehouseData', 'vendors', 'transporters', 'arrivedFroms',
-            'products', 'productGroups'
+        return view('inbound.edit', compact(
+            'stockIn', 'warehouses', 'warehouseData', 'vendors', 'transporters', 'arrivedFroms',
+            'products', 'productGroups', 'groupedItems'
         ));
     }
 
