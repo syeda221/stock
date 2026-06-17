@@ -156,6 +156,17 @@ Route::get('/outbound', [OutboundController::class, 'index'])->name('outbound.in
 Route::get('/outbound/create', [OutboundController::class, 'create'])->name('outbound.create');
 Route::post('/outbound', [OutboundController::class, 'store'])->name('outbound.store');
 
+// Static routes BEFORE parameterized {stockOut}
+Route::get('/outbound/export/csv', [OutboundController::class, 'export'])->name('outbound.export');
+Route::get('/outbound/import/template', [OutboundController::class, 'downloadTemplate'])->name('outbound.import.template');
+Route::get('/outbound/import', [OutboundController::class, 'importForm'])->name('outbound.import');
+Route::post('/outbound/import', [OutboundController::class, 'importStore'])->name('outbound.import.store');
+
+// PRODUCT STOCK AJAX
+Route::get('/outbound/product-stock/{product}',
+    [OutboundController::class, 'productStock']
+)->name('outbound.product.stock');
+
 // QUICK VIEW (modal / page)
 Route::get('/outbound/{stockOut}', [OutboundController::class, 'show'])
     ->name('outbound.show');
@@ -168,21 +179,11 @@ Route::get('/outbound/{stockOut}/invoice', [OutboundController::class, 'invoice'
 Route::get('/outbound/{stockOut}/dc', [OutboundController::class, 'dc'])
     ->name('outbound.dc');
 
-// PRODUCT STOCK AJAX
-Route::get('/outbound/product-stock/{product}',
-    [OutboundController::class, 'productStock']
-)->name('outbound.product.stock');
-
 Route::get('/outbound/{stockOut}/print', [OutboundController::class, 'print'])->name('outbound.print');
 // FUTURE (ready but baad mein use)
 Route::get('/outbound/{stockOut}/edit', [OutboundController::class, 'edit'])->name('outbound.edit');
 Route::put('/outbound/{stockOut}', [OutboundController::class, 'update'])->name('outbound.update');
 Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->name('outbound.destroy');
-
-Route::get('/outbound/export/csv', [OutboundController::class, 'export'])->name('outbound.export');
-Route::get('/outbound/import/template', [OutboundController::class, 'downloadTemplate'])->name('outbound.import.template');
-Route::get('/outbound/import', [OutboundController::class, 'importForm'])->name('outbound.import');
-Route::post('/outbound/import', [OutboundController::class, 'importStore'])->name('outbound.import.store');
 
     // Reporting Routes
     Route::prefix('reports')->name('reports.')->group(function () {

@@ -38,9 +38,9 @@
                     @csrf
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold small">Source Warehouse <small class="text-muted">(optional — leave empty to pick from all warehouses)</small></label>
+                        <label class="form-label fw-semibold small">Source Warehouse</label>
                         <select name="warehouse_id" class="form-select">
-                            <option value="">All Warehouses</option>
+                            <option value="">Auto (any warehouse)</option>
                             @foreach($warehouses as $w)
                                 <option value="{{ $w->id }}">{{ $w->name }}</option>
                             @endforeach
@@ -60,13 +60,14 @@
                         <label class="form-label fw-semibold small">CSV Format</label>
                         <div style="font-size: 13px; background: #f8fafc; padding: 1rem; border-radius: 8px;">
                             <p class="mb-2 fw-semibold">Required headers:</p>
-                            <code style="font-size: 12px;">Item Code, Units Dispatched, Type (sale/transfer), PO, IBD, STO, Pallets, Customer, Remarks</code>
+                            <code style="font-size: 12px;">Item Code, Units Dispatched, Type (sale/transfer), PO, IBD, STO, Customer, Remarks</code>
                             <hr class="my-2">
                             <p class="mb-1 fw-semibold">Notes:</p>
                             <ul class="mb-0" style="font-size: 12px;">
                                 <li><strong>Item Code</strong> must exist in Products</li>
                                 <li><strong>Units Dispatched</strong> — number of cartons to dispatch</li>
                                 <li><strong>Type</strong> — <code>sale</code> or <code>transfer</code></li>
+                                <li><strong>Pallets auto-calculated</strong> from product's <code>cartons_per_pallet</code></li>
                                 <li><strong>System uses FIFO</strong> to pick from available stock</li>
                                 <li><strong>Dates</strong>: YYYY-MM-DD format</li>
                             </ul>

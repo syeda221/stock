@@ -1385,6 +1385,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Only get outbound if not filtering specifically for inbound types
         if (!$request->filled('source_type') || !in_array($request->source_type, ['opening', 'inbound'])) {
+            if ($request->filled('source_type')) {
+                $outboundQuery->where('stock_outs.source_type', $request->source_type);
+            }
             $outboundData = $outboundQuery->get();
         } else {
             $outboundData = collect();
@@ -1755,6 +1758,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Only get outbound if not filtering specifically for inbound types
         if (!$request->filled('source_type') || !in_array($request->source_type, ['opening', 'inbound'])) {
+            if ($request->filled('source_type')) {
+                $outboundQuery->where('stock_outs.source_type', $request->source_type);
+            }
             $outboundData = $outboundQuery->get();
         } else {
             $outboundData = collect();

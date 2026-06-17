@@ -906,19 +906,24 @@ class OutboundController extends Controller
         ];
 
         $callback = function () {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Type',
-                'Units Dispatched', 'Pallets', 'Customer', 'PO', 'IBD', 'STO',
-                'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date', 'Remarks'
-            ]);
-            fputcsv($file, [
-                '001', 'Sample Product', '', 'sale',
-                '100', '5', '', 'PO-001', 'IBD-001', '',
-                '', '', '2024-01-15', '2025-01-15', ''
-            ]);
-            fclose($file);
-        };
+        $file = fopen('php://output', 'w');
+        fputcsv($file, [
+            'Item Code', 'Product Name', 'Warehouse', 'Type',
+            'Units Dispatched', 'Customer', 'PO', 'IBD', 'STO',
+            'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date', 'Remarks'
+        ]);
+        fputcsv($file, [
+            '001', 'Sample Product', '', 'sale',
+            '100', '', 'PO-001', 'IBD-001', '',
+            '', '', '2024-01-15', '2025-01-15', ''
+        ]);
+        fputcsv($file, [
+            '002', 'Sample Product 2', 'Main Warehouse', 'transfer',
+            '50', '', 'PO-002', '', 'STO-001',
+            '', '', '', '', ''
+        ]);
+        fclose($file);
+    };
 
         return response()->stream($callback, 200, $headers);
     }
@@ -996,6 +1001,7 @@ class OutboundController extends Controller
         $skipped = 0;
         $csvRows = [];
         $allProducts = Product::where('status', 1)->get()->keyBy('item_code');
+        $allWarehouses = Warehouse::where('status', 1)->get();
 
         $getCell = function($row, $field) use ($headerMap) {
             if (!isset($headerMap[$field])) return '';
@@ -1030,20 +1036,32 @@ class OutboundController extends Controller
             $type = strtolower($getCell($row, 'Type'));
             if (!in_array($type, ['sale', 'transfer', ''])) $type = 'sale';
 
+            $warehouseName = $getCell($row, 'Warehouse');
+            $warehouseId = null;
+            if (!empty($warehouseName)) {
+                $matchedWh = $allWarehouses->first(fn($w) => strtolower($w->name) === strtolower($warehouseName) || $w->id == $warehouseName);
+                $warehouseId = $matchedWh ? $matchedWh->id : null;
+                if (!$warehouseId) {
+                    $errors[] = "Row {$rowNum}: Warehouse '{$warehouseName}' not found";
+                    $skipped++;
+                    continue;
+                }
+            }
+
             $csvRows[] = [
-                'product'      => $product,
-                'units'        => (int) $units,
-                'type'         => $type ?: 'sale',
-                'pallets'      => (int) $getCell($row, 'Pallets'),
-                'customer'     => $getCell($row, 'Customer'),
-                'po_no'        => $getCell($row, 'PO'),
-                'ibd_no'       => $getCell($row, 'IBD'),
-                'sto_no'       => $getCell($row, 'STO'),
-                'sap_batch'    => $getCell($row, 'SAP Batch'),
-                'vendor_batch' => $getCell($row, 'Vendor Batch'),
-                'mfg_date'     => $getCell($row, 'MFG Date'),
-                'expiry_date'  => $getCell($row, 'Expiry Date'),
-                'remarks'      => $getCell($row, 'Remarks'),
+                'product'       => $product,
+                'units'         => (int) $units,
+                'type'          => $type ?: 'sale',
+                'customer'      => $getCell($row, 'Customer'),
+                'warehouse_id'  => $warehouseId,
+                'po_no'         => $getCell($row, 'PO'),
+                'ibd_no'        => $getCell($row, 'IBD'),
+                'sto_no'        => $getCell($row, 'STO'),
+                'sap_batch'     => $getCell($row, 'SAP Batch'),
+                'vendor_batch'  => $getCell($row, 'Vendor Batch'),
+                'mfg_date'      => $getCell($row, 'MFG Date'),
+                'expiry_date'   => $getCell($row, 'Expiry Date'),
+                'remarks'       => $getCell($row, 'Remarks'),
             ];
         }
 
@@ -1076,8 +1094,9 @@ class OutboundController extends Controller
                             });
                     }
 
-                    if ($request->warehouse_id) {
-                        $batchQuery->where('warehouse_id', $request->warehouse_id);
+                    $whId = $item['warehouse_id'] ?? $request->warehouse_id;
+                    if ($whId) {
+                        $batchQuery->where('warehouse_id', $whId);
                     }
 
                     $batches = $batchQuery->orderBy('expiry_date', 'asc')
@@ -1122,9 +1141,7 @@ class OutboundController extends Controller
                             ]);
                         }
 
-                        $palletsToTake = $item['pallets'] > 0
-                            ? max(1, (int) round($item['pallets'] * ($unitsToTake / $units)))
-                            : max(1, (int) ceil($unitsToTake / $product->cartons_per_pallet));
+                        $palletsToTake = max(1, (int) ceil($unitsToTake / $product->cartons_per_pallet));
 
                         $effectivePallets = max(1, $palletsToTake);
                         $perPalletUnits = $unitsToTake / $effectivePallets;
