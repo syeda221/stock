@@ -1153,6 +1153,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'warehouse_rows.pallet_capacity',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
                 'stock_in_items.pallet_start',
                 'products.cartons_per_pallet',
@@ -1242,7 +1243,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 }
                 if ($entry->pallet_start !== null) {
                     $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
-                    $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $entry->pallet_end);
                 } else {
                     $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
                     $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
@@ -1254,7 +1254,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
                 // Expand: one row per pallet with sequential carton fill
-                $numPallets = $entry->pallets_used;
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
                 $totalUnits = (float) $entry->units;
                 $totalQty = (float) $entry->quantity;
@@ -1263,18 +1262,22 @@ $item->hold_stock ? 'Yes' : 'No',
                 $assignedQty = 0.0;
                 $assignedBalance = 0.0;
 
-                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
+                $palletCapacity = (int) ($entry->pallet_capacity ?? 0);
+                $actualEnd = min($entry->pallet_end, $palletCapacity > 0 ? $palletCapacity : $entry->pallet_end);
+                $numPallets = $actualEnd - $entry->pallet_start + 1;
+
+                for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
                     $clone->pallet_end = $p;
                     $clone->pallets_used = 1;
+                    $isLast = ($p == $actualEnd);
 
                     if ($maxPerPallet) {
                         $perPalletUnits = min($maxPerPallet, $remainingUnits);
                     } else {
                         $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
                     }
-                    $isLast = ($p == $entry->pallet_end);
                     $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
                     $clone->units = $perPalletUnits;
                     $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
@@ -1443,6 +1446,20 @@ $item->hold_stock ? 'Yes' : 'No',
         $ledgerEntries = $inboundData->concat($outboundData)
             ->sortByDesc('created_at')
             ->values();
+
+        // Filter: only products with positive current balance
+        if ($request->boolean('has_stock')) {
+            $productIdsWithStock = $inboundData->where('direction', 'IN')
+                ->where('balance_quantity', '>', 0)
+                ->pluck('product_id')
+                ->unique();
+            $ledgerEntries = $ledgerEntries->filter(function ($entry) use ($productIdsWithStock) {
+                if ($entry->direction === 'IN') {
+                    return $entry->balance_quantity > 0;
+                }
+                return $productIdsWithStock->contains($entry->product_id);
+            });
+        }
 
         // Paginate manually
         $page = $request->get('page', 1);
@@ -1506,6 +1523,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'warehouse_rows.pallet_capacity',
                 DB::raw('COALESCE(stock_in_items.pallets_used, 0) as pallets_used'),
                 'stock_in_items.pallet_start',
                 'products.cartons_per_pallet',
@@ -1595,7 +1613,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 }
                 if ($entry->pallet_start !== null) {
                     $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
-                    $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $entry->pallet_end);
                 } else {
                     $entry->pallet_start = $rowPalletOffsets[$rowKey] + 1;
                     $entry->pallet_end = $rowPalletOffsets[$rowKey] + $entry->pallets_used;
@@ -1607,7 +1624,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
                 // Expand: one row per pallet with sequential carton fill
-                $numPallets = $entry->pallets_used;
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
                 $totalUnits = (float) $entry->units;
                 $totalQty = (float) $entry->quantity;
@@ -1616,18 +1632,22 @@ $item->hold_stock ? 'Yes' : 'No',
                 $assignedQty = 0.0;
                 $assignedBalance = 0.0;
 
-                for ($p = $entry->pallet_start; $p <= $entry->pallet_end; $p++) {
+                $palletCapacity = (int) ($entry->pallet_capacity ?? 0);
+                $actualEnd = min($entry->pallet_end, $palletCapacity > 0 ? $palletCapacity : $entry->pallet_end);
+                $numPallets = $actualEnd - $entry->pallet_start + 1;
+
+                for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
                     $clone->pallet_end = $p;
                     $clone->pallets_used = 1;
+                    $isLast = ($p == $actualEnd);
 
                     if ($maxPerPallet) {
                         $perPalletUnits = min($maxPerPallet, $remainingUnits);
                     } else {
                         $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
                     }
-                    $isLast = ($p == $entry->pallet_end);
                     $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
                     $clone->units = $perPalletUnits;
                     $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
@@ -1796,6 +1816,20 @@ $item->hold_stock ? 'Yes' : 'No',
         $ledgerEntries = $inboundData->concat($outboundData)
             ->sortByDesc('created_at')
             ->values();
+
+        // Filter: only products with positive current balance
+        if ($request->boolean('has_stock')) {
+            $productIdsWithStock = $inboundData->where('direction', 'IN')
+                ->where('balance_quantity', '>', 0)
+                ->pluck('product_id')
+                ->unique();
+            $ledgerEntries = $ledgerEntries->filter(function ($entry) use ($productIdsWithStock) {
+                if ($entry->direction === 'IN') {
+                    return $entry->balance_quantity > 0;
+                }
+                return $productIdsWithStock->contains($entry->product_id);
+            });
+        }
 
         $filename = 'stock_ledger_report_' . date('Y-m-d_His') . '.csv';
         $headers = [

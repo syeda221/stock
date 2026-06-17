@@ -10,6 +10,7 @@ use App\Models\StockInItem;
 use App\Models\Transporter;
 use App\Models\Vendor;
 use App\Models\Warehouse;
+use App\Models\WarehouseRow;
 use App\Services\WarehouseRowFifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,38 @@ class InboundController extends Controller
 
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        // Apply search filter (transport, driver, vehicle, shipment, etc.)
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('stockIn', function ($sq) use ($search) {
+                    $sq->where('driver_name', 'like', "%{$search}%")
+                        ->orWhere('driver_mobile', 'like', "%{$search}%")
+                        ->orWhere('vehicle_no', 'like', "%{$search}%")
+                        ->orWhere('vehicle_size', 'like', "%{$search}%")
+                        ->orWhere('shipment_no', 'like', "%{$search}%")
+                        ->orWhere('delivery_no', 'like', "%{$search}%")
+                        ->orWhere('sto_no', 'like', "%{$search}%")
+                        ->orWhere('po_no', 'like', "%{$search}%")
+                        ->orWhere('ibd_no', 'like', "%{$search}%")
+                        ->orWhere('inbound_invoice_no', 'like', "%{$search}%")
+                        ->orWhere('remarks', 'like', "%{$search}%")
+                        ->orWhereHas('transporter', function ($tq) use ($search) {
+                            $tq->where('name', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('arrivedFrom', function ($aq) use ($search) {
+                            $aq->where('name', 'like', "%{$search}%");
+                        });
+                })
+                ->orWhereHas('product', function ($pq) use ($search) {
+                    $pq->where('name', 'like', "%{$search}%")
+                        ->orWhere('item_code', 'like', "%{$search}%");
+                })
+                ->orWhere('sap_batch', 'like', "%{$search}%")
+                ->orWhere('vendor_batch', 'like', "%{$search}%");
+            });
         }
 
         $items = $query->with([
@@ -363,15 +396,19 @@ class InboundController extends Controller
                     $palletsHere = min($palletsNeeded, $available);
                     if ($palletsHere <= 0) continue;
 
-                    $unitsHere = (int) round($remainingUnits * ($palletsHere / $palletsNeeded));
-                    $unitsHere = min($unitsHere, $remainingUnits);
+                    $maxUnitsHere = $product->cartons_per_pallet > 0
+                        ? $palletsHere * $product->cartons_per_pallet
+                        : $remainingUnits;
+                    $unitsHere = min($maxUnitsHere, $remainingUnits);
                     if ($unitsHere <= 0) continue;
 
                     $splits = WarehouseRowFifo::assign(
                         $wh->id,
                         $palletsHere,
                         $unitsHere,
-                        $packSize
+                        $packSize,
+                        true,
+                        (int) $product->cartons_per_pallet
                     );
 
                     foreach ($splits as $split) {
@@ -761,11 +798,16 @@ class InboundController extends Controller
             $palletsHere = min($palletsNeeded, $available);
             if ($palletsHere <= 0) continue;
 
-            $unitsHere = (int) round($remainingUnits * ($palletsHere / $palletsNeeded));
-            $unitsHere = min($unitsHere, $remainingUnits);
+            $maxUnitsHere = $product->cartons_per_pallet > 0
+                ? $palletsHere * $product->cartons_per_pallet
+                : $remainingUnits;
+            $unitsHere = min($maxUnitsHere, $remainingUnits);
             if ($unitsHere <= 0) continue;
 
-            $splits = \App\Services\WarehouseRowFifo::assign($wh->id, $palletsHere, $unitsHere, $packSize);
+            $splits = \App\Services\WarehouseRowFifo::assign(
+                $wh->id, $palletsHere, $unitsHere, $packSize, true,
+                (int) $product->cartons_per_pallet
+            );
 
             foreach ($splits as $split) {
                 $splitUnits   = $split['units'];
@@ -809,6 +851,554 @@ class InboundController extends Controller
             $remainingFree[$wh->id] -= $palletsHere;
             $palletsNeeded -= $palletsHere;
             $remainingUnits -= $unitsHere;
+        }
+    }
+
+    public function export()
+    {
+        $rowLetterMap = [];
+        $allRows = WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        $rowPalletOffsets = [];
+        $inboundPositions = [];
+        $allItems = StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
+            ->where('balance_quantity', '>', 0)
+            ->where('pallets_used', '>', 0)
+            ->whereNotNull('warehouse_row_id')
+            ->with('stockIn', 'warehouseRow')
+            ->orderBy('created_at')
+            ->get();
+        foreach ($allItems as $item) {
+            $whId = $item->warehouse_id;
+            $row = $item->warehouseRow;
+            if (!$whId || !$row || !$row->row_name) continue;
+            $palletCount = (int)$item->pallets_used;
+            $rowKey = $whId . '-' . $row->row_name;
+            if ($item->pallet_start !== null) {
+                $palletStart = (int) $item->pallet_start;
+                $palletEnd = $palletStart + $palletCount - 1;
+            } else {
+                if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+                $palletStart = $rowPalletOffsets[$rowKey] + 1;
+                $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
+                $rowPalletOffsets[$rowKey] = $palletEnd;
+            }
+            if ($item->stockIn->source_type === 'inbound') {
+                $rw = $rowLetterMap[$rowKey] ?? '';
+                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                $inboundPositions[$item->id] = [
+                    'start' => $palletStart, 'end' => $palletEnd,
+                    'letter' => $rw, 'wh_padded' => $wp,
+                ];
+            }
+        }
+
+        $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'inbound'))
+            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn', 'stockIn.warehouse', 'stockIn.vendor', 'stockIn.transporter', 'stockIn.arrivedFrom', 'warehouseRow'])
+            ->latest()
+            ->get();
+
+        $filename = 'inbound_stock_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () use ($items, $inboundPositions) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, [
+                'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
+                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
+                'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Sound', 'Blocked', 'Hold', 'Vendor', 'Transporter', 'Vehicle No',
+                'Driver Name', 'Inbound Invoice', 'Remarks'
+            ]);
+
+            foreach ($items as $item) {
+                $unitsVal = $item->units_received;
+                $qtyVal = $item->total_quantity;
+                $balVal = $item->balance_quantity;
+                $palletsVal = $item->pallets_used ?? 0;
+                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
+
+                $pos = $inboundPositions[$item->id] ?? null;
+
+                if ($pos) {
+                    $whPadded = $pos['wh_padded'];
+                    $rowLetter = $pos['letter'];
+                    $palletStart = $pos['start'];
+                    $palletEnd = $pos['end'];
+
+                    $maxPerPallet = $item->product->cartons_per_pallet ?? null;
+                    $numPallets = $palletEnd - $palletStart + 1;
+                    $totalUnits = (float) $item->units_received;
+                    $totalQty = (float) $item->total_quantity;
+                    $totalBalance = (float) $item->balance_quantity;
+                    $remainingUnits = $totalUnits;
+                    $assignedQty = 0.0;
+                    $assignedBalance = 0.0;
+
+                    for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                        $isLast = ($p == $palletEnd);
+                        if ($maxPerPallet) {
+                            $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                        } else {
+                            $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                        }
+                        $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                        $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                        $palletBalance = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                        $remainingUnits -= $perPalletUnits;
+                        $assignedQty += $palletQty;
+                        $assignedBalance += $palletBalance;
+
+                        $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                        $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+
+                        fputcsv($file, [
+                            $item->product->item_code ?? '',
+                            $item->product->name ?? '',
+                            $dateVal,
+                            $warehouseDisplay,
+                            $item->product->category->name ?? '',
+                            $item->product->uom->name ?? '',
+                            $item->ibd_no ?? '',
+                            $item->po_no ?? '',
+                            $item->vendor_batch ?? '',
+                            $item->sap_batch ?? '',
+                            $item->product->packingType->name ?? '',
+                            $item->pack_size_snapshot,
+                            $perPalletUnits,
+                            $palletQty,
+                            $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d.m.Y') : $item->mfg_date) : '',
+                            $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d.m.Y') : $item->expiry_date) : '',
+                            $palletBalance,
+                            1,
+                            $item->quality_clearance ?? '',
+                            $item->sound_stock ? 'Yes' : 'No',
+                            $item->block_stock ? 'Yes' : 'No',
+                            $item->hold_stock ? 'Yes' : 'No',
+                            $item->stockIn->vendor->name ?? '',
+                            $item->stockIn->transporter->name ?? '',
+                            $item->stockIn->vehicle_no ?? '',
+                            $item->stockIn->driver_name ?? '',
+                            $item->stockIn->inbound_invoice_no ?? '',
+                            $item->remarks ?? '',
+                        ]);
+                    }
+                } else {
+                    $warehouseDisplay = $item->warehouse->name ?? '';
+
+                    fputcsv($file, [
+                        $item->product->item_code ?? '',
+                        $item->product->name ?? '',
+                        $dateVal,
+                        $warehouseDisplay,
+                        $item->product->category->name ?? '',
+                        $item->product->uom->name ?? '',
+                        $item->ibd_no ?? '',
+                        $item->po_no ?? '',
+                        $item->vendor_batch ?? '',
+                        $item->sap_batch ?? '',
+                        $item->product->packingType->name ?? '',
+                        $item->pack_size_snapshot,
+                        $unitsVal,
+                        $qtyVal,
+                        $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d.m.Y') : $item->mfg_date) : '',
+                        $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d.m.Y') : $item->expiry_date) : '',
+                        $balVal,
+                        $palletsVal,
+                        $item->quality_clearance ?? '',
+                        $item->sound_stock ? 'Yes' : 'No',
+                        $item->block_stock ? 'Yes' : 'No',
+                        $item->hold_stock ? 'Yes' : 'No',
+                        $item->stockIn->vendor->name ?? '',
+                        $item->stockIn->transporter->name ?? '',
+                        $item->stockIn->vehicle_no ?? '',
+                        $item->stockIn->driver_name ?? '',
+                        $item->stockIn->inbound_invoice_no ?? '',
+                        $item->remarks ?? '',
+                    ]);
+                }
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function downloadTemplate()
+    {
+        $filename = 'inbound_stock_import_template.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, [
+                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
+                'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
+                'Expiry Date', 'Balance Qty', 'Quality Check',
+                'Sound', 'Blocked', 'Hold', 'Vendor', 'Remarks'
+            ]);
+            fputcsv($file, [
+                '001', 'Sample Product', '', '', '',
+                'IBD-001', 'PO-001', 'VENDOR-001', 'SAP-001', '',
+                '', '100', '', '2024-01-15', '2025-01-15',
+                '', 'approved', 'Yes', 'No', 'No', '', ''
+            ]);
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function importForm()
+    {
+        return view('inbound.import', [
+            'warehouses' => Warehouse::where('status', 1)->orderBy('name')->get(),
+        ]);
+    }
+
+    public function importStore(Request $request)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+        ]);
+
+        $file = $request->file('csv_file');
+        $path = $file->getRealPath();
+        $handle = fopen($path, 'r');
+
+        $rawHeaders = fgetcsv($handle);
+        if (!$rawHeaders) {
+            fclose($handle);
+            return back()->with('error', 'Could not read CSV headers.');
+        }
+
+        $csvHeaders = array_map(fn($h) => trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)), $rawHeaders);
+
+        $fieldAliases = [
+            'Item Code'      => ['Item Code', 'item_code', 'ItemCode', 'Code'],
+            'Units Received' => ['Units Received', 'units_received', 'Units'],
+            'IBD'            => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
+            'PO'             => ['PO', 'po', 'po_no', 'PO No'],
+            'SAP Batch'      => ['SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
+            'Vendor Batch'   => ['Vendor Batch', 'vendor_batch', 'VendorBatch'],
+            'MFG Date'       => ['MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
+            'Expiry Date'    => ['Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
+            'Quality Check'  => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
+            'Blocked'        => ['Blocked', 'block_stock', 'Block'],
+            'Hold'           => ['Hold', 'hold_stock'],
+            'Remarks'        => ['Remarks', 'remarks', 'Notes', 'Comment'],
+            'Warehouse'      => ['Warehouse', 'warehouse', 'Warehouse Name', 'WH'],
+            'Vendor'         => ['Vendor', 'vendor', 'Vendor Name'],
+        ];
+
+        $headerMap = [];
+        foreach ($fieldAliases as $field => $aliases) {
+            $pos = false;
+            foreach ($aliases as $alias) {
+                $idx = array_search($alias, $csvHeaders);
+                if ($idx === false) $idx = array_search(strtolower($alias), array_map('strtolower', $csvHeaders));
+                if ($idx !== false) {
+                    $pos = $idx;
+                    break;
+                }
+            }
+            if ($pos !== false) {
+                $headerMap[$field] = $pos;
+            }
+        }
+
+        if (!isset($headerMap['Item Code'])) {
+            fclose($handle);
+            return back()->with('error', 'Missing required column "Item Code". Found: ' . implode(', ', $csvHeaders));
+        }
+        if (!isset($headerMap['Units Received'])) {
+            fclose($handle);
+            return back()->with('error', 'Missing required column "Units Received". Found: ' . implode(', ', $csvHeaders));
+        }
+
+        $allWarehouses = Warehouse::where('status', 1)->get()->keyBy(function($w) {
+            return strtolower(trim($w->name));
+        });
+
+        $csvHasWarehouse = isset($headerMap['Warehouse']);
+
+        $allWarehousePool = Warehouse::where('status', 1)->whereHas('rows')->orderBy('name')->get();
+        if ($allWarehousePool->isEmpty()) {
+            $allWarehousePool = Warehouse::where('status', 1)->orderBy('name')->get();
+        }
+        if ($allWarehousePool->isEmpty()) {
+            fclose($handle);
+            return back()->with('error', 'No active warehouses found.');
+        }
+
+        if ($request->warehouse_id) {
+            $targetWarehouse = Warehouse::findOrFail($request->warehouse_id);
+            $warehousePool = collect([$targetWarehouse]);
+        } elseif ($csvHasWarehouse) {
+            $warehousePool = $allWarehousePool;
+        } else {
+            $warehousePool = $allWarehousePool;
+        }
+
+        $errors = [];
+        $imported = 0;
+        $skipped = 0;
+        $items = [];
+        $allProducts = Product::where('status', 1)->get()->keyBy('item_code');
+
+        $getCell = function($row, $field) use ($headerMap) {
+            if (!isset($headerMap[$field])) return '';
+            $idx = $headerMap[$field];
+            return trim($row[$idx] ?? '');
+        };
+
+        $rowNum = 1;
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+            if (count($row) <= 1 && ($row[0] === null || trim($row[0]) === '')) continue;
+
+            $itemCode = $getCell($row, 'Item Code');
+            $units = $getCell($row, 'Units Received');
+            $rowErrors = [];
+
+            if (empty($itemCode)) $rowErrors[] = 'Missing Item Code';
+            if (empty($units) || !is_numeric($units)) $rowErrors[] = 'Invalid Units Received';
+
+            $product = null;
+            if (!empty($itemCode)) {
+                $product = $allProducts->get($itemCode);
+                if (!$product) $rowErrors[] = "Product '{$itemCode}' not found";
+            }
+
+            $rowWarehouse = null;
+            if ($csvHasWarehouse) {
+                $whName = strtolower(trim($getCell($row, 'Warehouse')));
+                if (!empty($whName) && $allWarehouses->has($whName)) {
+                    $rowWarehouse = $allWarehouses[$whName];
+                }
+            }
+            if (!$rowWarehouse && $request->warehouse_id) {
+                $rowWarehouse = $targetWarehouse;
+            }
+
+            if (!empty($rowErrors)) {
+                $errors[] = "Row {$rowNum}: " . implode('; ', $rowErrors);
+                $skipped++;
+                continue;
+            }
+
+            $qcValue = strtolower($getCell($row, 'Quality Check'));
+            if (in_array($qcValue, ['pass', 'approved'])) $qcValue = 'approved';
+            elseif (in_array($qcValue, ['fail', 'rejected'])) $qcValue = 'rejected';
+            else $qcValue = 'pending';
+
+            $items[] = [
+                'product' => $product,
+                'units' => (int) $units,
+                'warehouse' => $rowWarehouse,
+                'ibd_no' => $getCell($row, 'IBD'),
+                'po_no' => $getCell($row, 'PO'),
+                'sap_batch' => $getCell($row, 'SAP Batch'),
+                'vendor_batch' => $getCell($row, 'Vendor Batch'),
+                'pallets_used' => '',
+                'mfg_date' => $getCell($row, 'MFG Date'),
+                'expiry_date' => $getCell($row, 'Expiry Date'),
+                'quality_clearance' => $qcValue,
+                'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
+                'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
+                'vendor' => $getCell($row, 'Vendor'),
+                'remarks' => $getCell($row, 'Remarks'),
+            ];
+        }
+
+        fclose($handle);
+
+        if (count($items) === 0) {
+            return back()->with('error', 'No valid rows found in CSV');
+        }
+
+        try {
+            DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
+                foreach ($items as $item) {
+                    $product       = $item['product'];
+                    $units         = $item['units'];
+                    $packSize      = (float) $product->pack_size;
+                    $cartonsPerPallet = (int) $product->cartons_per_pallet;
+
+                    if ($item['warehouse']) {
+                        $targets = collect([$item['warehouse']]);
+                    } else {
+                        $targets = $warehousePool;
+                    }
+
+                    $simulatedRemainingUnits = $units;
+                    $warehouseAllocations = [];
+                    $warehousePartials = [];
+
+                    if ($cartonsPerPallet > 0) {
+                        foreach ($targets as $wh) {
+                            if ($simulatedRemainingUnits <= 0) break;
+
+                            $partialResult = WarehouseRowFifo::fillPartials(
+                                $wh->id,
+                                $product->id,
+                                $simulatedRemainingUnits,
+                                $packSize,
+                                $cartonsPerPallet
+                            );
+
+                            if (!empty($partialResult['splits'])) {
+                                $warehousePartials[$wh->id] = $partialResult['splits'];
+                                $simulatedRemainingUnits = $partialResult['remaining_units'];
+                            }
+                        }
+                    }
+
+                    if ($simulatedRemainingUnits > 0) {
+                        foreach ($targets as $wh) {
+                            if ($simulatedRemainingUnits <= 0) break;
+
+                            $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+
+                            if ($freeRowCapacity <= 0 && $cartonsPerPallet > 0) continue;
+
+                            $palletsWeNeed = $cartonsPerPallet > 0 ? (int) ceil($simulatedRemainingUnits / $cartonsPerPallet) : 0;
+
+                            $palletsToAssign = 0;
+                            $unitsToAssign = $simulatedRemainingUnits;
+
+                            if ($cartonsPerPallet > 0) {
+                                $palletsToAssign = min($freeRowCapacity, $palletsWeNeed);
+                                $maxUnitsThisWarehouse = $palletsToAssign * $cartonsPerPallet;
+                                $unitsToAssign = min($simulatedRemainingUnits, $maxUnitsThisWarehouse);
+                            }
+
+                            if ($unitsToAssign > 0 || $palletsToAssign === 0) {
+                                $warehouseAllocations[$wh->id] = [
+                                    'pallets' => $palletsToAssign,
+                                    'units'   => $unitsToAssign
+                                ];
+                                $simulatedRemainingUnits -= $unitsToAssign;
+                            }
+                        }
+                    }
+
+                    if ($simulatedRemainingUnits > 0) {
+                        $targetMsg = $request->warehouse_id || $item['warehouse'] ? 'Selected warehouse(s)' : 'No warehouse';
+                        $palletsNeededTotal = $cartonsPerPallet > 0 ? ceil($units / $cartonsPerPallet) : 0;
+                        $errors[] = "{$targetMsg} does not have enough total space for '{$product->item_code}' ({$palletsNeededTotal} pallets needed)";
+                        $skipped++;
+                        continue;
+                    }
+
+                    foreach ($warehousePartials as $whId => $splits) {
+                        foreach ($splits as $split) {
+                            $existingItem = StockInItem::find($split['stock_in_item_id']);
+                            if ($existingItem) {
+                                $existingItem->increment('units_received', $split['units']);
+                                $existingItem->increment('total_quantity', $split['qty']);
+                                $existingItem->increment('balance_quantity', $split['qty']);
+                                $existingItem->decrement('last_pallet_vacant', $split['units']);
+                            }
+                        }
+                    }
+
+                    foreach ($warehouseAllocations as $whId => $alloc) {
+                        $wh = $targets->firstWhere('id', $whId);
+
+                        $splits = WarehouseRowFifo::assign(
+                            $wh->id,
+                            $alloc['pallets'],
+                            $alloc['units'],
+                            $packSize,
+                            false,
+                            $cartonsPerPallet
+                        );
+
+                        $stockIn = StockIn::firstOrCreate(
+                            [
+                                'source_type'  => 'inbound',
+                                'warehouse_id' => $wh->id,
+                                'remarks'      => 'Imported via CSV on ' . now()->format('d.m.Y H:i'),
+                            ],
+                            ['shipment_type' => 'manual']
+                        );
+
+                        foreach ($splits as $split) {
+                            if ($split['units'] <= 0) continue;
+
+                            $splitUnits = $split['units'];
+                            $splitQty   = round($splitUnits * $packSize, 4);
+
+                            $lastVacant = $cartonsPerPallet > 0
+                                ? max(0, ($split['pallets'] * $cartonsPerPallet) - $splitUnits)
+                                : 0;
+
+                            StockInItem::create([
+                                'stock_in_id'        => $stockIn->id,
+                                'product_id'         => $product->id,
+                                'warehouse_id'       => $wh->id,
+                                'warehouse_row_id'   => $split['warehouse_row_id'],
+                                'ibd_no'             => $item['ibd_no'] ?: null,
+                                'po_no'              => $item['po_no'] ?: null,
+                                'sap_batch'          => $item['sap_batch'] ?: null,
+                                'vendor_batch'       => $item['vendor_batch'] ?: null,
+                                'mfg_date'           => $item['mfg_date'] ?: null,
+                                'expiry_date'        => $item['expiry_date'] ?: null,
+                                'units_received'     => $splitUnits,
+                                'pack_size_snapshot' => $packSize,
+                                'total_quantity'     => $splitQty,
+                                'balance_quantity'   => $splitQty,
+                                'use_pallets'        => $split['pallets'] > 0,
+                                'pallets_used'       => $split['pallets'] > 0 ? $split['pallets'] : null,
+                                'pallet_start'       => $split['pallet_start'] ?? null,
+                                'last_pallet_vacant' => $lastVacant,
+                                'sound_stock'        => !$item['blocked'] && !$item['hold'],
+                                'block_stock'        => $item['blocked'],
+                                'hold_stock'         => $item['hold'],
+                                'quality_clearance'  => $item['quality_clearance'],
+                                'remarks'            => $item['remarks'] ?: null,
+                            ]);
+                        }
+                    }
+
+                    $imported++;
+                }
+            });
+
+            $message = "Imported {$imported} product(s).";
+            if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
+            else $message .= " Auto-assigned to warehouses with available space.";
+            if ($skipped > 0) $message .= " {$skipped} skipped.";
+            if ($errors) $message .= " " . implode(' | ', array_slice($errors, 0, 10));
+
+            return redirect()->route('inbound.index')->with('success', $message);
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
     }
 }

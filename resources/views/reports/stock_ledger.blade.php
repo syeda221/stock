@@ -160,7 +160,15 @@
                     <label class="form-label fw-semibold small">Date To</label>
                     <input type="date" name="date_to" class="form-control form-control-sm" value="{{ request('date_to') }}">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-1">
+                    <label class="form-label fw-semibold small">Has Stock</label>
+                    <div class="form-check mt-1">
+                        <input type="hidden" name="has_stock" value="0">
+                        <input type="checkbox" name="has_stock" value="1" class="form-check-input" id="hasStock" {{ request()->boolean('has_stock') ? 'checked' : '' }}>
+                        <label class="form-check-label small" for="hasStock">Active</label>
+                    </div>
+                </div>
+                <div class="col-md-1">
                     <label class="form-label fw-semibold small">&nbsp;</label>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-sm btn-primary">

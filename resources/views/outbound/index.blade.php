@@ -7,9 +7,17 @@
         <h5 class="fw-bold mb-0">Outbound / Dispatch</h5>
         <small class="text-muted">Manage outward stock movements</small>
     </div>
-    <a href="{{ route('outbound.create') }}" class="btn btn-primary btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>New Outbound
-    </a>
+    <div class="d-flex gap-2">
+        <a href="{{ route('outbound.create') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>New Outbound
+        </a>
+        <a href="{{ route('outbound.export') }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-download me-1"></i> Export
+        </a>
+        <a href="{{ route('outbound.import') }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-upload me-1"></i> Import
+        </a>
+    </div>
 </div>
 
 <div class="row g-2 mb-3">

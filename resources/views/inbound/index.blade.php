@@ -42,9 +42,17 @@
         <h5 class="fw-bold mb-0">Inbound Stock</h5>
         <small class="text-muted">Batch-wise inbound stock management</small>
     </div>
-    <a href="{{ route('inbound.create') }}" class="btn btn-primary btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>Add Inbound
-    </a>
+    <div class="d-flex gap-2">
+        <a href="{{ route('inbound.create') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Add Inbound
+        </a>
+        <a href="{{ route('inbound.export') }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-download me-1"></i> Export
+        </a>
+        <a href="{{ route('inbound.import') }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-upload me-1"></i> Import
+        </a>
+    </div>
 </div>
 
 <div class="row g-2 mb-3">
@@ -164,6 +172,10 @@
                     <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date To</label>
                     <input type="date" name="date_to" id="filter_date_to" class="form-control form-control-sm filter-field">
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold small"><i class="bi bi-search me-1"></i>Search</label>
+                    <input type="text" name="search" id="filter_search" class="form-control form-control-sm" placeholder="Transport, Driver, Vehicle, Shipment, PO No, Remarks...">
+                </div>
             </div>
             <div class="mt-2 d-flex align-items-center gap-2">
                 <button type="button" id="applyFilters" class="btn btn-sm btn-primary">
@@ -253,14 +265,17 @@
 
                             $palletLocationStr = 'Unassigned';
                             if ($item->warehouse_row_id && $item->pallets_used > 0) {
-                                // Calculate how many pallets are used by earlier items in the same row
-                                $offset = \App\Models\StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
-                                    ->where('id', '<', $item->id)
-                                    ->sum('pallets_used');
-
-                                $start = $offset + 1;
-                                $end = $offset + $item->pallets_used;
-
+                                if ($item->pallet_start !== null) {
+                                    $start = (int) $item->pallet_start;
+                                    $end = $start + $item->pallets_used - 1;
+                                } else {
+                                    $offset = \App\Models\StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
+                                        ->where('id', '<', $item->id)
+                                        ->where('balance_quantity', '>', 0)
+                                        ->sum('pallets_used');
+                                    $start = $offset + 1;
+                                    $end = $offset + $item->pallets_used;
+                                }
                                 if ($start == $end) {
                                     $palletLocationStr = "Row " . ($item->warehouseRow->row_name ?? '-') . " (Pallet " . $start . ")";
                                 } else {
@@ -820,7 +835,8 @@ $(document).ready(function() {
             product_group_id: $('#filter_product_group').val(),
             product_id: $('#filter_product').val(),
             date_from: $('#filter_date_from').val(),
-            date_to: $('#filter_date_to').val()
+            date_to: $('#filter_date_to').val(),
+            search: $('#filter_search').val()
         };
 
         // Show loading

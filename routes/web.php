@@ -142,6 +142,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/inbound/{stockIn}/print', [InboundController::class, 'print'])->name('inbound.print');
     Route::get('/inbound/{stockIn}/edit', [InboundController::class, 'edit'])->name('inbound.edit');
     Route::put('/inbound/{stockIn}', [InboundController::class, 'update'])->name('inbound.update');
+    Route::get('/inbound/export/csv', [InboundController::class, 'export'])->name('inbound.export');
+    Route::get('/inbound/import/template', [InboundController::class, 'downloadTemplate'])->name('inbound.import.template');
+    Route::get('/inbound/import', [InboundController::class, 'importForm'])->name('inbound.import');
+    Route::post('/inbound/import', [InboundController::class, 'importStore'])->name('inbound.import.store');
 
     // QC Status Update Route
     Route::post('/qc-status/{item}/update', [QcStatusController::class, 'update'])->name('qc.status.update');
@@ -174,6 +178,11 @@ Route::get('/outbound/{stockOut}/print', [OutboundController::class, 'print'])->
 Route::get('/outbound/{stockOut}/edit', [OutboundController::class, 'edit'])->name('outbound.edit');
 Route::put('/outbound/{stockOut}', [OutboundController::class, 'update'])->name('outbound.update');
 Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->name('outbound.destroy');
+
+Route::get('/outbound/export/csv', [OutboundController::class, 'export'])->name('outbound.export');
+Route::get('/outbound/import/template', [OutboundController::class, 'downloadTemplate'])->name('outbound.import.template');
+Route::get('/outbound/import', [OutboundController::class, 'importForm'])->name('outbound.import');
+Route::post('/outbound/import', [OutboundController::class, 'importStore'])->name('outbound.import.store');
 
     // Reporting Routes
     Route::prefix('reports')->name('reports.')->group(function () {

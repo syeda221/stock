@@ -256,7 +256,9 @@ class OpeningStockController extends Controller
                             $warehouse->id,
                             $palletsNeeded,
                             $remainingUnits,
-                            $packSize
+                            $packSize,
+                            true,
+                            (int) $product->cartons_per_pallet
                         );
 
                         foreach ($splits as $split) {
@@ -380,16 +382,8 @@ class OpeningStockController extends Controller
                     $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                 }
 
-                // Check capacity (excluding the current item)
-                $usedPallets = StockInItem::with('product')
-                    ->where('warehouse_id', $warehouse->id)
-                    ->where('id', '!=', $item->id)
-                    ->where('balance_quantity', '>', 0)
-                    ->get()
-                    ->sum(fn($i) => StockInItem::computeActivePallets($i));
-
-                $freePallets = $warehouse->total_capacity ? max(0, $warehouse->total_capacity - $usedPallets) : PHP_INT_MAX;
-
+                // Check capacity using standard method
+                $freePallets = WarehouseRowFifo::getFreeRowCapacity($warehouse->id);
                 if ($freePallets < $palletsNeeded) {
                     throw new \Exception("Warehouse is full. Cannot update opening stock. Only {$freePallets} pallet slots available, but {$palletsNeeded} needed.");
                 }
@@ -399,22 +393,24 @@ class OpeningStockController extends Controller
                     $warehouse->id,
                     $palletsNeeded,
                     $units,
-                    $packSize
+                    $packSize,
+                    true,
+                    (int) $product->cartons_per_pallet
                 );
 
-                $assignedRowId = count($splits) > 0 ? $splits[0]['warehouse_row_id'] : null;
-
-                // Update the item
+                // Update the item with first split
+                $split = $splits[0] ?? null;
                 $item->update([
                     'warehouse_id'       => $warehouse->id,
                     'product_id'         => $product->id,
-                    'warehouse_row_id'   => $assignedRowId,
+                    'warehouse_row_id'   => $split ? $split['warehouse_row_id'] : null,
                     'units_received'     => $units,
                     'pack_size_snapshot' => $packSize,
                     'total_quantity'     => $totalQty,
-                    'balance_quantity'   => $totalQty, // Reset balance quantity to new total quantity
+                    'balance_quantity'   => $totalQty,
                     'use_pallets'        => $palletsNeeded > 0,
-                    'pallets_used'       => $palletsNeeded > 0 ? $palletsNeeded : null,
+                    'pallets_used'       => $split ? $split['pallets'] : null,
+                    'pallet_start'       => $split ? $split['pallet_start'] : null,
                     'sap_batch'         => $request->sap_batch,
                     'vendor_batch'      => $request->vendor_batch,
                     'ibd_no'            => $request->ibd_no,
@@ -427,6 +423,39 @@ class OpeningStockController extends Controller
                     'hold_stock'        => $request->boolean('hold_stock'),
                     'remarks'           => $request->remarks,
                 ]);
+
+                // If multiple splits, create additional items for remaining rows
+                if (count($splits) > 1) {
+                    for ($i = 1; $i < count($splits); $i++) {
+                        $extraSplit = $splits[$i];
+                        $extraQty = round($extraSplit['units'] * $packSize, 4);
+                        StockInItem::create([
+                            'stock_in_id'        => $item->stock_in_id,
+                            'product_id'         => $product->id,
+                            'warehouse_id'       => $warehouse->id,
+                            'warehouse_row_id'   => $extraSplit['warehouse_row_id'],
+                            'units_received'     => $extraSplit['units'],
+                            'pack_size_snapshot' => $packSize,
+                            'total_quantity'     => $extraQty,
+                            'balance_quantity'   => $extraQty,
+                            'use_pallets'        => true,
+                            'pallets_used'       => $extraSplit['pallets'],
+                            'pallet_start'       => $extraSplit['pallet_start'],
+                            'sap_batch'          => $request->sap_batch,
+                            'vendor_batch'       => $request->vendor_batch,
+                            'ibd_no'             => $request->ibd_no,
+                            'po_no'              => $request->po_no,
+                            'mfg_date'           => $request->mfg_date ?: null,
+                            'expiry_date'        => $request->expiry_date ?: null,
+                            'quality_clearance'  => $request->quality_clearance ?? 'pending',
+                            'sound_stock'        => $request->boolean('sound_stock'),
+                            'block_stock'        => $request->boolean('block_stock'),
+                            'hold_stock'         => $request->boolean('hold_stock'),
+                            'remarks'            => $request->remarks,
+                            'last_pallet_vacant' => 0,
+                        ]);
+                    }
+                }
 
                 // Also update the stockIn warehouse if needed
                 if ($item->stockIn) {
@@ -933,7 +962,8 @@ class OpeningStockController extends Controller
                             $alloc['pallets'],
                             $alloc['units'],
                             $packSize,
-                            false
+                            false,
+                            $cartonsPerPallet
                         );
 
                         $stockIn = StockIn::firstOrCreate(
