@@ -10,9 +10,12 @@
         </div>
         <div class="d-flex gap-2">
             <form method="GET" action="{{ route('reports.inbound.export') }}" class="d-inline">
-                @foreach(request()->except('_token') as $key => $value)
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endforeach
+                <input type="hidden" name="date_from" value="{{ request('date_from') }}">
+                <input type="hidden" name="date_to" value="{{ request('date_to') }}">
+                <input type="hidden" name="vendor_id" value="{{ request('vendor_id') }}">
+                <input type="hidden" name="warehouse_id" value="{{ request('warehouse_id') }}">
+                <input type="hidden" name="invoice_no" value="{{ request('invoice_no') }}">
+                <input type="hidden" name="qc_status" value="{{ request('qc_status') }}">
                 <button type="submit" class="btn btn-success">
                     <i class="bi bi-file-earmark-excel me-2"></i>Export to Excel
                 </button>
@@ -177,10 +180,13 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
+                            <th style="width:30px"></th>
                             <th class="text-nowrap">Date</th>
                             <th class="text-nowrap">Invoice No</th>
                             <th class="text-nowrap">Vendor</th>
                             <th class="text-nowrap">Warehouse</th>
+                            <th class="text-nowrap">Item Code</th>
+                            <th class="text-nowrap">Description</th>
                             <th class="text-nowrap">Total Items</th>
                             <th class="text-nowrap">QC Status</th>
                             <th class="text-nowrap text-end">Total Qty</th>
@@ -195,8 +201,13 @@
                                 'approved' => $stockIn->items->where('quality_clearance', 'approved')->count(),
                                 'rejected' => $stockIn->items->where('quality_clearance', 'rejected')->count(),
                             ];
+                            $itemCodes = $stockIn->items->pluck('product.item_code')->filter()->unique()->implode(', ');
+                            $productNames = $stockIn->items->pluck('product.name')->filter()->unique()->implode(', ');
                         @endphp
-                        <tr>
+                        <tr class="cursor-pointer" onclick="toggleItems({{ $stockIn->id }})" style="cursor:pointer">
+                            <td class="text-center">
+                                <i id="toggle-{{ $stockIn->id }}" class="bi bi-chevron-right"></i>
+                            </td>
                             <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockIn->created_at)->format('d.m.Y') }}</td>
                             <td class="fw-semibold">
                                 @if($stockIn->dispatched_invoice_no)
@@ -209,6 +220,8 @@
                             </td>
                             <td>{{ $stockIn->vendor->name ?? 'N/A' }}</td>
                             <td>{{ $stockIn->warehouse->name ?? 'N/A' }}</td>
+                            <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $itemCodes }}">{{ $itemCodes ?: '-' }}</td>
+                            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $productNames }}">{{ $productNames ?: '-' }}</td>
                             <td>
                                 <span class="badge bg-primary">{{ $stockIn->items->count() }} batches</span>
                             </td>
@@ -243,9 +256,53 @@
                                 </div>
                             </td>
                         </tr>
+                        <tr id="items-{{ $stockIn->id }}" class="d-none">
+                            <td colspan="11" class="p-0">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead class="table-secondary">
+                                        <tr>
+                                            <th class="px-3">Item Code</th>
+                                            <th>Description</th>
+                                            <th>SAP Batch</th>
+                                            <th>Vendor Batch</th>
+                                            <th>Units</th>
+                                            <th>Qty</th>
+                                            <th>Balance</th>
+                                            <th>MFG</th>
+                                            <th>Expiry</th>
+                                            <th>QC</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($stockIn->items as $item)
+                                        <tr>
+                                            <td class="px-3">{{ $item->product->item_code ?? '-' }}</td>
+                                            <td>{{ $item->product->name ?? '-' }}</td>
+                                            <td>{{ $item->sap_batch ?? '-' }}</td>
+                                            <td>{{ $item->vendor_batch ?? '-' }}</td>
+                                            <td>{{ $item->units_received ?? 0 }}</td>
+                                            <td>{{ number_format($item->total_quantity ?? 0, 2) }}</td>
+                                            <td>{{ number_format($item->balance_quantity ?? 0, 2) }}</td>
+                                            <td>{{ $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '-' }}</td>
+                                            <td>{{ $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-' }}</td>
+                                            <td>
+                                                @if($item->quality_clearance == 'approved')
+                                                    <span class="badge bg-success">Approved</span>
+                                                @elseif($item->quality_clearance == 'rejected')
+                                                    <span class="badge bg-danger">Rejected</span>
+                                                @else
+                                                    <span class="badge bg-warning text-dark">Pending</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
                         @empty
                         <tr>
-                            <td colspan="8" class="text-center py-5 text-muted">
+                            <td colspan="11" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                 <p class="mb-0">No inbound records found</p>
                             </td>
@@ -316,6 +373,20 @@
 
 @push('scripts')
 <script>
+function toggleItems(id) {
+    const row = document.getElementById('items-' + id);
+    const icon = document.getElementById('toggle-' + id);
+    if (row.classList.contains('d-none')) {
+        row.classList.remove('d-none');
+        icon.classList.remove('bi-chevron-right');
+        icon.classList.add('bi-chevron-down');
+    } else {
+        row.classList.add('d-none');
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-right');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const invoiceInput = document.getElementById('invoice_search');
     const suggestionsDiv = document.getElementById('invoice_suggestions');

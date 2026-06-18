@@ -109,6 +109,28 @@ class OutboundController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
+        // Apply search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('stockOut', function ($sq) use ($search) {
+                    $sq->where('vehicle_no', 'like', "%{$search}%")
+                        ->orWhere('vehicle_size', 'like', "%{$search}%")
+                        ->orWhere('driver_name', 'like', "%{$search}%")
+                        ->orWhere('driver_mobile', 'like', "%{$search}%")
+                        ->orWhere('dispatched_invoice_no', 'like', "%{$search}%")
+                        ->orWhere('delivery_no', 'like', "%{$search}%")
+                        ->orWhere('gatepass_no', 'like', "%{$search}%")
+                        ->orWhere('remarks', 'like', "%{$search}%")
+                        ->orWhereHas('customer', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('transporter', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('toWarehouse', fn($wq) => $wq->where('name', 'like', "%{$search}%"));
+                })->orWhere('sap_batch', 'like', "%{$search}%")
+                  ->orWhere('vendor_batch', 'like', "%{$search}%")
+                  ->orWhereHas('product', fn($pq) => $pq->where('item_code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+            });
+        }
+
         $items = $query->latest()->paginate(20);
 
         // Calculate free pallets for warehouses in the current result set
@@ -765,7 +787,7 @@ class OutboundController extends Controller
         return view('outbound.dc', compact('stockOut'));
     }
 
-    public function export()
+    public function export(Request $request)
     {
         // Pre-compute per-source-item pallet offsets so we can assign sequential positions
         $sourcePalletCounters = [];
@@ -817,11 +839,57 @@ class OutboundController extends Controller
                 }
             });
 
-        $items = StockOutItem::with([
+        $query = StockOutItem::with([
             'stockOut.warehouse', 'stockOut.customer', 'stockOut.toWarehouse', 'stockOut.transporter',
             'product.category', 'product.uom', 'product.packingType',
             'sourceStockInItem', 'sourceStockInItem.warehouseRow', 'warehouseRow',
-        ])->latest()->get();
+        ]);
+
+        // Apply same filters as index
+        if ($request->filled('source_type')) {
+            $query->whereHas('stockOut', fn($q) => $q->where('source_type', $request->source_type));
+        }
+        if ($request->filled('warehouse_id')) {
+            $query->whereHas('stockOut', fn($q) => $q->where('warehouse_id', $request->warehouse_id));
+        }
+        if ($request->filled('customer_id')) {
+            $query->whereHas('stockOut', fn($q) => $q->where('customer_id', $request->customer_id));
+        }
+        if ($request->filled('product_id')) {
+            $query->where('product_id', $request->product_id);
+        }
+        if ($request->filled('product_group_id')) {
+            $groupId = $request->product_group_id;
+            $query->whereHas('product', fn($q) => $q->where('product_group_id', $groupId));
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('stockOut', function ($sq) use ($search) {
+                    $sq->where('vehicle_no', 'like', "%{$search}%")
+                        ->orWhere('vehicle_size', 'like', "%{$search}%")
+                        ->orWhere('driver_name', 'like', "%{$search}%")
+                        ->orWhere('driver_mobile', 'like', "%{$search}%")
+                        ->orWhere('dispatched_invoice_no', 'like', "%{$search}%")
+                        ->orWhere('delivery_no', 'like', "%{$search}%")
+                        ->orWhere('gatepass_no', 'like', "%{$search}%")
+                        ->orWhere('remarks', 'like', "%{$search}%")
+                        ->orWhereHas('customer', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('transporter', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('toWarehouse', fn($wq) => $wq->where('name', 'like', "%{$search}%"));
+                })->orWhere('sap_batch', 'like', "%{$search}%")
+                  ->orWhere('vendor_batch', 'like', "%{$search}%")
+                  ->orWhereHas('product', fn($pq) => $pq->where('item_code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $items = $query->latest()->get();
 
         $filename = 'outbound_stock_' . date('Y-m-d_His') . '.csv';
         $headers = [

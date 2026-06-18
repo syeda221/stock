@@ -11,7 +11,7 @@
         <a href="{{ route('outbound.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>New Outbound
         </a>
-        <a href="{{ route('outbound.export') }}" class="btn btn-outline-success btn-sm">
+        <a href="javascript:void(0)" onclick="exportOutbound()" class="btn btn-outline-success btn-sm">
             <i class="bi bi-download me-1"></i> Export
         </a>
         <a href="{{ route('outbound.import') }}" class="btn btn-outline-info btn-sm">
@@ -135,6 +135,10 @@
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date To</label>
                     <input type="date" name="date_to" id="filter_date_to" class="form-control form-control-sm filter-field">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold small"><i class="bi bi-search me-1"></i>Search</label>
+                    <input type="text" name="search" id="filter_search" class="form-control form-control-sm" placeholder="Vehicle No, Driver Name, Customer, Transporter, Invoice No...">
                 </div>
             </div>
             <div class="mt-2 d-flex align-items-center gap-2">
@@ -625,7 +629,8 @@ $(document).ready(function() {
             product_group_id: $('#filter_product_group').val(),
             product_id: $('#filter_product').val(),
             date_from: $('#filter_date_from').val(),
-            date_to: $('#filter_date_to').val()
+            date_to: $('#filter_date_to').val(),
+            search: $('#filter_search').val()
         };
 
         $('#filterLoadingOverlay').show();
@@ -656,5 +661,19 @@ $(document).ready(function() {
         });
     }
 });
+
+function exportOutbound() {
+    const params = new URLSearchParams({
+        source_type: $('#filter_source_type').val(),
+        warehouse_id: $('#filter_warehouse').val(),
+        customer_id: $('#filter_customer').val(),
+        product_group_id: $('#filter_product_group').val(),
+        product_id: $('#filter_product').val(),
+        date_from: $('#filter_date_from').val(),
+        date_to: $('#filter_date_to').val(),
+        search: $('#filter_search').val()
+    });
+    window.location.href = '{{ route("outbound.export") }}?' + params.toString();
+}
 </script>
 @endpush

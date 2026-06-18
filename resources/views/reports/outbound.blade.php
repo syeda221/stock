@@ -10,9 +10,11 @@
         </div>
         <div class="d-flex gap-2">
             <form method="GET" action="{{ route('reports.outbound.export') }}" class="d-inline">
-                @foreach(request()->except('_token') as $key => $value)
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endforeach
+                <input type="hidden" name="date_from" value="{{ request('date_from') }}">
+                <input type="hidden" name="date_to" value="{{ request('date_to') }}">
+                <input type="hidden" name="customer_id" value="{{ request('customer_id') }}">
+                <input type="hidden" name="warehouse_id" value="{{ request('warehouse_id') }}">
+                <input type="hidden" name="invoice_no" value="{{ request('invoice_no') }}">
                 <button type="submit" class="btn btn-success">
                     <i class="bi bi-file-earmark-excel me-2"></i>Export to Excel
                 </button>
@@ -143,10 +145,13 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
+                            <th style="width:30px"></th>
                             <th class="text-nowrap">Date</th>
                             <th class="text-nowrap">Invoice No</th>
                             <th class="text-nowrap">Customer</th>
                             <th class="text-nowrap">Warehouse</th>
+                            <th class="text-nowrap">Item Code</th>
+                            <th class="text-nowrap">Description</th>
                             <th class="text-nowrap">Total Items</th>
                             <th class="text-nowrap text-end">Total Qty</th>
                             <th class="text-nowrap text-center">Action</th>
@@ -154,7 +159,14 @@
                     </thead>
                     <tbody>
                         @forelse($stockOuts as $stockOut)
-                        <tr>
+                        @php
+                            $itemCodes = $stockOut->items->pluck('product.item_code')->filter()->unique()->implode(', ');
+                            $productNames = $stockOut->items->pluck('product.name')->filter()->unique()->implode(', ');
+                        @endphp
+                        <tr onclick="toggleOutboundItems({{ $stockOut->id }})" style="cursor:pointer">
+                            <td class="text-center">
+                                <i id="otoggle-{{ $stockOut->id }}" class="bi bi-chevron-right"></i>
+                            </td>
                             <td class="text-nowrap">{{ \Carbon\Carbon::parse($stockOut->created_at)->format('d.m.Y') }}</td>
                             <td class="fw-semibold">
                                 @if($stockOut->dispatched_invoice_no)
@@ -177,6 +189,8 @@
                                 @endif
                             </td>
                             <td>{{ $stockOut->warehouse->name ?? 'N/A' }}</td>
+                            <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $itemCodes }}">{{ $itemCodes ?: '-' }}</td>
+                            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $productNames }}">{{ $productNames ?: '-' }}</td>
                             <td>
                                 <span class="badge bg-warning text-dark">{{ $stockOut->items->count() }} batches</span>
                             </td>
@@ -192,9 +206,39 @@
                                 </div>
                             </td>
                         </tr>
+                        <tr id="oitems-{{ $stockOut->id }}" class="d-none">
+                            <td colspan="10" class="p-0">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead class="table-secondary">
+                                        <tr>
+                                            <th class="px-3">Item Code</th>
+                                            <th>Description</th>
+                                            <th>SAP Batch</th>
+                                            <th>Vendor Batch</th>
+                                            <th>Units</th>
+                                            <th>Qty</th>
+                                            <th>Source Row</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($stockOut->items as $item)
+                                        <tr>
+                                            <td class="px-3">{{ $item->product->item_code ?? '-' }}</td>
+                                            <td>{{ $item->product->name ?? '-' }}</td>
+                                            <td>{{ $item->sap_batch ?? '-' }}</td>
+                                            <td>{{ $item->vendor_batch ?? '-' }}</td>
+                                            <td>{{ $item->units_dispatch ?? 0 }}</td>
+                                            <td>{{ number_format($item->dispatch_quantity ?? 0, 2) }}</td>
+                                            <td>{{ $item->warehouseRow->name ?? '-' }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
                         @empty
                         <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
+                            <td colspan="10" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                 <p class="mb-0">No outbound records found</p>
                             </td>
@@ -265,6 +309,20 @@
 
 @push('scripts')
 <script>
+function toggleOutboundItems(id) {
+    const row = document.getElementById('oitems-' + id);
+    const icon = document.getElementById('otoggle-' + id);
+    if (row.classList.contains('d-none')) {
+        row.classList.remove('d-none');
+        icon.classList.remove('bi-chevron-right');
+        icon.classList.add('bi-chevron-down');
+    } else {
+        row.classList.add('d-none');
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-right');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const invoiceInput = document.getElementById('invoice_search');
     const suggestionsDiv = document.getElementById('invoice_suggestions');

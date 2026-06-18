@@ -199,6 +199,7 @@ Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->n
         Route::get('/warehouse-capacity', [ReportController::class, 'warehouseCapacity'])->name('warehouse-capacity');
 
         Route::get('/all-stocks', [ReportController::class, 'allStocks'])->name('all-stocks');
+        Route::get('/all-stocks/export', [ReportController::class, 'allStocksExport'])->name('all-stocks.export');
         Route::get('/stock-ledger', [ReportController::class, 'stockLedger'])->name('stock-ledger');
         Route::get('/stock-ledger/export', [ReportController::class, 'stockLedgerExport'])->name('stock-ledger.export');
         Route::get('/stock-details/{product}', [ReportController::class, 'stockDetails'])->name('stock-details');
