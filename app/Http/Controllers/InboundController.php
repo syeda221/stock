@@ -854,10 +854,60 @@ class InboundController extends Controller
         }
     }
 
-    public function export()
+    public function export(Request $request)
     {
+        $query = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'inbound'))
+            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn', 'stockIn.warehouse', 'stockIn.vendor', 'stockIn.transporter', 'stockIn.arrivedFrom', 'warehouseRow']);
+
+        if ($request->filled('qc_status')) {
+            $query->where('quality_clearance', $request->qc_status);
+        }
+        if ($request->filled('warehouse_id')) {
+            $query->whereHas('stockIn', fn($q) => $q->where('warehouse_id', $request->warehouse_id));
+        }
+        if ($request->filled('vendor_id')) {
+            $query->whereHas('stockIn', fn($q) => $q->where('vendor_id', $request->vendor_id));
+        }
+        if ($request->filled('product_id')) {
+            $query->where('product_id', $request->product_id);
+        }
+        if ($request->filled('product_group_id')) {
+            $groupId = $request->product_group_id;
+            $query->whereHas('product', fn($q) => $q->where('product_group_id', $groupId));
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('stockIn', function ($sq) use ($search) {
+                    $sq->where('driver_name', 'like', "%{$search}%")
+                        ->orWhere('driver_mobile', 'like', "%{$search}%")
+                        ->orWhere('vehicle_no', 'like', "%{$search}%")
+                        ->orWhere('vehicle_size', 'like', "%{$search}%")
+                        ->orWhere('shipment_no', 'like', "%{$search}%")
+                        ->orWhere('delivery_no', 'like', "%{$search}%")
+                        ->orWhere('sto_no', 'like', "%{$search}%")
+                        ->orWhere('po_no', 'like', "%{$search}%")
+                        ->orWhere('ibd_no', 'like', "%{$search}%")
+                        ->orWhere('inbound_invoice_no', 'like', "%{$search}%")
+                        ->orWhere('remarks', 'like', "%{$search}%")
+                        ->orWhereHas('transporter', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('arrivedFrom', fn($aq) => $aq->where('name', 'like', "%{$search}%"));
+                })->orWhere('sap_batch', 'like', "%{$search}%")
+                  ->orWhere('vendor_batch', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $query->latest()->get();
+
+        // Build row-letter mapping
         $rowLetterMap = [];
-        $allRows = WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
         foreach ($allRows as $whId => $rows) {
             $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
             foreach ($rows as $i => $row) {
@@ -872,6 +922,7 @@ class InboundController extends Controller
             }
         }
 
+        // Compute pallet positions
         $rowPalletOffsets = [];
         $inboundPositions = [];
         $allItems = StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
@@ -905,11 +956,6 @@ class InboundController extends Controller
                 ];
             }
         }
-
-        $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'inbound'))
-            ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn', 'stockIn.warehouse', 'stockIn.vendor', 'stockIn.transporter', 'stockIn.arrivedFrom', 'warehouseRow'])
-            ->latest()
-            ->get();
 
         $filename = 'inbound_stock_' . date('Y-m-d_His') . '.csv';
         $headers = [
@@ -1051,22 +1097,29 @@ class InboundController extends Controller
         ];
 
         $callback = function () {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
-                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
-                'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Quality Check',
-                'Sound', 'Blocked', 'Hold', 'Vendor', 'Remarks'
-            ]);
-            fputcsv($file, [
-                '001', 'Sample Product', '', '', '',
-                'IBD-001', 'PO-001', 'VENDOR-001', 'SAP-001', '',
-                '', '100', '', '2024-01-15', '2025-01-15',
-                '', 'approved', 'Yes', 'No', 'No', '', ''
-            ]);
-            fclose($file);
-        };
+        $file = fopen('php://output', 'w');
+        fputcsv($file, [
+            'Item Code', 'Product Name', 'Warehouse', 'Vendor', 'Transporter',
+            'Arrived From', 'Vehicle No', 'Vehicle Size', 'Driver Name',
+            'Driver Mobile', 'Vehicle In Time', 'Vehicle Out Time',
+            'Delivery No', 'Shipment No', 'STO No', 'Dispatch Invoice',
+            'Dispatcher Sig', 'Picker', 'Shipment Type',
+            'IBD', 'PO', 'SAP Batch', 'Vendor Batch',
+            'Units Received', 'MFG Date', 'Expiry Date', 'Quality Check',
+            'Blocked', 'Hold', 'Remarks'
+        ]);
+        fputcsv($file, [
+            '001', 'Sample Product', 'Main Warehouse', 'ACME Corp', 'FastTrans',
+            'Supplier A', 'ABC-123', '40ft', 'John Doe',
+            '0300-1234567', '15.01.2024 08:00', '15.01.2024 10:00',
+            'DL-001', 'SH-001', 'STO-001', 'DISP-001',
+            'John Sig', 'Picker Name', 'manual',
+            'IBD-001', 'PO-001', 'SB-001', 'VB-001',
+            '100', '15.01.2024', '15.01.2026', 'approved',
+            'No', 'No', ''
+        ]);
+        fclose($file);
+    };
 
         return response()->stream($callback, 200, $headers);
     }
@@ -1098,20 +1151,35 @@ class InboundController extends Controller
         $csvHeaders = array_map(fn($h) => trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)), $rawHeaders);
 
         $fieldAliases = [
-            'Item Code'      => ['Item Code', 'item_code', 'ItemCode', 'Code'],
-            'Units Received' => ['Units Received', 'units_received', 'Units'],
-            'IBD'            => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
-            'PO'             => ['PO', 'po', 'po_no', 'PO No'],
-            'SAP Batch'      => ['SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
-            'Vendor Batch'   => ['Vendor Batch', 'vendor_batch', 'VendorBatch'],
-            'MFG Date'       => ['MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
-            'Expiry Date'    => ['Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
-            'Quality Check'  => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
-            'Blocked'        => ['Blocked', 'block_stock', 'Block'],
-            'Hold'           => ['Hold', 'hold_stock'],
-            'Remarks'        => ['Remarks', 'remarks', 'Notes', 'Comment'],
-            'Warehouse'      => ['Warehouse', 'warehouse', 'Warehouse Name', 'WH'],
-            'Vendor'         => ['Vendor', 'vendor', 'Vendor Name'],
+            'Item Code'        => ['Item Code', 'item_code', 'ItemCode', 'Code'],
+            'Units Received'   => ['Units Received', 'units_received', 'Units'],
+            'IBD'              => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
+            'PO'               => ['PO', 'po', 'po_no', 'PO No'],
+            'SAP Batch'        => ['SAP Batch', 'sap_batch', 'SapBatch', 'Batch'],
+            'Vendor Batch'     => ['Vendor Batch', 'vendor_batch', 'VendorBatch'],
+            'MFG Date'         => ['MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
+            'Expiry Date'      => ['Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
+            'Quality Check'    => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
+            'Blocked'          => ['Blocked', 'block_stock', 'Block'],
+            'Hold'             => ['Hold', 'hold_stock'],
+            'Remarks'          => ['Remarks', 'remarks', 'Notes', 'Comment'],
+            'Warehouse'        => ['Warehouse', 'warehouse', 'Warehouse Name', 'WH'],
+            'Vendor'           => ['Vendor', 'vendor', 'Vendor Name'],
+            'Transporter'      => ['Transporter', 'transporter', 'Transporter Name'],
+            'Arrived From'     => ['Arrived From', 'arrived_from', 'ArrivedFrom', 'Source'],
+            'Vehicle No'       => ['Vehicle No', 'vehicle_no', 'Vehicle Number'],
+            'Vehicle Size'     => ['Vehicle Size', 'vehicle_size'],
+            'Driver Name'      => ['Driver Name', 'driver_name'],
+            'Driver Mobile'    => ['Driver Mobile', 'driver_mobile', 'Driver Phone'],
+            'Vehicle In Time'  => ['Vehicle In Time', 'vehicle_in_time', 'In Time'],
+            'Vehicle Out Time' => ['Vehicle Out Time', 'vehicle_out_time', 'Out Time'],
+            'Delivery No'      => ['Delivery No', 'delivery_no', 'Delivery Number'],
+            'Shipment No'      => ['Shipment No', 'shipment_no', 'Shipment Number'],
+            'STO No'           => ['STO No', 'sto_no', 'STO'],
+            'Dispatch Invoice' => ['Dispatch Invoice', 'dispatched_invoice_no', 'Dispatch No'],
+            'Dispatcher Sig'   => ['Dispatcher Sig', 'dispatcher_sig', 'Signature'],
+            'Picker'           => ['Picker', 'picker'],
+            'Shipment Type'    => ['Shipment Type', 'shipment_type'],
         ];
 
         $headerMap = [];
@@ -1175,6 +1243,49 @@ class InboundController extends Controller
             return trim($row[$idx] ?? '');
         };
 
+        // Parse flexible date/time formats to MySQL date/datetime
+        $parseDate = function($val) {
+            if (empty($val)) return null;
+            $val = trim($val);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $val)) {
+                return substr($val, 0, 10);
+            }
+            if (preg_match('/^(\d{1,2})[.](\d{1,2})[.](\d{2,4})$/', $val, $m)) {
+                $y = strlen($m[3]) === 2 ? '20' . $m[3] : $m[3];
+                return "{$y}-{$m[2]}-{$m[1]}";
+            }
+            if (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{2,4})$#', $val, $m)) {
+                $y = strlen($m[3]) === 2 ? '20' . $m[3] : $m[3];
+                return "{$y}-{$m[1]}-{$m[2]}";
+            }
+            $ts = strtotime($val);
+            return $ts ? date('Y-m-d', $ts) : null;
+        };
+
+        $parseDateTime = function($val) {
+            if (empty($val)) return null;
+            $val = trim($val);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $val)) {
+                return strlen($val) <= 10 ? $val : date('Y-m-d H:i:s', strtotime($val));
+            }
+            if (preg_match('/^(\d{1,2})[.](\d{1,2})[.](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/', $val, $m)) {
+                $y = strlen($m[3]) === 2 ? '20' . $m[3] : $m[3];
+                $h = isset($m[4]) ? str_pad($m[4], 2, '0', STR_PAD_LEFT) : '00';
+                $i = isset($m[5]) ? str_pad($m[5], 2, '0', STR_PAD_LEFT) : '00';
+                $s = isset($m[6]) ? str_pad($m[6], 2, '0', STR_PAD_LEFT) : '00';
+                return "{$y}-{$m[2]}-{$m[1]} {$h}:{$i}:{$s}";
+            }
+            if (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$#', $val, $m)) {
+                $y = strlen($m[3]) === 2 ? '20' . $m[3] : $m[3];
+                $h = isset($m[4]) ? str_pad($m[4], 2, '0', STR_PAD_LEFT) : '00';
+                $i = isset($m[5]) ? str_pad($m[5], 2, '0', STR_PAD_LEFT) : '00';
+                $s = isset($m[6]) ? str_pad($m[6], 2, '0', STR_PAD_LEFT) : '00';
+                return "{$y}-{$m[1]}-{$m[2]} {$h}:{$i}:{$s}";
+            }
+            $ts = strtotime($val);
+            return $ts ? date('Y-m-d H:i:s', $ts) : null;
+        };
+
         $rowNum = 1;
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
@@ -1215,22 +1326,63 @@ class InboundController extends Controller
             elseif (in_array($qcValue, ['fail', 'rejected'])) $qcValue = 'rejected';
             else $qcValue = 'pending';
 
+            // Resolve reference data names to IDs
+            $vendorId = null;
+            $vendorName = $getCell($row, 'Vendor');
+            if (!empty($vendorName)) {
+                $matched = Vendor::where('name', $vendorName)->orWhere('id', $vendorName)->first();
+                $vendorId = $matched ? $matched->id : null;
+            }
+
+            $transporterId = null;
+            $transporterName = $getCell($row, 'Transporter');
+            if (!empty($transporterName)) {
+                $matched = Transporter::where('name', $transporterName)->orWhere('id', $transporterName)->first();
+                $transporterId = $matched ? $matched->id : null;
+            }
+
+            $arrivedFromId = null;
+            $arrivedFromName = $getCell($row, 'Arrived From');
+            if (!empty($arrivedFromName)) {
+                $matched = ArrivedFrom::where('name', $arrivedFromName)->orWhere('id', $arrivedFromName)->first();
+                $arrivedFromId = $matched ? $matched->id : null;
+            }
+
+            $inTime = $parseDateTime($getCell($row, 'Vehicle In Time'));
+            $outTime = $parseDateTime($getCell($row, 'Vehicle Out Time'));
+            $mfgDate = $parseDate($getCell($row, 'MFG Date'));
+            $expiryDate = $parseDate($getCell($row, 'Expiry Date'));
+
             $items[] = [
-                'product' => $product,
-                'units' => (int) $units,
-                'warehouse' => $rowWarehouse,
-                'ibd_no' => $getCell($row, 'IBD'),
-                'po_no' => $getCell($row, 'PO'),
-                'sap_batch' => $getCell($row, 'SAP Batch'),
-                'vendor_batch' => $getCell($row, 'Vendor Batch'),
-                'pallets_used' => '',
-                'mfg_date' => $getCell($row, 'MFG Date'),
-                'expiry_date' => $getCell($row, 'Expiry Date'),
-                'quality_clearance' => $qcValue,
-                'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
-                'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
-                'vendor' => $getCell($row, 'Vendor'),
-                'remarks' => $getCell($row, 'Remarks'),
+                'product'              => $product,
+                'units'                => (int) $units,
+                'warehouse'            => $rowWarehouse,
+                'ibd_no'               => $getCell($row, 'IBD'),
+                'po_no'                => $getCell($row, 'PO'),
+                'sap_batch'            => $getCell($row, 'SAP Batch'),
+                'vendor_batch'         => $getCell($row, 'Vendor Batch'),
+                'mfg_date'             => $mfgDate,
+                'expiry_date'          => $expiryDate,
+                'quality_clearance'    => $qcValue,
+                'blocked'              => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
+                'hold'                 => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
+                'remarks'              => $getCell($row, 'Remarks'),
+                'vendor_id'            => $vendorId,
+                'transporter_id'       => $transporterId,
+                'arrived_from_id'      => $arrivedFromId,
+                'vehicle_no'           => $getCell($row, 'Vehicle No'),
+                'vehicle_size'         => $getCell($row, 'Vehicle Size'),
+                'driver_name'          => $getCell($row, 'Driver Name'),
+                'driver_mobile'        => $getCell($row, 'Driver Mobile'),
+                'vehicle_in_time'      => $inTime ?: null,
+                'vehicle_out_time'     => $outTime ?: null,
+                'delivery_no'          => $getCell($row, 'Delivery No'),
+                'shipment_no'          => $getCell($row, 'Shipment No'),
+                'sto_no'              => $getCell($row, 'STO No'),
+                'dispatched_invoice_no'=> $getCell($row, 'Dispatch Invoice'),
+                'dispatcher_sig'       => $getCell($row, 'Dispatcher Sig'),
+                'picker'               => $getCell($row, 'Picker'),
+                'shipment_type'        => $getCell($row, 'Shipment Type') ?: 'manual',
             ];
         }
 
@@ -1242,7 +1394,10 @@ class InboundController extends Controller
 
         try {
             DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
-                foreach ($items as $item) {
+
+                $stockIn = null;
+
+                foreach ($items as $i => $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
                     $packSize      = (float) $product->pack_size;
@@ -1338,14 +1493,31 @@ class InboundController extends Controller
                             $cartonsPerPallet
                         );
 
-                        $stockIn = StockIn::firstOrCreate(
-                            [
-                                'source_type'  => 'inbound',
-                                'warehouse_id' => $wh->id,
-                                'remarks'      => 'Imported via CSV on ' . now()->format('d.m.Y H:i'),
-                            ],
-                            ['shipment_type' => 'manual']
-                        );
+                        // Create StockIn header on first allocation
+                        if (!$stockIn) {
+                            $stockIn = StockIn::create([
+                                'source_type'            => 'inbound',
+                                'warehouse_id'           => $item['warehouse'] ? $item['warehouse']->id : ($request->warehouse_id ?: ($warehousePool->first()->id ?? 1)),
+                                'inbound_invoice_no'     => $this->generateDispatchedInvoiceNo(),
+                                'vendor_id'              => $item['vendor_id'],
+                                'transporter_id'         => $item['transporter_id'],
+                                'arrived_from_id'        => $item['arrived_from_id'],
+                                'vehicle_no'             => $item['vehicle_no'] ?: null,
+                                'vehicle_size'           => $item['vehicle_size'] ?: null,
+                                'driver_name'            => $item['driver_name'] ?: null,
+                                'driver_mobile'          => $item['driver_mobile'] ?: null,
+                                'vehicle_in_time'        => $item['vehicle_in_time'] ?: null,
+                                'vehicle_out_time'       => $item['vehicle_out_time'] ?: null,
+                                'delivery_no'            => $item['delivery_no'] ?: null,
+                                'shipment_no'            => $item['shipment_no'] ?: null,
+                                'sto_no'                => $item['sto_no'] ?: null,
+                                'dispatched_invoice_no'  => $item['dispatched_invoice_no'] ?: null,
+                                'dispatcher_sig'         => $item['dispatcher_sig'] ?: null,
+                                'picker'                 => $item['picker'] ?: null,
+                                'shipment_type'          => $item['shipment_type'] ?: 'manual',
+                                'remarks'                => 'Imported via CSV on ' . now()->format('d.m.Y H:i'),
+                            ]);
+                        }
 
                         foreach ($splits as $split) {
                             if ($split['units'] <= 0) continue;
@@ -1386,6 +1558,11 @@ class InboundController extends Controller
                     }
 
                     $imported++;
+                }
+
+                if (!$stockIn) {
+                    $errors[] = "All units filled existing partial pallets. No new inbound header created.";
+                    if ($imported > 0) $imported = 0;
                 }
             });
 

@@ -46,7 +46,7 @@
         <a href="{{ route('inbound.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Inbound
         </a>
-        <a href="{{ route('inbound.export') }}" class="btn btn-outline-success btn-sm">
+        <a href="javascript:void(0)" onclick="exportInbound()" class="btn btn-outline-success btn-sm">
             <i class="bi bi-download me-1"></i> Export
         </a>
         <a href="{{ route('inbound.import') }}" class="btn btn-outline-info btn-sm">
@@ -872,6 +872,20 @@ $(document).ready(function() {
         });
     }
 });
+
+function exportInbound() {
+    const params = new URLSearchParams({
+        qc_status: $('#filter_qc_status').val(),
+        warehouse_id: $('#filter_warehouse').val(),
+        vendor_id: $('#filter_vendor').val(),
+        product_group_id: $('#filter_product_group').val(),
+        product_id: $('#filter_product').val(),
+        date_from: $('#filter_date_from').val(),
+        date_to: $('#filter_date_to').val(),
+        search: $('#filter_search').val()
+    });
+    window.location.href = '{{ route("inbound.export") }}?' + params.toString();
+}
 </script>
 @endpush
 

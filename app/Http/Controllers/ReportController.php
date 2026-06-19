@@ -218,7 +218,7 @@ class ReportController extends Controller
             });
         }
 
-        $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
+        $stockIns = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->get();
 
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
         $rowLetterMap = [];
@@ -1023,6 +1023,100 @@ $item->hold_stock ? 'Yes' : 'No',
         return view('reports.all_stocks', compact('stockReport', 'warehouses', 'products', 'categories', 'summary'));
     }
 
+    public function allStocksExport(Request $request)
+    {
+        $products = \App\Models\Product::orderBy('name')->get();
+
+        // Apply product filter
+        if ($request->filled('product_id')) {
+            $products = $products->where('id', $request->product_id);
+        }
+
+        // Apply category filter
+        if ($request->filled('category_id')) {
+            $products = $products->where('product_category_id', $request->category_id);
+        }
+
+        // Apply search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $products = $products->filter(function($p) use ($search) {
+                return stripos($p->item_code, $search) !== false || stripos($p->name, $search) !== false;
+            });
+        }
+
+        $filename = 'all_stocks_report_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function() use ($products, $request) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, ['Item Code', 'Product Name', 'Category', 'UOM', 'Packing', 'Pack Size',
+                'Opening Stock', 'Inbound Stock', 'Outbound Stock', 'Balance Stock']);
+
+            foreach ($products as $product) {
+                $openingQuery = DB::table('stock_in_items')
+                    ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
+                    ->where('stock_ins.source_type', 'opening')
+                    ->where('stock_in_items.product_id', $product->id);
+
+                $inboundQuery = DB::table('stock_in_items')
+                    ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
+                    ->where('stock_ins.source_type', 'inbound')
+                    ->where('stock_in_items.product_id', $product->id);
+
+                $outboundQuery = DB::table('stock_out_items')
+                    ->where('product_id', $product->id);
+
+                $balanceQuery = DB::table('stock_in_items')
+                    ->where('product_id', $product->id);
+
+                if ($request->filled('warehouse_id')) {
+                    $openingQuery->where('stock_ins.warehouse_id', $request->warehouse_id);
+                    $inboundQuery->where('stock_in_items.warehouse_id', $request->warehouse_id);
+                    $outboundQuery->join('stock_outs', 'stock_out_items.stock_out_id', '=', 'stock_outs.id')
+                        ->where('stock_outs.warehouse_id', $request->warehouse_id);
+                    $balanceQuery->join('stock_ins as si', 'stock_in_items.stock_in_id', '=', 'si.id')
+                        ->where('si.warehouse_id', $request->warehouse_id);
+                }
+
+                if ($request->filled('date_from')) {
+                    $inboundQuery->whereDate('stock_in_items.created_at', '>=', $request->date_from);
+                    $outboundQuery->whereDate('stock_out_items.created_at', '>=', $request->date_from);
+                }
+                if ($request->filled('date_to')) {
+                    $inboundQuery->whereDate('stock_in_items.created_at', '<=', $request->date_to);
+                    $outboundQuery->whereDate('stock_out_items.created_at', '<=', $request->date_to);
+                }
+
+                $opening = $openingQuery->sum('stock_in_items.total_quantity');
+                $inbound = $inboundQuery->sum('stock_in_items.total_quantity');
+                $outbound = $outboundQuery->sum('stock_out_items.dispatch_quantity');
+                $balance = $balanceQuery->sum('stock_in_items.balance_quantity');
+
+                if ($opening > 0 || $inbound > 0 || $outbound > 0 || $balance > 0) {
+                    fputcsv($file, [
+                        $product->item_code,
+                        $product->name,
+                        $product->category->name ?? '-',
+                        $product->uom->name ?? '-',
+                        $product->packingType->name ?? '-',
+                        $product->pack_size,
+                        $opening,
+                        $inbound,
+                        $outbound,
+                        $balance,
+                    ]);
+                }
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     /**
      * Get stock details for a product (AJAX)
      */
@@ -1452,15 +1546,8 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Filter: only products with positive current balance
         if ($request->boolean('has_stock')) {
-            $productIdsWithStock = $inboundData->where('direction', 'IN')
-                ->where('balance_quantity', '>', 0)
-                ->pluck('product_id')
-                ->unique();
-            $ledgerEntries = $ledgerEntries->filter(function ($entry) use ($productIdsWithStock) {
-                if ($entry->direction === 'IN') {
-                    return $entry->balance_quantity > 0;
-                }
-                return $productIdsWithStock->contains($entry->product_id);
+            $ledgerEntries = $ledgerEntries->filter(function ($entry) {
+                return $entry->direction === 'IN' && $entry->balance_quantity > 0;
             });
         }
 
@@ -1825,15 +1912,8 @@ $item->hold_stock ? 'Yes' : 'No',
 
         // Filter: only products with positive current balance
         if ($request->boolean('has_stock')) {
-            $productIdsWithStock = $inboundData->where('direction', 'IN')
-                ->where('balance_quantity', '>', 0)
-                ->pluck('product_id')
-                ->unique();
-            $ledgerEntries = $ledgerEntries->filter(function ($entry) use ($productIdsWithStock) {
-                if ($entry->direction === 'IN') {
-                    return $entry->balance_quantity > 0;
-                }
-                return $productIdsWithStock->contains($entry->product_id);
+            $ledgerEntries = $ledgerEntries->filter(function ($entry) {
+                return $entry->direction === 'IN' && $entry->balance_quantity > 0;
             });
         }
 
