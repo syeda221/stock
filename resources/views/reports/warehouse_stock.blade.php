@@ -162,6 +162,7 @@
                         <th>Warehouse</th>
                         <th>Location</th>
                         <th class="text-end">Pallets Used</th>
+                        <th class="text-end">Units</th>
                         <th>SAP Batch</th>
                         <th>Vendor Batch</th>
                         <th>Expiry Date</th>
@@ -197,6 +198,10 @@
                                 <span class="fw-semibold">
                                     {{ $item->pallets_used ? number_format($item->pallets_used) : '—' }}
                                 </span>
+                            </td>
+                            <td class="text-end">
+                                <span class="fw-semibold">{{ $item->units_received ?? 0 }}</span>
+                                <br><small class="text-muted">{{ $item->units_received ?? 0 }} × {{ $item->pack_size_snapshot }}</small>
                             </td>
                             <td>
                                 <span class="badge bg-light text-dark border">{{ $item->sap_batch ?: '—' }}</span>
@@ -250,7 +255,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="12" class="text-center py-5">
+                            <td colspan="13" class="text-center py-5">
                                 <div class="text-muted">
                                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                     No stock data found
@@ -265,7 +270,8 @@
                     <tr class="fw-bold">
                         <td colspan="5" class="text-end">Totals:</td>
                         <td class="text-end text-warning">{{ number_format($summary['total_pallets']) }}</td>
-                        <td colspan="3"></td>
+                        <td></td>
+                        <td colspan="4"></td>
                         <td class="text-end text-success">{{ number_format($summary['total_balance'], 2) }}</td>
                         <td></td>
                         <td></td>

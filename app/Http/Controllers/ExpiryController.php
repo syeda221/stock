@@ -11,7 +11,7 @@ class ExpiryController extends Controller
     public function index()
     {
         $today = Carbon::today();
-        $thirtyDays = Carbon::today()->addDays(30);
+        $thirtyDays = Carbon::today()->addMonths(3);
 
         $expired = StockInItem::with(['product', 'warehouse', 'stockIn'])
             ->where('balance_quantity', '>', 0)

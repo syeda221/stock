@@ -149,6 +149,7 @@
                         <th class="text-center">UOM</th>
                         <th class="text-end bg-secondary bg-opacity-75">Opening</th>
                         <th class="text-end bg-info bg-opacity-75">Inbound</th>
+                        <th class="text-end bg-info bg-opacity-50">Units Received</th>
                         <th class="text-end bg-warning bg-opacity-75 text-dark">Outbound</th>
                         <th class="text-end bg-success bg-opacity-75">Balance</th>
                         <th class="text-center" style="width:80px;">Action</th>
@@ -181,6 +182,10 @@
                                 </span>
                             </td>
                             <td class="text-end">
+                                <span class="fw-semibold">{{ $item['inbound_units'] }}</span>
+                                <br><small class="text-muted">{{ $item['inbound_units'] }} × {{ $item['pack_size'] }}</small>
+                            </td>
+                            <td class="text-end">
                                 <span class="fw-semibold text-warning">
                                     <i class="bi bi-arrow-up-short"></i>{{ number_format($item['outbound_stock'], 2) }}
                                 </span>
@@ -202,7 +207,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="text-center py-5">
+                            <td colspan="11" class="text-center py-5">
                                 <div class="text-muted">
                                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                     No stock data found
@@ -218,6 +223,7 @@
                         <td colspan="5" class="text-end">Totals:</td>
                         <td class="text-end text-secondary" id="footerOpening">{{ number_format($summary['total_opening'], 2) }}</td>
                         <td class="text-end text-info" id="footerInbound">{{ number_format($summary['total_inbound'], 2) }}</td>
+                        <td class="text-end text-info" id="footerUnits">—</td>
                         <td class="text-end text-warning" id="footerOutbound">{{ number_format($summary['total_outbound'], 2) }}</td>
                         <td class="text-end text-success" id="footerBalance">{{ number_format($summary['total_balance'], 2) }}</td>
                         <td></td>

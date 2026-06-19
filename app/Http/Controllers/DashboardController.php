@@ -80,7 +80,7 @@ class DashboardController extends Controller
 
         $expiringSoon = StockInItem::where('balance_quantity', '>', 0)
             ->where('expiry_date', '>=', Carbon::today())
-            ->where('expiry_date', '<=', Carbon::today()->addDays(30))
+            ->where('expiry_date', '<=', Carbon::today()->addMonths(3))
             ->with('product', 'warehouse')
             ->take(5)
             ->get();
@@ -97,7 +97,7 @@ class DashboardController extends Controller
 
         $expiringCount = StockInItem::where('balance_quantity', '>', 0)
             ->where('expiry_date', '>=', Carbon::today())
-            ->where('expiry_date', '<=', Carbon::today()->addDays(30))
+            ->where('expiry_date', '<=', Carbon::today()->addMonths(3))
             ->count();
 
         // Top vendors
@@ -225,7 +225,7 @@ class DashboardController extends Controller
 
         $expiring = StockInItem::where('balance_quantity', '>', 0)
             ->where('expiry_date', '>=', Carbon::today())
-            ->where('expiry_date', '<=', Carbon::today()->addDays(30))->count();
+            ->where('expiry_date', '<=', Carbon::today()->addMonths(3))->count();
 
         $expired = StockInItem::where('balance_quantity', '>', 0)
             ->where('expiry_date', '<', Carbon::today())->count();

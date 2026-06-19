@@ -288,13 +288,22 @@ class ReportController extends Controller
                 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
                 'Units Received', 'Total Qty', 'MFG Date', 'Expiry Date',
-                'Balance Qty', 'Pallets Used', 'Quality Check', 'Sound', 'Blocked', 'Hold',
+                'Days in Warehouse', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Sound', 'Blocked', 'Hold',
                 'Entry ID', 'Date', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
                 'Inbound Invoice', 'Dispatched Invoice', 'Shipment No', 'STO No',
                 'Delivery No', 'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
                 'Vehicle In Time', 'Vehicle Out Time', 'Picker', 'Shipment Type',
                 'Warehouse Row', 'Item Remarks', 'General Remarks'
             ]);
+
+            // Pre-compute days in warehouse for each stockIn
+            $daysInWh = [];
+            foreach ($stockIns as $stockIn) {
+                $daysInWh[$stockIn->id] = $stockIn->created_at
+                    ? now()->startOfDay()->diffInDays($stockIn->created_at->startOfDay())
+                    : '';
+            }
 
             // Data rows
             foreach ($stockIns as $stockIn) {
@@ -356,6 +365,7 @@ class ReportController extends Controller
                                 $palletQty,
                                 $item->mfg_date ?? '',
                                 $item->expiry_date ?? '',
+                                $daysInWh[$stockIn->id] ?? '',
                                 $palletBalance,
                                 1,
                                 $item->quality_clearance ?? '',
@@ -403,6 +413,7 @@ $stockIn->created_at->format('d.m.Y H:i'),
                             $qtyVal,
                             $item->mfg_date ?? '',
                             $item->expiry_date ?? '',
+                            $daysInWh[$stockIn->id] ?? '',
                             $balVal,
                             $palletsVal,
                             $item->quality_clearance ?? '',
@@ -849,6 +860,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.expiry_date',
                 'stock_in_items.mfg_date',
                 'stock_in_items.pack_size_snapshot',
+                'stock_in_items.units_received',
                 'stock_in_items.pallets_used',
                 'stock_in_items.total_quantity',
                 'stock_in_items.balance_quantity',
@@ -994,6 +1006,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
             // Only include if there's any stock activity
             if ($openingStock > 0 || $inboundStock > 0 || $outboundStock > 0 || $balanceStock > 0) {
+                $inboundUnits = $product->pack_size > 0
+                    ? round($inboundStock / $product->pack_size)
+                    : 0;
                 $stockReport->push([
                     'product_id' => $product->id,
                     'item_code' => $product->item_code,
@@ -1006,6 +1021,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     'inbound_stock' => $inboundStock,
                     'outbound_stock' => $outboundStock,
                     'balance_stock' => $balanceStock,
+                    'inbound_units' => $inboundUnits,
                     'first_inbound_date' => $firstInboundDate,
                 ]);
             }
@@ -1054,7 +1070,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $callback = function() use ($products, $request) {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['Item Code', 'Product Name', 'Category', 'UOM', 'Packing', 'Pack Size',
-                'Opening Stock', 'Inbound Stock', 'Outbound Stock', 'Balance Stock']);
+                'Opening Stock', 'Inbound Stock', 'Inbound Units', 'Outbound Stock', 'Balance Stock']);
 
             foreach ($products as $product) {
                 $openingQuery = DB::table('stock_in_items')
@@ -1097,6 +1113,9 @@ $item->hold_stock ? 'Yes' : 'No',
                 $balance = $balanceQuery->sum('stock_in_items.balance_quantity');
 
                 if ($opening > 0 || $inbound > 0 || $outbound > 0 || $balance > 0) {
+                    $inboundUnits = $product->pack_size > 0
+                        ? round($inbound / $product->pack_size)
+                        : 0;
                     fputcsv($file, [
                         $product->item_code,
                         $product->name,
@@ -1106,6 +1125,7 @@ $item->hold_stock ? 'Yes' : 'No',
                         $product->pack_size,
                         $opening,
                         $inbound,
+                        $inboundUnits,
                         $outbound,
                         $balance,
                     ]);
