@@ -343,9 +343,9 @@
                             </td>
 
                             <td>
-                                @if($item->product->group)
+                                @if(optional($item->product)->group)
                                     <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1" style="font-size: 10px;">
-                                        {{ $item->product->group->name }}
+                                        {{ optional($item->product)->group->name }}
                                     </span>
                                 @else
                                     <span class="text-muted" style="font-size: 10px;">—</span>
