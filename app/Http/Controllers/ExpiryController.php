@@ -31,4 +31,13 @@ class ExpiryController extends Controller
 
         return view('expiry.index', compact('expired', 'expiring', 'countExpired', 'countExpiring', 'today'));
     }
+
+    public function toggleSale(StockInItem $item)
+    {
+        $item->allow_expired_sale = !$item->allow_expired_sale;
+        $item->save();
+
+        $status = $item->allow_expired_sale ? 'allowed' : 'blocked';
+        return back()->with('success', "Sale of expired stock {$status} for '{$item->product?->name}'.");
+    }
 }

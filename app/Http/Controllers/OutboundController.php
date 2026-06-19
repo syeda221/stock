@@ -182,15 +182,18 @@ class OutboundController extends Controller
             $query->where('warehouse_id', $warehouseId);
         }
 
-        // For customer sales, exclude expired, blocked, and rejected stock
+        // For customer sales, exclude expired, near-expiry, blocked, and rejected stock
+        // unless allow_expired_sale is set on the batch
         $outboundType = $request->query('outbound_type');
         if ($outboundType === 'customer') {
-            $query->where('block_stock', false)
+            $query->where(function ($q) {
+                $q->where('block_stock', false)
                   ->where('quality_clearance', '!=', 'rejected')
-                  ->where(function ($q) {
-                      $q->whereNull('expiry_date')
-                        ->orWhere('expiry_date', '>=', now()->toDateString());
+                  ->where(function ($q2) {
+                      $q2->whereNull('expiry_date')
+                         ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
                   });
+            })->orWhere('allow_expired_sale', true);
         }
 
         $items = $query->orderBy('warehouse_id')
@@ -312,14 +315,17 @@ class OutboundController extends Controller
                         ->where('warehouse_id', $itWarehouseId)
                         ->where('balance_quantity', '>', 0);
 
-                    // For customer sales, exclude blocked, rejected, and expired stock
+                    // For customer sales, exclude blocked, rejected, expired, and near-expiry stock
+                    // unless allow_expired_sale is set on the batch
                     if ($request->outbound_type === 'customer') {
-                        $batchQuery->where('block_stock', false)
+                        $batchQuery->where(function ($q) {
+                            $q->where('block_stock', false)
                               ->where('quality_clearance', '!=', 'rejected')
-                              ->where(function ($q) {
-                                  $q->whereNull('expiry_date')
-                                    ->orWhere('expiry_date', '>=', now()->toDateString());
+                              ->where(function ($q2) {
+                                  $q2->whereNull('expiry_date')
+                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
                               });
+                        })->orWhere('allow_expired_sale', true);
                     }
 
                     $batches = $batchQuery->orderBy('expiry_date', 'asc')
@@ -337,7 +343,7 @@ class OutboundController extends Controller
                             ->exists();
 
                         if ($anyStockExists && $request->outbound_type === 'customer') {
-                            throw new \Exception("Cannot dispatch product '{$productName}'. Available stock is expired, blocked, or rejected.");
+                            throw new \Exception("Cannot dispatch product '{$productName}'. Available stock is expired, near-expiry, blocked, or rejected.");
                         }
 
                         throw new \Exception("No valid stock available for product '{$productName}' in selected warehouse.");
@@ -618,12 +624,14 @@ class OutboundController extends Controller
                         ->where('balance_quantity', '>', 0);
 
                     if ($request->outbound_type === 'customer') {
-                        $batchQuery->where('block_stock', false)
+                        $batchQuery->where(function ($q) {
+                            $q->where('block_stock', false)
                               ->where('quality_clearance', '!=', 'rejected')
-                              ->where(function ($q) {
-                                  $q->whereNull('expiry_date')
-                                    ->orWhere('expiry_date', '>=', now()->toDateString());
+                              ->where(function ($q2) {
+                                  $q2->whereNull('expiry_date')
+                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
                               });
+                        })->orWhere('allow_expired_sale', true);
                     }
 
                     $batches = $batchQuery->orderBy('expiry_date', 'asc')
@@ -1154,12 +1162,14 @@ class OutboundController extends Controller
                         ->where('balance_quantity', '>', 0);
 
                     if ($type === 'sale') {
-                        $batchQuery->where('block_stock', false)
-                            ->where('quality_clearance', '!=', 'rejected')
-                            ->where(function ($q) {
-                                $q->whereNull('expiry_date')
-                                  ->orWhere('expiry_date', '>=', now()->toDateString());
-                            });
+                        $batchQuery->where(function ($q) {
+                            $q->where('block_stock', false)
+                              ->where('quality_clearance', '!=', 'rejected')
+                              ->where(function ($q2) {
+                                  $q2->whereNull('expiry_date')
+                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
+                              });
+                        })->orWhere('allow_expired_sale', true);
                     }
 
                     $whId = $item['warehouse_id'] ?? $request->warehouse_id;

@@ -30,6 +30,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/notifications', [DashboardController::class, 'notifications'])->name('notifications');
     Route::get('/expiry', [ExpiryController::class, 'index'])->name('expiry.index');
+    Route::post('/expiry/{item}/toggle-sale', [ExpiryController::class, 'toggleSale'])->name('expiry.toggle-sale');
 
     // UOM Routes
     Route::get('/uoms', [UomController::class, 'index'])->name('uom.index');
