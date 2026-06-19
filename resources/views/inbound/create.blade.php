@@ -23,6 +23,7 @@
         .qc-select-pending { background: #fff3cd !important; }
         .qc-select-approved { background: #d1e7dd !important; }
         .qc-select-rejected { background: #f8d7da !important; }
+        .auto-mode-wh { pointer-events: none; background-color: #e9ecef !important; opacity: 1; }
     </style>
 
     <form method="POST" action="{{ route('inbound.store') }}" id="inboundForm" autocomplete="off">
@@ -36,28 +37,35 @@
             <div class="card-body">
                 <div class="row">
 
-                    <div class="col-md-2 mb-2">
+                    <div class="col-md-3 mb-2">
                         <label class="form-label">Warehouse</label>
-                        <select id="warehouseSelect" name="warehouse_id" class="form-control form-control-sm" required>
-                            <option value="">Select</option>
-                            @foreach ($warehouseData as $wd)
-                                @php $w = $warehouses->firstWhere('id', $wd['id']) @endphp
-                                <option value="{{ $wd['id'] }}"
-                                    data-free="{{ $wd['free_pallets'] }}"
-                                    {{ $wd['id'] == $autoSelectWarehouseId ? 'selected' : '' }}
-                                    {{ !$wd['has_space'] ? 'disabled' : '' }}>
-                                    {{ $wd['name'] }}
-                                    @if($w->total_capacity > 0)
-                                        ({{ $wd['free_pallets'] }} free / {{ $w->total_capacity }} total)
-                                    @else
-                                        (unlimited)
-                                    @endif
-                                </option>
-                            @endforeach
-                        </select>
+                        <div class="d-flex align-items-center gap-2">
+                            <select id="warehouseSelect" name="warehouse_id" class="form-control form-control-sm" required>
+                                <option value="">Select</option>
+                                @foreach ($warehouseData as $wd)
+                                    @php $w = $warehouses->firstWhere('id', $wd['id']) @endphp
+                                    <option value="{{ $wd['id'] }}"
+                                        data-free="{{ $wd['free_pallets'] }}"
+                                        {{ $wd['id'] == $autoSelectWarehouseId ? 'selected' : '' }}
+                                        {{ !$wd['has_space'] ? 'disabled' : '' }}>
+                                        {{ $wd['name'] }}
+                                        @if($w->total_capacity > 0)
+                                            ({{ $wd['free_pallets'] }} free / {{ $w->total_capacity }} total)
+                                        @else
+                                            (unlimited)
+                                        @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="form-check form-switch mb-0 flex-shrink-0" style="white-space:nowrap;">
+                                <input class="form-check-input" type="checkbox" id="manualToggle" style="cursor:pointer;">
+                                <label class="form-check-label small" for="manualToggle" style="cursor:pointer;">Manual</label>
+                            </div>
+                        </div>
+                        <input type="hidden" name="manual_selection" id="manualSelectionInput" value="0">
                         @if($autoSelectWarehouseId)
                             <small class="text-muted" id="warehouseHint">
-                                <i class="bi bi-info-circle"></i> Auto-selected first available warehouse by priority
+                                <i class="bi bi-info-circle"></i> Auto-selected warehouse with most free space
                             </small>
                         @endif
                     </div>
@@ -230,6 +238,24 @@
             const warehouseData = @json($warehouseData);
             const batchModal = new bootstrap.Modal(document.getElementById('batchModal'));
 
+            /* Manual warehouse toggle */
+            const manualToggle = document.getElementById('manualToggle');
+            const manualInput = document.getElementById('manualSelectionInput');
+
+            function setWarehouseMode(manual) {
+                warehouseSelect.classList.toggle('auto-mode-wh', !manual);
+                if (manual) {
+                    warehouseSelect.querySelectorAll('option').forEach(opt => {
+                        if (opt.value && Number(opt.dataset.free) <= 0) opt.disabled = true;
+                    });
+                }
+                manualInput.value = manual ? '1' : '0';
+            }
+
+            manualToggle.addEventListener('change', function() {
+                setWarehouseMode(this.checked);
+            });
+
             /* Show warehouse free space hint on change */
             warehouseSelect.addEventListener('change', function() {
                 const opt = this.options[this.selectedIndex];
@@ -239,6 +265,8 @@
                     hint.innerHTML = `<i class="bi bi-info-circle"></i> ${free} pallet slots free`;
                 }
             });
+
+            setWarehouseMode(false);
 
             /* ADD ROW FUNCTION */
             function addRow() {

@@ -239,12 +239,20 @@ class InboundController extends Controller
             'picker' => 'nullable|string|max:120',
 
             'shipment_type' => 'nullable|in:manual,auto',
+            'manual_selection' => 'nullable|in:0,1',
 
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.units_received' => 'nullable|integer|min:0',
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
         ]);
+
+        if ($request->manual_selection == '1') {
+            $freeCapacity = \App\Services\WarehouseRowFifo::getFreeRowCapacity($request->warehouse_id);
+            if ($freeCapacity <= 0) {
+                return back()->withErrors(['warehouse_id' => 'Selected warehouse has no free space.'])->withInput();
+            }
+        }
 
         try {
             DB::transaction(function () use ($request, &$stockIn) {
