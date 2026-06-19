@@ -862,6 +862,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.pack_size_snapshot',
                 'stock_in_items.units_received',
                 'stock_in_items.pallets_used',
+                'stock_in_items.pallet_start',
                 'stock_in_items.total_quantity',
                 'stock_in_items.balance_quantity',
                 'stock_in_items.quality_clearance',
@@ -894,20 +895,67 @@ $item->hold_stock ? 'Yes' : 'No',
             ->orderBy('stock_in_items.sap_batch')
             ->get();
 
+        // Build row-letter mapping and expand into per-pallet rows
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        $rowPalletOffsets = [];
+        $expanded = collect();
+        foreach ($stockReport as $entry) {
+            if ($entry->warehouse_id && $entry->row_name && ($entry->pallets_used ?? 0) > 0) {
+                $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+                $palletStart = $entry->pallet_start ?? ($rowPalletOffsets[$rowKey] + 1);
+                $palletEnd = $palletStart + $entry->pallets_used - 1;
+                $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $palletEnd);
+                $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
+                $rowLetter = $rowLetterMap[$mapKey] ?? '';
+                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+
+                $totalQty = (float) $entry->total_quantity;
+                $totalBalance = (float) $entry->balance_quantity;
+                $assignedQty = 0.0;
+                $assignedBalance = 0.0;
+                $numPallets = $palletEnd - $palletStart + 1;
+
+                for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                    $clone = clone $entry;
+                    $clone->pallets_used = 1;
+                    $isLast = ($p == $palletEnd);
+                    $ratio = $totalQty > 0 ? 1 / $numPallets : 0;
+                    $clone->total_quantity = $isLast ? $totalQty - $assignedQty : round($totalQty / $numPallets, 4);
+                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($totalBalance / $numPallets, 4);
+                    $assignedQty += $clone->total_quantity;
+                    $assignedBalance += $clone->balance_quantity;
+                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                    $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    $expanded->push($clone);
+                }
+            } else {
+                $entry->warehouse_display = !empty($entry->row_name) ? $entry->row_name : null;
+                $expanded->push($entry);
+            }
+        }
+        $stockReport = $expanded;
+
         // Calculate summary
         $summary = [
             'total_products' => $stockReport->unique('product_id')->count(),
             'total_warehouses' => $stockReport->unique('warehouse_id')->count(),
-            'total_pallets' => $stockReport->sum(function ($item) {
-                $maxPerPallet = $item->cartons_per_pallet ?? null;
-                if ($maxPerPallet && $maxPerPallet > 0 && ($item->pallets_used ?? 0) > 0) {
-                    $packSize = ($item->pack_size_snapshot ?? 0) > 0 ? $item->pack_size_snapshot : 1;
-                    $remainingCartons = (int) ceil(($item->balance_quantity ?? 0) / $packSize);
-                    $computed = (int) ceil($remainingCartons / $maxPerPallet);
-                    return max(1, min($computed, $item->pallets_used));
-                }
-                return $item->pallets_used ?? 0;
-            }),
+            'total_pallets' => $stockReport->count(),
             'total_balance' => $stockReport->sum('balance_quantity'),
         ];
 
@@ -1070,7 +1118,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $callback = function() use ($products, $request) {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['Item Code', 'Product Name', 'Category', 'UOM', 'Packing', 'Pack Size',
-                'Opening Stock', 'Inbound Stock', 'Inbound Units', 'Outbound Stock', 'Balance Stock']);
+                'Opening Stock', 'Inbound Stock', 'Units Received', 'Inbound Units', 'Outbound Stock', 'Balance Stock', 'Days in Warehouse']);
 
             foreach ($products as $product) {
                 $openingQuery = DB::table('stock_in_items')
@@ -1109,6 +1157,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $opening = $openingQuery->sum('stock_in_items.total_quantity');
                 $inbound = $inboundQuery->sum('stock_in_items.total_quantity');
+                $inboundUnitsReceived = (clone $inboundQuery)->sum('stock_in_items.units_received');
                 $outbound = $outboundQuery->sum('stock_out_items.dispatch_quantity');
                 $balance = $balanceQuery->sum('stock_in_items.balance_quantity');
 
@@ -1116,6 +1165,15 @@ $item->hold_stock ? 'Yes' : 'No',
                     $inboundUnits = $product->pack_size > 0
                         ? round($inbound / $product->pack_size)
                         : 0;
+
+                    $firstStockDate = DB::table('stock_in_items')
+                        ->where('product_id', $product->id)
+                        ->where('balance_quantity', '>', 0)
+                        ->min('created_at');
+                    $daysInWarehouse = $firstStockDate
+                        ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($firstStockDate)->startOfDay())
+                        : '';
+
                     fputcsv($file, [
                         $product->item_code,
                         $product->name,
@@ -1125,9 +1183,11 @@ $item->hold_stock ? 'Yes' : 'No',
                         $product->pack_size,
                         $opening,
                         $inbound,
+                        $inboundUnitsReceived,
                         $inboundUnits,
                         $outbound,
                         $balance,
+                        $daysInWarehouse,
                     ]);
                 }
             }
@@ -1164,9 +1224,22 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.sap_batch',
                 'stock_in_items.stock_in_id as stock_in_id',
                 'stock_in_items.vendor_batch',
+                'stock_in_items.ibd_no',
+                'stock_in_items.po_no',
+                'stock_in_items.units_received',
                 'stock_in_items.total_quantity',
                 'stock_in_items.balance_quantity',
                 'stock_in_items.pack_size_snapshot',
+                'stock_in_items.pallets_used',
+                'stock_in_items.sound_stock',
+                'stock_in_items.block_stock',
+                'stock_in_items.hold_stock',
+                'stock_in_items.mfg_date',
+                'stock_in_items.expiry_date',
+                'stock_in_items.remarks',
+                'stock_ins.inbound_invoice_no',
+                'warehouse_rows.row_name',
+                'stock_in_items.quality_clearance',
                 'stock_in_items.created_at'
             )
             ->get();
@@ -1191,9 +1264,21 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.sap_batch',
                 'stock_in_items.stock_in_id as stock_in_id',
                 'stock_in_items.vendor_batch',
+                'stock_in_items.ibd_no',
+                'stock_in_items.po_no',
+                'stock_in_items.units_received',
                 'stock_in_items.total_quantity',
                 'stock_in_items.balance_quantity',
                 'stock_in_items.pack_size_snapshot',
+                'stock_in_items.pallets_used',
+                'stock_in_items.sound_stock',
+                'stock_in_items.block_stock',
+                'stock_in_items.hold_stock',
+                'stock_in_items.mfg_date',
+                'stock_in_items.expiry_date',
+                'stock_in_items.remarks',
+                'stock_ins.inbound_invoice_no',
+                'warehouse_rows.row_name',
                 'stock_in_items.quality_clearance',
                 'stock_in_items.created_at'
             )
@@ -1205,6 +1290,7 @@ $item->hold_stock ? 'Yes' : 'No',
             ->join('warehouses', 'stock_outs.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('customers', 'stock_outs.customer_id', '=', 'customers.id')
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
+            ->leftJoin('warehouse_rows', 'stock_out_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->where('stock_out_items.product_id', $productId)
             ->select(
                 'warehouses.name as warehouse_name',
@@ -1216,8 +1302,16 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_outs.driver_mobile',
                 'stock_outs.source_type',
                 'stock_out_items.stock_out_id as stock_out_id',
+                'stock_out_items.sap_batch',
+                'stock_out_items.vendor_batch',
+                'stock_out_items.po_no',
+                'stock_out_items.ibd_no',
                 'stock_out_items.dispatch_quantity',
-                'stock_out_items.created_at'
+                'stock_out_items.units_dispatch',
+                'stock_out_items.pack_size_snapshot',
+                'stock_out_items.pallet_position',
+                'stock_out_items.created_at',
+                'warehouse_rows.row_name'
             )
             ->get();
 
