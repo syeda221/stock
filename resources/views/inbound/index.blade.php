@@ -287,10 +287,10 @@
 
                             $itemData = [
 
-                            'Product' => ($item->product->item_code ?? '-') . ' - ' . ($item->product->name ?? '-'),
-                            'Category' => $item->product->category->name ?? '-',
-                            'UOM' => $item->product->uom->name ?? ($item->uom_snapshot ?? '-'),
-                            'Packing' => $item->product->packingType->name ?? ($item->packing_snapshot ?? '-'),
+                            'Product' => ($item->product?->item_code ?? '-') . ' - ' . ($item->product?->name ?? '-'),
+                            'Category' => $item->product?->category?->name ?? '-',
+                            'UOM' => $item->product?->uom?->name ?? ($item->uom_snapshot ?? '-'),
+                            'Packing' => $item->product?->packingType?->name ?? ($item->packing_snapshot ?? '-'),
 
                             'SAP Batch' => $item->sap_batch ?? '-',
                             'Vendor Batch' => $item->vendor_batch ?? '-',
