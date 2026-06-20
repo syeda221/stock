@@ -149,7 +149,7 @@
                         <th class="text-center">UOM</th>
                         <th class="text-end bg-secondary bg-opacity-75">Opening</th>
                         <th class="text-end bg-info bg-opacity-75">Inbound</th>
-                        <th class="text-end bg-info bg-opacity-50">Units Received</th>
+                        <th class="text-end bg-info bg-opacity-50">Available Units</th>
                         <th class="text-end bg-warning bg-opacity-75 text-dark">Outbound</th>
                         <th class="text-end bg-success bg-opacity-75">Balance</th>
                         <th class="text-center" style="width:80px;">Action</th>

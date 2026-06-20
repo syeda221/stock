@@ -1055,7 +1055,7 @@ $item->hold_stock ? 'Yes' : 'No',
             // Only include if there's any stock activity
             if ($openingStock > 0 || $inboundStock > 0 || $outboundStock > 0 || $balanceStock > 0) {
                 $inboundUnits = $product->pack_size > 0
-                    ? round($inboundStock / $product->pack_size)
+                    ? round($balanceStock / $product->pack_size)
                     : 0;
                 $stockReport->push([
                     'product_id' => $product->id,
@@ -1118,7 +1118,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $callback = function() use ($products, $request) {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['Item Code', 'Product Name', 'Category', 'UOM', 'Packing', 'Pack Size',
-                'Opening Stock', 'Inbound Stock', 'Units Received', 'Inbound Units', 'Outbound Stock', 'Balance Stock', 'Days in Warehouse']);
+                'Opening Stock', 'Inbound Stock', 'Available Units', 'Inbound Units', 'Outbound Stock', 'Balance Stock', 'Days in Warehouse']);
 
             foreach ($products as $product) {
                 $openingQuery = DB::table('stock_in_items')
@@ -1157,13 +1157,15 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $opening = $openingQuery->sum('stock_in_items.total_quantity');
                 $inbound = $inboundQuery->sum('stock_in_items.total_quantity');
-                $inboundUnitsReceived = (clone $inboundQuery)->sum('stock_in_items.units_received');
                 $outbound = $outboundQuery->sum('stock_out_items.dispatch_quantity');
                 $balance = $balanceQuery->sum('stock_in_items.balance_quantity');
 
                 if ($opening > 0 || $inbound > 0 || $outbound > 0 || $balance > 0) {
                     $inboundUnits = $product->pack_size > 0
                         ? round($inbound / $product->pack_size)
+                        : 0;
+                    $currentUnits = $product->pack_size > 0
+                        ? round($balance / $product->pack_size)
                         : 0;
 
                     $firstStockDate = DB::table('stock_in_items')
@@ -1183,7 +1185,7 @@ $item->hold_stock ? 'Yes' : 'No',
                         $product->pack_size,
                         $opening,
                         $inbound,
-                        $inboundUnitsReceived,
+                        $currentUnits,
                         $inboundUnits,
                         $outbound,
                         $balance,
