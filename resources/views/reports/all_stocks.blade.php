@@ -147,11 +147,14 @@
                         <th>Product Name</th>
                         <th>Category</th>
                         <th class="text-center">UOM</th>
+                        <th class="text-center">Packing</th>
+                        <th class="text-center">Pack Size</th>
                         <th class="text-end bg-secondary bg-opacity-75">Opening</th>
                         <th class="text-end bg-info bg-opacity-75">Inbound</th>
                         <th class="text-end bg-info bg-opacity-50">Available Units</th>
                         <th class="text-end bg-warning bg-opacity-75 text-dark">Outbound</th>
                         <th class="text-end bg-success bg-opacity-75">Balance</th>
+                        <th class="text-center" style="width:70px;">Days in WH</th>
                         <th class="text-center" style="width:80px;">Action</th>
                     </tr>
                 </thead>
@@ -165,13 +168,18 @@
                             </td>
                             <td>
                                 <div class="fw-semibold text-dark">{{ $item['product_name'] }}</div>
-                                <small class="text-muted">{{ $item['packing'] }} × {{ $item['pack_size'] }}</small>
                             </td>
                             <td>
                                 <span class="text-muted">{{ $item['category'] }}</span>
                             </td>
                             <td class="text-center">
                                 <span class="badge bg-secondary bg-opacity-25 text-secondary">{{ $item['uom'] }}</span>
+                            </td>
+                            <td class="text-center">
+                                <small class="text-muted">{{ $item['packing'] }}</small>
+                            </td>
+                            <td class="text-center">
+                                <small class="text-muted">{{ $item['pack_size'] }}</small>
                             </td>
                             <td class="text-end">
                                 <span class="fw-semibold text-secondary">{{ number_format($item['opening_stock'], 2) }}</span>
@@ -183,7 +191,6 @@
                             </td>
                             <td class="text-end">
                                 <span class="fw-semibold">{{ $item['inbound_units'] }}</span>
-                                <br><small class="text-muted">{{ $item['inbound_units'] }} × {{ $item['pack_size'] }}</small>
                             </td>
                             <td class="text-end">
                                 <span class="fw-semibold text-warning">
@@ -194,6 +201,24 @@
                                 <span class="fw-bold {{ $item['balance_stock'] > 0 ? 'text-success' : 'text-danger' }}">
                                     {{ number_format($item['balance_stock'], 2) }}
                                 </span>
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $days = $item['first_inbound_date'] ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($item['first_inbound_date'])->startOfDay()) : '';
+                                @endphp
+                                @if($days !== '')
+                                    @if($days <= 7)
+                                        <span class="badge bg-success">{{ $days }}d</span>
+                                    @elseif($days <= 30)
+                                        <span class="badge bg-warning text-dark">{{ $days }}d</span>
+                                    @elseif($days <= 90)
+                                        <span class="badge" style="background:#fd7e14;color:#fff;">{{ $days }}d</span>
+                                    @else
+                                        <span class="badge bg-danger">{{ $days }}d</span>
+                                    @endif
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
                             </td>
                             <td class="text-center">
                                 <button type="button"

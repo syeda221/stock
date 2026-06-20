@@ -534,78 +534,135 @@ $item->hold_stock ? 'Yes' : 'No',
         ];
 
         $callback = function() use ($stockOuts, $outboundPositions) {
+            ob_end_clean();
             $file = fopen('php://output', 'w');
             
-            // Header row
-            fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
-                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
-                'Units Dispatch', 'Dispatch Qty', 'MFG Date', 'Expiry Date',
-                'Balance Qty', 'Pallets Used', 'Quality Check', 'Sound', 'Blocked', 'Hold',
-                'Entry ID', 'Date', 'Source Type', 'To Warehouse', 'Customer', 'Transporter',
-                'Dispatched Invoice', 'Delivery No', 'Gatepass No', 'STO No', 'Shipment No',
-                'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
-                'Vehicle In Time', 'Vehicle Out Time', 'Picker',
-                'Warehouse Row', 'Item Remarks', 'General Remarks'
-            ]);
+            try {
+                // Header row
+                fputcsv($file, [
+                    'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                    'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
+                    'Units Dispatch', 'Dispatch Qty', 'MFG Date', 'Expiry Date',
+                    'Balance Qty', 'Pallets Used', 'Quality Check', 'Sound', 'Blocked', 'Hold',
+                    'Entry ID', 'Date', 'Source Type', 'To Warehouse', 'Customer', 'Transporter',
+                    'Dispatched Invoice', 'Delivery No', 'Gatepass No', 'STO No', 'Shipment No',
+                    'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
+                    'Vehicle In Time', 'Vehicle Out Time', 'Picker',
+                    'Warehouse Row', 'Item Remarks', 'General Remarks'
+                ]);
 
-            // Data rows
-            foreach ($stockOuts as $stockOut) {
-                foreach ($stockOut->items as $item) {
-                    $warehouseDisplay = $stockOut->warehouse->name ?? '';
-                    $unitsVal = $item->units_dispatch ?? 0;
-                    $qtyVal = $item->dispatch_quantity ?? 0;
-                    $palletsVal = $item->pallets_returned ?? 0;
-                    $rowNameVal = $item->warehouseRow->name ?? '';
+                // Data rows
+                foreach ($stockOuts as $stockOut) {
+                    foreach ($stockOut->items as $item) {
+                        $warehouseDisplay = $stockOut->warehouse?->name ?? '';
+                        $unitsVal = $item->units_dispatch ?? 0;
+                        $qtyVal = $item->dispatch_quantity ?? 0;
+                        $palletsVal = $item->pallets_returned ?? 0;
+                        $rowNameVal = $item->warehouseRow?->name ?? '';
 
-                    $pos = $outboundPositions[$item->id] ?? null;
+                        $pos = $outboundPositions[$item->id] ?? null;
 
-                    if ($pos) {
-                        $whPadded = $pos['wh_padded'];
-                        $rowLetter = $pos['letter'];
-                        $palletStart = $pos['start'];
-                        $palletEnd = $pos['end'];
-                        $numPallets = $palletEnd - $palletStart + 1;
+                        $product = $item->product;
+                        $category = $product?->category;
+                        $uom = $product?->uom;
+                        $packingType = $product?->packingType;
 
-                        $maxPerPallet = $item->product->cartons_per_pallet ?? null;
-                        $totalUnits = (float) $unitsVal;
-                        $totalQty = (float) $qtyVal;
-                        $remainingUnits = $totalUnits;
-                        $assignedQty = 0.0;
+                        $toWhName = $stockOut->toWarehouse?->name ?? '';
+                        $customerName = $stockOut->customer?->name ?? 'Transfer';
+                        $transporterName = $stockOut->transporter?->name ?? '';
 
-                        for ($p = $palletStart; $p <= $palletEnd; $p++) {
-                            $isLast = ($p == $palletEnd);
-                            if ($maxPerPallet) {
-                                $perPalletUnits = min($maxPerPallet, $remainingUnits);
-                            } else {
-                                $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                        if ($pos) {
+                            $whPadded = $pos['wh_padded'];
+                            $rowLetter = $pos['letter'];
+                            $palletStart = $pos['start'];
+                            $palletEnd = $pos['end'];
+                            $numPallets = $palletEnd - $palletStart + 1;
+
+                            $maxPerPallet = $product?->cartons_per_pallet ?? null;
+                            $totalUnits = (float) $unitsVal;
+                            $totalQty = (float) $qtyVal;
+                            $remainingUnits = $totalUnits;
+                            $assignedQty = 0.0;
+
+                            for ($p = $palletStart; $p <= $palletEnd; $p++) {
+                                $isLast = ($p == $palletEnd);
+                                if ($maxPerPallet) {
+                                    $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                                } else {
+                                    $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                                }
+                                $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                                $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+                                $remainingUnits -= $perPalletUnits;
+                                $assignedQty += $palletQty;
+
+                                $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                                $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+
+                                fputcsv($file, [
+                                    $product?->item_code ?? '',
+                                    $product?->name ?? '',
+                                    $warehouseDisplay,
+                                    $category?->name ?? '',
+                                    $uom?->name ?? '',
+                                    $stockOut->ibd_no ?? $item->ibd_no ?? '',
+                                    $stockOut->po_no ?? $item->po_no ?? '',
+                                    $item->vendor_batch ?? '',
+                                    $item->sap_batch ?? '',
+                                    $packingType?->name ?? '',
+                                    $item->pack_size_snapshot ?? '',
+                                    $perPalletUnits,
+                                    $palletQty,
+                                    $item->mfg_date ?? '',
+                                    $item->expiry_date ?? '',
+                                    '', // Balance Qty N/A
+                                    1,
+                                    '', // Quality Check N/A
+                                    '', // Sound N/A
+                                    '', // Blocked N/A
+                                    '', // Hold N/A
+                                    $stockOut->id,
+                                    $stockOut->created_at->format('d.m.Y H:i'),
+                                    $stockOut->source_type ?? '',
+                                    $toWhName,
+                                    $customerName,
+                                    $transporterName,
+                                    $stockOut->dispatched_invoice_no ?? '',
+                                    $stockOut->delivery_no ?? '',
+                                    $stockOut->gatepass_no ?? '',
+                                    $stockOut->sto_no ?? '',
+                                    $stockOut->shipment_no ?? '',
+                                    $stockOut->vehicle_no ?? '',
+                                    $stockOut->vehicle_size ?? '',
+                                    $stockOut->driver_name ?? '',
+                                    $stockOut->driver_mobile ?? '',
+                                    $stockOut->vehicle_in_time ?? '',
+                                    $stockOut->vehicle_out_time ?? '',
+                                    $stockOut->picker ?? '',
+                                    $rowNameVal,
+                                    $item->remarks ?? '',
+                                    $stockOut->remarks ?? ''
+                                ]);
                             }
-                            $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
-                            $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
-                            $remainingUnits -= $perPalletUnits;
-                            $assignedQty += $palletQty;
-
-                            $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
-                            $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
-
+                        } else {
                             fputcsv($file, [
-                                $item->product->item_code ?? '',
-                                $item->product->name ?? '',
+                                $product?->item_code ?? '',
+                                $product?->name ?? '',
                                 $warehouseDisplay,
-                                $item->product->category->name ?? '',
-                                $item->product->uom->name ?? '',
+                                $category?->name ?? '',
+                                $uom?->name ?? '',
                                 $stockOut->ibd_no ?? $item->ibd_no ?? '',
                                 $stockOut->po_no ?? $item->po_no ?? '',
                                 $item->vendor_batch ?? '',
                                 $item->sap_batch ?? '',
-                                $item->product->packingType->name ?? '',
+                                $packingType?->name ?? '',
                                 $item->pack_size_snapshot ?? '',
-                                $perPalletUnits,
-                                $palletQty,
+                                $unitsVal,
+                                $qtyVal,
                                 $item->mfg_date ?? '',
                                 $item->expiry_date ?? '',
                                 '', // Balance Qty N/A
-                                1,
+                                $palletsVal,
                                 '', // Quality Check N/A
                                 '', // Sound N/A
                                 '', // Blocked N/A
@@ -613,9 +670,9 @@ $item->hold_stock ? 'Yes' : 'No',
                                 $stockOut->id,
                                 $stockOut->created_at->format('d.m.Y H:i'),
                                 $stockOut->source_type ?? '',
-                                $stockOut->toWarehouse->name ?? '',
-                                $stockOut->customer->name ?? 'Transfer',
-                                $stockOut->transporter->name ?? '',
+                                $toWhName,
+                                $customerName,
+                                $transporterName,
                                 $stockOut->dispatched_invoice_no ?? '',
                                 $stockOut->delivery_no ?? '',
                                 $stockOut->gatepass_no ?? '',
@@ -633,59 +690,18 @@ $item->hold_stock ? 'Yes' : 'No',
                                 $stockOut->remarks ?? ''
                             ]);
                         }
-                    } else {
-                        fputcsv($file, [
-                            $item->product->item_code ?? '',
-                            $item->product->name ?? '',
-                            $warehouseDisplay,
-                            $item->product->category->name ?? '',
-                            $item->product->uom->name ?? '',
-                            $stockOut->ibd_no ?? $item->ibd_no ?? '',
-                            $stockOut->po_no ?? $item->po_no ?? '',
-                            $item->vendor_batch ?? '',
-                            $item->sap_batch ?? '',
-                            $item->product->packingType->name ?? '',
-                            $item->pack_size_snapshot ?? '',
-                            $unitsVal,
-                            $qtyVal,
-                            $item->mfg_date ?? '',
-                            $item->expiry_date ?? '',
-                            '', // Balance Qty N/A
-                            $palletsVal,
-                            '', // Quality Check N/A
-                            '', // Sound N/A
-                            '', // Blocked N/A
-                            '', // Hold N/A
-                            $stockOut->id,
-                            $stockOut->created_at->format('d.m.Y H:i'),
-                            $stockOut->source_type ?? '',
-                            $stockOut->toWarehouse->name ?? '',
-                            $stockOut->customer->name ?? 'Transfer',
-                            $stockOut->transporter->name ?? '',
-                            $stockOut->dispatched_invoice_no ?? '',
-                            $stockOut->delivery_no ?? '',
-                            $stockOut->gatepass_no ?? '',
-                            $stockOut->sto_no ?? '',
-                            $stockOut->shipment_no ?? '',
-                            $stockOut->vehicle_no ?? '',
-                            $stockOut->vehicle_size ?? '',
-                            $stockOut->driver_name ?? '',
-                            $stockOut->driver_mobile ?? '',
-                            $stockOut->vehicle_in_time ?? '',
-                            $stockOut->vehicle_out_time ?? '',
-                            $stockOut->picker ?? '',
-                            $rowNameVal,
-                            $item->remarks ?? '',
-                            $stockOut->remarks ?? ''
-                        ]);
                     }
                 }
+            } catch (\Throwable $e) {
+                // Prevent HTML error page from leaking into CSV
+            } finally {
+                fclose($file);
             }
-
-            fclose($file);
         };
 
-        return response()->stream($callback, 200, $headers);
+        return response()->stream($callback, 200, $headers)
+            ->sendHeaders()
+            ->sendContent();
     }
 
     /**
@@ -1714,6 +1730,8 @@ $item->hold_stock ? 'Yes' : 'No',
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
+            ->leftJoin('arrived_froms', 'stock_ins.arrived_from_id', '=', 'arrived_froms.id')
+            ->leftJoin('packing_types', 'products.packing_type_id', '=', 'packing_types.id')
             ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
             ->select(
                 'stock_in_items.id',
@@ -1726,6 +1744,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'products.name as product_name',
                 'product_categories.name as category_name',
                 'uoms.name as uom_name',
+                'packing_types.name as packing_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
@@ -1735,10 +1754,20 @@ $item->hold_stock ? 'Yes' : 'No',
                 'products.cartons_per_pallet',
                 'vendors.name as vendor_name',
                 'transporters.name as transporter_name',
+                'arrived_froms.name as arrived_from_name',
                 'stock_ins.vehicle_no',
+                'stock_ins.vehicle_size',
                 'stock_ins.driver_name',
+                'stock_ins.driver_mobile',
+                'stock_ins.vehicle_in_time',
+                'stock_ins.vehicle_out_time',
                 'stock_ins.inbound_invoice_no',
                 'stock_ins.dispatched_invoice_no as invoice_no',
+                'stock_ins.shipment_no',
+                'stock_ins.sto_no',
+                'stock_ins.delivery_no',
+                'stock_ins.picker',
+                'stock_ins.shipment_type',
                 'stock_in_items.sap_batch',
                 'stock_in_items.vendor_batch',
                 'stock_in_items.po_no',
@@ -1749,7 +1778,12 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.pack_size_snapshot as pack_size',
                 'stock_in_items.total_quantity as quantity',
                 'stock_in_items.balance_quantity',
+                'stock_in_items.sound_stock',
+                'stock_in_items.block_stock',
+                'stock_in_items.hold_stock',
                 'stock_in_items.quality_clearance as qc_status',
+                'stock_in_items.remarks as item_remarks',
+                'stock_ins.remarks as general_remarks',
                 DB::raw('NULL as customer_name'),
                 DB::raw('NULL as to_warehouse_name')
             );
@@ -1888,6 +1922,7 @@ $item->hold_stock ? 'Yes' : 'No',
             ->join('warehouses', 'stock_outs.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('product_categories', 'products.product_category_id', '=', 'product_categories.id')
             ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
+            ->leftJoin('packing_types', 'products.packing_type_id', '=', 'packing_types.id')
             ->leftJoin('customers', 'stock_outs.customer_id', '=', 'customers.id')
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouses as to_wh', 'stock_outs.to_warehouse_id', '=', 'to_wh.id')
@@ -1903,6 +1938,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'products.name as product_name',
                 'product_categories.name as category_name',
                 'uoms.name as uom_name',
+                'packing_types.name as packing_name',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
@@ -1910,10 +1946,20 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_out_items.pallet_position',
                 DB::raw('NULL as vendor_name'),
                 'transporters.name as transporter_name',
+                DB::raw('NULL as arrived_from_name'),
                 'stock_outs.vehicle_no',
+                'stock_outs.vehicle_size',
                 'stock_outs.driver_name',
+                'stock_outs.driver_mobile',
+                'stock_outs.vehicle_in_time',
+                'stock_outs.vehicle_out_time',
                 DB::raw('NULL as inbound_invoice_no'),
                 'stock_outs.dispatched_invoice_no as invoice_no',
+                'stock_outs.shipment_no',
+                DB::raw('NULL as sto_no'),
+                'stock_outs.delivery_no',
+                'stock_outs.picker',
+                'stock_outs.shipment_type',
                 'stock_out_items.sap_batch',
                 'stock_out_items.vendor_batch',
                 'stock_out_items.po_no',
@@ -1924,7 +1970,12 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_out_items.pack_size_snapshot as pack_size',
                 'stock_out_items.dispatch_quantity as quantity',
                 DB::raw('0 as balance_quantity'),
+                DB::raw('NULL as sound_stock'),
+                DB::raw('NULL as block_stock'),
+                DB::raw('NULL as hold_stock'),
                 DB::raw('NULL as qc_status'),
+                'stock_out_items.remarks as item_remarks',
+                'stock_outs.remarks as general_remarks',
                 'customers.name as customer_name',
                 'to_wh.name as to_warehouse_name'
             );
@@ -2033,64 +2084,96 @@ $item->hold_stock ? 'Yes' : 'No',
             });
         }
 
+        // Helper: map source_type to label
+        $srcLabel = fn($s) => match($s) {
+            'opening' => 'Opening',
+            'inbound' => 'Inbound',
+            'sale'    => 'Sale',
+            'transfer'=> 'Transfer',
+            default   => strtoupper($s ?? '')
+        };
+
         $filename = 'stock_ledger_report_' . date('Y-m-d_His') . '.csv';
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function() use ($ledgerEntries) {
+        $callback = function() use ($ledgerEntries, $srcLabel) {
             $file = fopen('php://output', 'w');
             
-            // Header row required by user
+            // Header row — matches inbound export structure
             fputcsv($file, [
-                'Date',
-                'Type (Inbound / Outbound)',
-                'Product',
-                'Warehouse',
-                'Batch',
-                'Invoice / Reference',
-                'Party',
-                'IN Quantity',
-                'OUT Quantity',
-                'Balance',
-                'Expiry Date'
+                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
+                'Units', 'Total Qty', 'MFG Date', 'Expiry Date',
+                'Days in Warehouse', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Sound', 'Blocked', 'Hold',
+                'Entry ID', 'Date', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
+                'Inbound Invoice', 'Dispatched Invoice', 'Shipment No', 'STO No',
+                'Delivery No', 'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
+                'Vehicle In Time', 'Vehicle Out Time', 'Picker', 'Shipment Type',
+                'Warehouse Row', 'Item Remarks', 'General Remarks'
             ]);
 
-            // Data rows
             foreach ($ledgerEntries as $entry) {
-                // Determine party
-                $party = '-';
-                if ($entry->direction === 'IN' && $entry->vendor_name) {
-                    $party = $entry->vendor_name;
-                } elseif ($entry->direction === 'OUT') {
-                    $party = $entry->customer_name ?? $entry->to_warehouse_name ?? '-';
-                }
-
-                // Format batch
-                $batch = '-';
-                if ($entry->sap_batch) {
-                    $batch = $entry->sap_batch;
-                } elseif ($entry->vendor_batch) {
-                    $batch = $entry->vendor_batch;
-                }
-
-                $productDisplay = ($entry->item_code ? $entry->item_code . ' - ' : '') . $entry->product_name;
-
-                $warehouseDisplay = !empty($entry->warehouse_display) ? $entry->warehouse_display : (!empty($entry->row_name) ? $entry->row_name : '-');
+                $isIn = $entry->direction === 'IN';
+                $warehouseDisplay = !empty($entry->warehouse_display) ? $entry->warehouse_display : (!empty($entry->row_name) ? $entry->row_name : ($entry->warehouse_name ?? '-'));
+                $party = $isIn ? ($entry->vendor_name ?? '-') : ($entry->customer_name ?? $entry->to_warehouse_name ?? '-');
+                $arrivedFrom = $isIn ? ($entry->arrived_from_name ?? '-') : ($entry->to_warehouse_name ?? '-');
+                $pallets = $isIn ? ($entry->pallets_used ?? 0) : '-';
+                $qc = $isIn ? ($entry->qc_status ?? '-') : '-';
+                $sound = $isIn ? ($entry->sound_stock ? 'Yes' : 'No') : '-';
+                $blocked = $isIn ? ($entry->block_stock ? 'Yes' : 'No') : '-';
+                $hold = $isIn ? ($entry->hold_stock ? 'Yes' : 'No') : '-';
+                $balance = $isIn ? ($entry->balance_quantity ?? 0) : '-';
+                $days = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
 
                 fputcsv($file, [
-                        \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y H:i'),
-                    strtoupper($entry->source_type ?? $entry->direction),
-                    $productDisplay,
+                    $entry->item_code ?? '',
+                    $entry->product_name ?? '',
                     $warehouseDisplay,
-                    $batch,
-                    $entry->invoice_no ?? '-',
+                    $entry->category_name ?? '',
+                    $entry->uom_name ?? '',
+                    $entry->ibd_no ?? '',
+                    $entry->po_no ?? '',
+                    $entry->vendor_batch ?? '',
+                    $entry->sap_batch ?? '',
+                    $entry->packing_name ?? '',
+                    $entry->pack_size ?? '',
+                    $entry->units ?? 0,
+                    $entry->quantity ?? 0,
+                    $entry->mfg_date ?? '',
+                    $entry->expiry_date ?? '',
+                    $days,
+                    $balance,
+                    $pallets,
+                    $qc,
+                    $sound,
+                    $blocked,
+                    $hold,
+                    $entry->transaction_id ?? '',
+                    \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y H:i'),
+                    $srcLabel($entry->source_type ?? $entry->direction),
                     $party,
-                    $entry->direction === 'IN' ? ($entry->quantity ?? 0) : '-',
-                    $entry->direction === 'OUT' ? ($entry->quantity ?? 0) : '-',
-                    $entry->balance_quantity ?? '-',
-                    $entry->expiry_date ? \Carbon\Carbon::parse($entry->expiry_date)->format('d.m.Y') : '-'
+                    $arrivedFrom,
+                    $entry->transporter_name ?? '-',
+                    $entry->inbound_invoice_no ?? '',
+                    $entry->invoice_no ?? '',
+                    $entry->shipment_no ?? '-',
+                    $entry->sto_no ?? '-',
+                    $entry->delivery_no ?? '-',
+                    $entry->vehicle_no ?? '',
+                    $entry->vehicle_size ?? '',
+                    $entry->driver_name ?? '',
+                    $entry->driver_mobile ?? '',
+                    $entry->vehicle_in_time ?? '',
+                    $entry->vehicle_out_time ?? '',
+                    $entry->picker ?? '',
+                    $entry->shipment_type ?? '',
+                    $entry->row_name ?? '',
+                    $entry->item_remarks ?? '',
+                    $entry->general_remarks ?? ''
                 ]);
             }
 

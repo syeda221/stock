@@ -191,36 +191,57 @@
             <table class="table table-hover align-middle mb-0" style="font-size: 13px;">
                 <thead class="table-dark">
                     <tr>
-                        <th style="width:50px;">#</th>
-                        <th style="width:90px;">Date</th>
-                        <th style="width:70px;" class="text-center">Type</th>
+                        <th style="width:40px;">#</th>
+                        <th style="width:80px;">Date</th>
+                        <th class="text-center" style="width:65px;">Type</th>
+                        <th>Item Code</th>
                         <th>Product</th>
-                        <th>Warehouse</th>
-                        <th>Batch</th>
-                        <th>Invoice/Ref</th>
-                        <th>Party</th>
-                        <th class="text-end bg-success bg-opacity-50">IN</th>
-                        <th class="text-end bg-danger bg-opacity-50">OUT</th>
-                        <th class="text-end bg-info bg-opacity-50">Balance</th>
-                        <th class="text-center">Expiry</th>
-                        <th class="text-center" style="width:80px;">Action</th>
+                        <th>Category</th>
+                        <th style="width:45px;" class="text-center">UOM</th>
+                        <th style="width:55px;" class="text-center">Pack</th>
+                        <th style="width:90px;">SAP Batch</th>
+                        <th style="width:90px;">Vendor Batch</th>
+                        <th style="width:80px;">IBD</th>
+                        <th style="width:70px;">PO</th>
+                        <th class="text-end" style="width:55px;">Units</th>
+                        <th class="text-end bg-success bg-opacity-50" style="width:70px;">IN</th>
+                        <th class="text-end bg-danger bg-opacity-50" style="width:70px;">OUT</th>
+                        <th class="text-end bg-info bg-opacity-50" style="width:80px;">Balance</th>
+                        <th style="width:80px;">MFG</th>
+                        <th style="width:80px;">Expiry</th>
+                        <th class="text-center" style="width:50px;">Days</th>
+                        <th class="text-center" style="width:50px;">Pallets</th>
+                        <th style="width:60px;" class="text-center">QC</th>
+                        <th style="width:90px;">Warehouse</th>
+                        <th style="width:70px;">Row</th>
+                        <th style="width:90px;">Invoice</th>
+                        <th style="width:100px;">Party</th>
+                        <th style="width:70px;">Vehicle</th>
+                        <th class="text-center" style="width:70px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($ledgerPaginated as $index => $entry)
+                        @php
+                            $isIn = $entry->direction == 'IN';
+                            $balUnits = $isIn && $entry->pack_size > 0 ? $entry->balance_quantity / $entry->pack_size : 0;
+                            $daysInWh = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
+                            $expiry = $entry->expiry_date ? \Carbon\Carbon::parse($entry->expiry_date) : null;
+                            $daysToExpiry = $expiry ? now()->diffInDays($expiry, false) : null;
+                        @endphp
                         <tr>
                             <td class="text-muted fw-semibold">{{ $ledgerPaginated->firstItem() + $index }}</td>
-                            <td>
+                            <td class="text-nowrap">
                                 <small class="text-muted">{{ \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y') }}</small>
                                 <br>
                                 <small class="text-muted opacity-75">{{ \Carbon\Carbon::parse($entry->created_at)->format('H:i') }}</small>
                             </td>
                             <td class="text-center">
-                                @if($entry->direction == 'IN')
+                                @if($isIn)
                                     @if($entry->source_type == 'opening')
                                         <span class="badge bg-secondary">Opening</span>
                                     @elseif($entry->source_type == 'transfer')
-                                        <span class="badge bg-info">Transfer In</span>
+                                        <span class="badge bg-info">Tr.In</span>
                                     @else
                                         <span class="badge bg-success">Inbound</span>
                                     @endif
@@ -228,136 +249,145 @@
                                     @if($entry->source_type == 'sale')
                                         <span class="badge bg-warning text-dark">Sale</span>
                                     @elseif($entry->source_type == 'transfer')
-                                        <span class="badge bg-info">Transfer Out</span>
+                                        <span class="badge bg-info">Tr.Out</span>
                                     @else
                                         <span class="badge bg-danger">Outbound</span>
                                     @endif
                                 @endif
                             </td>
+                            <td><small class="fw-semibold">{{ $entry->item_code ?? '-' }}</small></td>
                             <td>
-                                <div class="fw-semibold text-dark">{{ $entry->product_name }}</div>
-                                <small class="text-muted">
-                                    <span class="badge bg-light text-dark">{{ $entry->item_code }}</span>
-                                    {{ $entry->category_name ?? '' }}
-                                </small>
+                                <div class="fw-semibold text-dark" style="font-size:13px;">{{ $entry->product_name }}</div>
+                            </td>
+                            <td><small class="text-muted">{{ $entry->category_name ?? '-' }}</small></td>
+                            <td class="text-center"><small>{{ $entry->uom_name ?? '-' }}</small></td>
+                            <td class="text-center"><small>{{ $entry->pack_size ?? '-' }}</small></td>
+                            <td><small>{{ $entry->sap_batch ?: '-' }}</small></td>
+                            <td><small>{{ $entry->vendor_batch ?: '-' }}</small></td>
+                            <td><small>{{ $entry->ibd_no ?: '-' }}</small></td>
+                            <td><small>{{ $entry->po_no ?: '-' }}</small></td>
+                            <td class="text-end"><small>{{ $entry->units ?? 0 }}</small></td>
+                            <td class="text-end">
+                                @if($isIn)
+                                    <span class="fw-bold text-success"><i class="bi bi-plus-lg"></i>{{ number_format($entry->quantity, 2) }}</span>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td class="text-end">
+                                @if(!$isIn)
+                                    <span class="fw-bold text-danger"><i class="bi bi-dash-lg"></i>{{ number_format($entry->quantity, 2) }}</span>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td class="text-end">
+                                @if($isIn)
+                                    <span class="fw-bold {{ $entry->balance_quantity > 0 ? 'text-info' : 'text-muted' }}">
+                                        {{ rtrim(rtrim(number_format($balUnits, 2), '0'), '.') }} U
+                                    </span>
+                                    <br><small class="fw-normal text-muted">({{ rtrim(rtrim(number_format($entry->balance_quantity, 2), '0'), '.') }})</small>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td><small>{{ $entry->mfg_date ? \Carbon\Carbon::parse($entry->mfg_date)->format('d.m.Y') : '-' }}</small></td>
+                            <td class="text-center">
+                                @if($expiry)
+                                    @if($daysToExpiry < 0)
+                                        <span class="badge bg-danger">Expired</span>
+                                    @elseif($daysToExpiry <= 30)
+                                        <span class="badge bg-warning text-dark">{{ $expiry->format('d.m.y') }}</span>
+                                    @elseif($daysToExpiry <= 90)
+                                        <span class="badge bg-info">{{ $expiry->format('d.m.y') }}</span>
+                                    @else
+                                        <small class="text-muted">{{ $expiry->format('d.m.y') }}</small>
+                                    @endif
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td class="text-center">
+                                @if($daysInWh !== '')
+                                    @if($daysInWh <= 7)
+                                        <span class="badge bg-success">{{ $daysInWh }}d</span>
+                                    @elseif($daysInWh <= 30)
+                                        <span class="badge bg-warning text-dark">{{ $daysInWh }}d</span>
+                                    @elseif($daysInWh <= 90)
+                                        <span class="badge" style="background:#fd7e14;color:#fff;">{{ $daysInWh }}d</span>
+                                    @else
+                                        <span class="badge bg-danger">{{ $daysInWh }}d</span>
+                                    @endif
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td class="text-center"><small>{{ $isIn ? ($entry->pallets_used ?? '-') : '-' }}</small></td>
+                            <td class="text-center">
+                                @if($isIn && $entry->qc_status)
+                                    @if($entry->qc_status == 'approved')
+                                        <span class="badge bg-success">A</span>
+                                    @elseif($entry->qc_status == 'rejected')
+                                        <span class="badge bg-danger">R</span>
+                                    @else
+                                        <span class="badge bg-warning text-dark">P</span>
+                                    @endif
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
+                            <td>
+                                <small>{{ $entry->warehouse_name ?? '-' }}</small>
+                                @if($entry->to_warehouse_name)
+                                    <br><small class="text-muted fw-semibold" style="font-size:11px;">→ {{ $entry->to_warehouse_name }}</small>
+                                @endif
                             </td>
                             <td>
                                 @if(!empty($entry->warehouse_display))
                                     <small class="fw-semibold">{{ $entry->warehouse_display }}</small>
+                                @elseif(!empty($entry->row_name))
+                                    <small>{{ $entry->row_name }}</small>
                                 @else
-                                    <span class="text-muted">—</span>
+                                    <span class="text-muted">-</span>
                                 @endif
-                                @if($entry->to_warehouse_name)
-                                    <br><small class="text-muted">→ {{ $entry->to_warehouse_name }}</small>
-                                @endif
-                            </td>
-                            <td>
-                                <small>
-                                    @if($entry->sap_batch)
-                                        <span class="badge bg-primary bg-opacity-10 text-primary">SAP: {{ $entry->sap_batch }}</span>
-                                    @endif
-                                    @if($entry->vendor_batch)
-                                        <br><span class="text-muted">V: {{ $entry->vendor_batch }}</span>
-                                    @endif
-                                </small>
                             </td>
                             <td>
                                 <small>
                                     @if($entry->invoice_no)
-                                        <span class="fw-medium">{{ $entry->invoice_no }}</span>
+                                        {{ $entry->invoice_no }}
                                     @elseif($entry->inbound_invoice_no)
-                                        <span class="fw-medium">{{ $entry->inbound_invoice_no }}</span>
+                                        {{ $entry->inbound_invoice_no }}
                                     @else
                                         -
-                                    @endif
-                                    @if($entry->po_no)
-                                        <br><span class="text-muted">PO: {{ $entry->po_no }}</span>
                                     @endif
                                 </small>
                             </td>
                             <td>
                                 <small>
                                     @if($entry->vendor_name)
-                                        <span class="text-success"><i class="bi bi-person-badge me-1"></i>{{ $entry->vendor_name }}</span>
+                                        <span class="text-success">{{ $entry->vendor_name }}</span>
                                     @elseif($entry->customer_name)
-                                        <span class="text-warning"><i class="bi bi-people me-1"></i>{{ $entry->customer_name }}</span>
+                                        <span class="text-warning">{{ $entry->customer_name }}</span>
                                     @else
                                         <span class="text-muted">-</span>
                                     @endif
                                     @if($entry->transporter_name)
-                                        <br><span class="text-muted"><i class="bi bi-truck me-1"></i>{{ $entry->transporter_name }}</span>
+                                        <br><small class="text-muted" style="font-size:11px;">{{ $entry->transporter_name }}</small>
                                     @endif
                                 </small>
                             </td>
-                            <td class="text-end">
-                                @if($entry->direction == 'IN')
-                                    <span class="fw-bold text-success">
-                                        <i class="bi bi-plus-lg"></i>{{ number_format($entry->quantity, 2) }}
-                                    </span>
-                                    <br><small class="text-muted">{{ $entry->units }} × {{ $entry->pack_size }}</small>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td class="text-end">
-                                @if($entry->direction == 'OUT')
-                                    <span class="fw-bold text-danger">
-                                        <i class="bi bi-dash-lg"></i>{{ number_format($entry->quantity, 2) }}
-                                    </span>
-                                    <br><small class="text-muted">{{ $entry->units }} × {{ $entry->pack_size }}</small>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td class="text-end">
-                                @if($entry->direction == 'IN')
-                                    @php
-                                        $balUnits = $entry->pack_size > 0 ? $entry->balance_quantity / $entry->pack_size : 0;
-                                    @endphp
-                                    <span class="fw-bold {{ $entry->balance_quantity > 0 ? 'text-info' : 'text-muted' }}">
-                                        {{ rtrim(rtrim(number_format($balUnits, 2), '0'), '.') }} U<br>
-                                        <small class="fw-normal">({{ rtrim(rtrim(number_format($entry->balance_quantity, 2), '0'), '.') }} Qty)</small>
-                                    </span>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
+                            <td><small>{{ $entry->vehicle_no ?: '-' }}</small></td>
                             <td class="text-center">
-                                @if($entry->expiry_date)
-                                    @php
-                                        $expiry = \Carbon\Carbon::parse($entry->expiry_date);
-                                        $daysToExpiry = now()->diffInDays($expiry, false);
-                                    @endphp
-                                    @if($daysToExpiry < 0)
-                                        <span class="badge bg-danger">Expired</span>
-                                    @elseif($daysToExpiry <= 30)
-                                        <span class="badge bg-warning text-dark">{{ $expiry->format('d.m.Y') }}</span>
-                                    @elseif($daysToExpiry <= 90)
-                                        <span class="badge bg-info">{{ $expiry->format('d.m.Y') }}</span>
-                                    @else
-                                        <small class="text-muted">{{ $expiry->format('d.m.Y') }}</small>
-                                    @endif
+                                @if($isIn)
+                                    <a href="{{ route('reports.inbound.pdf', $entry->transaction_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="PDF"><i class="bi bi-file-pdf"></i></a>
                                 @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td class="text-center">
-                                @if($entry->direction == 'IN')
-                                    <a href="{{ route('reports.inbound.pdf', $entry->transaction_id) }}" 
-                                       target="_blank" class="btn btn-sm btn-outline-primary" title="View PDF">
-                                        <i class="bi bi-file-pdf"></i>
-                                    </a>
-                                @else
-                                    <a href="{{ route('reports.outbound.pdf', $entry->transaction_id) }}" 
-                                       target="_blank" class="btn btn-sm btn-outline-danger" title="View PDF">
-                                        <i class="bi bi-file-pdf"></i>
-                                    </a>
+                                    <a href="{{ route('reports.outbound.pdf', $entry->transaction_id) }}" target="_blank" class="btn btn-sm btn-outline-danger" title="PDF"><i class="bi bi-file-pdf"></i></a>
                                 @endif
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="13" class="text-center py-5">
+                            <td colspan="27" class="text-center py-5">
                                 <div class="text-muted">
                                     <i class="bi bi-journal-x fs-1 d-block mb-2"></i>
                                     No ledger entries found matching your criteria
