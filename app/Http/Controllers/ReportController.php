@@ -285,12 +285,12 @@ class ReportController extends Controller
             
             // Header row
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
                 'Units Received', 'Total Qty', 'MFG Date', 'Expiry Date',
                 'Days in Warehouse', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold',
-                'Entry ID', 'Date', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
+                'Entry ID', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
                 'Inbound Invoice', 'Dispatched Invoice', 'Shipment No', 'STO No',
                 'Delivery No', 'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
                 'Vehicle In Time', 'Vehicle Out Time', 'Picker', 'Shipment Type',
@@ -350,6 +350,7 @@ class ReportController extends Controller
                             $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
+                                $stockIn->created_at->format('d.m.Y H:i'),
                                 $item->product->item_code ?? '',
                                 $item->product->name ?? '',
                                 $warehouseDisplay,
@@ -373,7 +374,6 @@ class ReportController extends Controller
                                 $item->block_stock ? 'Yes' : 'No',
                                 $item->hold_stock ? 'Yes' : 'No',
                                 $stockIn->id,
-$stockIn->created_at->format('d.m.Y H:i'),
                     $stockIn->source_type ?? '',
                     $stockIn->vendor->name ?? '',
                     $stockIn->arrivedFrom->name ?? '',
@@ -398,6 +398,7 @@ $stockIn->created_at->format('d.m.Y H:i'),
                         }
                     } else {
                         fputcsv($file, [
+                            $stockIn->created_at->format('d.m.Y H:i'),
                             $item->product->item_code ?? '',
                             $item->product->name ?? '',
                             $warehouseDisplay,
@@ -421,7 +422,6 @@ $stockIn->created_at->format('d.m.Y H:i'),
                             $item->block_stock ? 'Yes' : 'No',
 $item->hold_stock ? 'Yes' : 'No',
                                 $stockIn->id,
-                                $stockIn->created_at->format('d.m.Y H:i'),
                                 $stockIn->source_type ?? '',
                                 $stockIn->vendor->name ?? '',
                                 $stockIn->arrivedFrom->name ?? '',
@@ -538,11 +538,11 @@ $item->hold_stock ? 'Yes' : 'No',
             
             // Header row
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
                 'Units Dispatch', 'Dispatch Qty', 'MFG Date', 'Expiry Date',
                 'Balance Qty', 'Pallets Used', 'Quality Check', 'Sound', 'Blocked', 'Hold',
-                'Entry ID', 'Date', 'Source Type', 'To Warehouse', 'Customer', 'Transporter',
+                'Entry ID', 'Source Type', 'To Warehouse', 'Customer', 'Transporter',
                 'Dispatched Invoice', 'Delivery No', 'Gatepass No', 'STO No', 'Shipment No',
                 'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
                 'Vehicle In Time', 'Vehicle Out Time', 'Picker',
@@ -589,6 +589,7 @@ $item->hold_stock ? 'Yes' : 'No',
                             $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
+                                $stockOut->created_at->format('d.m.Y H:i'),
                                 $item->product->item_code ?? '',
                                 $item->product->name ?? '',
                                 $warehouseDisplay,
@@ -609,9 +610,8 @@ $item->hold_stock ? 'Yes' : 'No',
                                 '', // Quality Check N/A
                                 '', // Sound N/A
                                 '', // Blocked N/A
-                                '', // Hold N/A
+                                '', // Hold N/A,
                                 $stockOut->id,
-                                $stockOut->created_at->format('d.m.Y H:i'),
                                 $stockOut->source_type ?? '',
                                 $stockOut->toWarehouse->name ?? '',
                                 $stockOut->customer->name ?? 'Transfer',
@@ -635,6 +635,7 @@ $item->hold_stock ? 'Yes' : 'No',
                         }
                     } else {
                         fputcsv($file, [
+                            $stockOut->created_at->format('d.m.Y H:i'),
                             $item->product->item_code ?? '',
                             $item->product->name ?? '',
                             $warehouseDisplay,
@@ -655,29 +656,28 @@ $item->hold_stock ? 'Yes' : 'No',
                             '', // Quality Check N/A
                             '', // Sound N/A
                             '', // Blocked N/A
-                            '', // Hold N/A
-                            $stockOut->id,
-                            $stockOut->created_at->format('d.m.Y H:i'),
-                            $stockOut->source_type ?? '',
-                            $stockOut->toWarehouse->name ?? '',
-                            $stockOut->customer->name ?? 'Transfer',
-                            $stockOut->transporter->name ?? '',
-                            $stockOut->dispatched_invoice_no ?? '',
-                            $stockOut->delivery_no ?? '',
-                            $stockOut->gatepass_no ?? '',
-                            $stockOut->sto_no ?? '',
-                            $stockOut->shipment_no ?? '',
-                            $stockOut->vehicle_no ?? '',
-                            $stockOut->vehicle_size ?? '',
-                            $stockOut->driver_name ?? '',
-                            $stockOut->driver_mobile ?? '',
-                            $stockOut->vehicle_in_time ?? '',
-                            $stockOut->vehicle_out_time ?? '',
-                            $stockOut->picker ?? '',
-                            $rowNameVal,
-                            $item->remarks ?? '',
-                            $stockOut->remarks ?? ''
-                        ]);
+                            '', // Hold N/A,
+                                $stockOut->id,
+                                $stockOut->source_type ?? '',
+                                $stockOut->toWarehouse->name ?? '',
+                                $stockOut->customer->name ?? 'Transfer',
+                                $stockOut->transporter->name ?? '',
+                                $stockOut->dispatched_invoice_no ?? '',
+                                $stockOut->delivery_no ?? '',
+                                $stockOut->gatepass_no ?? '',
+                                $stockOut->sto_no ?? '',
+                                $stockOut->shipment_no ?? '',
+                                $stockOut->vehicle_no ?? '',
+                                $stockOut->vehicle_size ?? '',
+                                $stockOut->driver_name ?? '',
+                                $stockOut->driver_mobile ?? '',
+                                $stockOut->vehicle_in_time ?? '',
+                                $stockOut->vehicle_out_time ?? '',
+                                $stockOut->picker ?? '',
+                                $rowNameVal,
+                                $item->remarks ?? '',
+                                $stockOut->remarks ?? ''
+                            ]);
                     }
                 }
             }

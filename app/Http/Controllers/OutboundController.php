@@ -900,7 +900,7 @@ class OutboundController extends Controller
                 $callback = function () use ($items, $rowLetterMap, $palletOffsetMap, $dynamicPalletStart) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Date', 'Type', 'Warehouse',
+                'Date', 'Item Code', 'Product Name', 'Type', 'Warehouse',
                 'Category', 'UOM', 'Packing', 'Pack Size',
                 'Units Dispatched', 'Dispatch Qty', 'Pallets',
                 'Customer / Destination', 'Transporter', 'Vehicle No',
@@ -931,9 +931,9 @@ class OutboundController extends Controller
                 }
 
                 fputcsv($file, [
+                    $dateVal,
                     $item->product->item_code ?? '',
                     $item->product->name ?? '',
-                    $dateVal,
                     $type,
                     $warehouseDisplay,
                     optional($item->product->category)->name ?? '',

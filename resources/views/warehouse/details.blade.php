@@ -99,8 +99,8 @@
                         <tr>
                             <th style="width:80px;">#</th>
                             <th>Pallet</th>
-                            <th>Product</th>
                             <th>Item Code</th>
+                            <th>Product</th>
                             <th class="text-end">Cartons</th>
                             <th class="text-end">Max Cartons/Pallet</th>
                             <th>Status</th>
@@ -216,8 +216,8 @@ $(document).ready(function() {
                     <tr class="${pallet.is_empty ? 'table-light' : (overCapacity ? 'table-danger' : '')}">
                         <td class="text-muted">${pallet.pallet_number}</td>
                         <td class="fw-semibold">Pallet ${pallet.pallet_number}</td>
-                        <td>${productName}</td>
                         <td>${itemCode}</td>
+                        <td>${productName}</td>
                         <td class="text-end ${cartonClass}">${cartons}${overBadge}</td>
                         <td class="text-end">${maxCartons}</td>
                         <td>${statusBadge}</td>

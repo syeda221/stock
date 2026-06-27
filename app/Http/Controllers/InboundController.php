@@ -1047,7 +1047,7 @@ class InboundController extends Controller
         $callback = function () use ($items, $inboundPositions) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
@@ -1097,9 +1097,9 @@ class InboundController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
+                            $dateVal,
                             $item->product->item_code ?? '',
                             $item->product->name ?? '',
-                            $dateVal,
                             $warehouseDisplay,
                             $item->product->category->name ?? '',
                             $item->product->uom->name ?? '',
@@ -1131,9 +1131,9 @@ class InboundController extends Controller
                     $warehouseDisplay = $item->warehouse->name ?? '';
 
                     fputcsv($file, [
+                        $dateVal,
                         $item->product->item_code ?? '',
                         $item->product->name ?? '',
-                        $dateVal,
                         $warehouseDisplay,
                         $item->product->category->name ?? '',
                         $item->product->uom->name ?? '',
