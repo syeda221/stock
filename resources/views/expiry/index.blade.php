@@ -21,6 +21,7 @@
                                 <th>Expiry Date</th>
                                 <th class="text-end">Balance</th>
                                 <th>Status</th>
+                                <th class="text-center">Sale</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -33,10 +34,18 @@
                                 <td><span class="badge bg-danger">{{ $item->expiry_date?->format('d.m.Y') }}</span></td>
                                 <td class="text-end fw-bold">{{ number_format($item->balance_quantity, 2) }}</td>
                                 <td><span class="badge bg-danger">Expired</span></td>
+                                <td class="text-center">
+                                    <form action="{{ route('expiry.toggle-sale', $item) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm {{ $item->allow_expired_sale ? 'btn-success' : 'btn-outline-secondary' }}">
+                                            {{ $item->allow_expired_sale ? 'Block' : 'Allow' }}
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                             @empty
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                             <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
                                     <i class="bi bi-check-circle text-success me-1"></i> No expired stock
                                 </td>
                             </tr>
@@ -67,6 +76,7 @@
                                 <th>Expiry Date</th>
                                 <th class="text-end">Balance</th>
                                 <th>Days Left</th>
+                                <th class="text-center">Sale</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -98,10 +108,18 @@
                                         <span class="badge bg-info">{{ $daysLeft }} days</span>
                                     @endif
                                 </td>
+                                <td class="text-center">
+                                    <form action="{{ route('expiry.toggle-sale', $item) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm {{ $item->allow_expired_sale ? 'btn-success' : 'btn-outline-secondary' }}">
+                                            {{ $item->allow_expired_sale ? 'Block' : 'Allow' }}
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                             @empty
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                             <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
                                     <i class="bi bi-check-circle text-success me-1"></i> No near-expiry stock
                                 </td>
                             </tr>

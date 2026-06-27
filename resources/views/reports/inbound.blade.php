@@ -271,10 +271,14 @@
                                             <th>MFG</th>
                                             <th>Expiry</th>
                                             <th>QC</th>
+                                            <th>Days</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach($stockIn->items as $item)
+                                        @php
+                                            $daysInWh = $item->created_at ? now()->startOfDay()->diffInDays($item->created_at->startOfDay()) : 0;
+                                        @endphp
                                         <tr>
                                             <td class="px-3">{{ $item->product->item_code ?? '-' }}</td>
                                             <td>{{ $item->product->name ?? '-' }}</td>
@@ -292,6 +296,19 @@
                                                     <span class="badge bg-danger">Rejected</span>
                                                 @else
                                                     <span class="badge bg-warning text-dark">Pending</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if($daysInWh == 0)
+                                                    <span class="badge bg-info">Today</span>
+                                                @elseif($daysInWh <= 7)
+                                                    <span class="badge bg-success">{{ $daysInWh }}d</span>
+                                                @elseif($daysInWh <= 30)
+                                                    <span class="badge bg-warning text-dark">{{ $daysInWh }}d</span>
+                                                @elseif($daysInWh <= 90)
+                                                    <span class="badge" style="background:#fd7e14;color:#fff;">{{ $daysInWh }}d</span>
+                                                @else
+                                                    <span class="badge bg-danger">{{ $daysInWh }}d</span>
                                                 @endif
                                             </td>
                                         </tr>

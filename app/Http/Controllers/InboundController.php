@@ -239,12 +239,20 @@ class InboundController extends Controller
             'picker' => 'nullable|string|max:120',
 
             'shipment_type' => 'nullable|in:manual,auto',
+            'manual_selection' => 'nullable|in:0,1',
 
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.units_received' => 'nullable|integer|min:0',
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
         ]);
+
+        if ($request->manual_selection == '1') {
+            $freeCapacity = \App\Services\WarehouseRowFifo::getFreeRowCapacity($request->warehouse_id);
+            if ($freeCapacity <= 0) {
+                return back()->withErrors(['warehouse_id' => 'Selected warehouse has no free space.'])->withInput();
+            }
+        }
 
         try {
             DB::transaction(function () use ($request, &$stockIn) {
@@ -1097,17 +1105,23 @@ class InboundController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
+// <<<<<<< HEAD
+//                             $dateVal,
+//                             $item->product->item_code ?? '',
+//                             $item->product->name ?? '',
+// =======
+                            $item->product?->item_code ?? '',
+                            $item->product?->name ?? '',
                             $dateVal,
-                            $item->product->item_code ?? '',
-                            $item->product->name ?? '',
+
                             $warehouseDisplay,
-                            $item->product->category->name ?? '',
-                            $item->product->uom->name ?? '',
+                            $item->product?->category?->name ?? '',
+                            $item->product?->uom?->name ?? '',
                             $item->ibd_no ?? '',
                             $item->po_no ?? '',
                             $item->vendor_batch ?? '',
                             $item->sap_batch ?? '',
-                            $item->product->packingType->name ?? '',
+                            $item->product?->packingType?->name ?? '',
                             $item->pack_size_snapshot,
                             $perPalletUnits,
                             $palletQty,
@@ -1119,11 +1133,11 @@ class InboundController extends Controller
                             $item->sound_stock ? 'Yes' : 'No',
                             $item->block_stock ? 'Yes' : 'No',
                             $item->hold_stock ? 'Yes' : 'No',
-                            $item->stockIn->vendor->name ?? '',
-                            $item->stockIn->transporter->name ?? '',
-                            $item->stockIn->vehicle_no ?? '',
-                            $item->stockIn->driver_name ?? '',
-                            $item->stockIn->inbound_invoice_no ?? '',
+                            $item->stockIn?->vendor?->name ?? '',
+                            $item->stockIn?->transporter?->name ?? '',
+                            $item->stockIn?->vehicle_no ?? '',
+                            $item->stockIn?->driver_name ?? '',
+                            $item->stockIn?->inbound_invoice_no ?? '',
                             $item->remarks ?? '',
                         ]);
                     }
@@ -1131,12 +1145,18 @@ class InboundController extends Controller
                     $warehouseDisplay = $item->warehouse->name ?? '';
 
                     fputcsv($file, [
+// <<<<<<< HEAD
+//                         $dateVal,
+//                         $item->product->item_code ?? '',
+//                         $item->product->name ?? '',
+// =======
+                        $item->product?->item_code ?? '',
+                        $item->product?->name ?? '',
                         $dateVal,
-                        $item->product->item_code ?? '',
-                        $item->product->name ?? '',
+// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                         $warehouseDisplay,
-                        $item->product->category->name ?? '',
-                        $item->product->uom->name ?? '',
+                        $item->product?->category?->name ?? '',
+                        $item->product?->uom?->name ?? '',
                         $item->ibd_no ?? '',
                         $item->po_no ?? '',
                         $item->vendor_batch ?? '',
@@ -1153,11 +1173,11 @@ class InboundController extends Controller
                         $item->sound_stock ? 'Yes' : 'No',
                         $item->block_stock ? 'Yes' : 'No',
                         $item->hold_stock ? 'Yes' : 'No',
-                        $item->stockIn->vendor->name ?? '',
-                        $item->stockIn->transporter->name ?? '',
-                        $item->stockIn->vehicle_no ?? '',
-                        $item->stockIn->driver_name ?? '',
-                        $item->stockIn->inbound_invoice_no ?? '',
+                        $item->stockIn?->vendor?->name ?? '',
+                        $item->stockIn?->transporter?->name ?? '',
+                        $item->stockIn?->vehicle_no ?? '',
+                        $item->stockIn?->driver_name ?? '',
+                        $item->stockIn?->inbound_invoice_no ?? '',
                         $item->remarks ?? '',
                     ]);
                 }

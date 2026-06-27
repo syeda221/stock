@@ -186,9 +186,9 @@
                                 </span>
                             </td>
                             <td>
-                                @if($item->row_name)
+                                @if(!empty($item->warehouse_display))
                                     <span class="badge bg-light text-dark border">
-                                        <i class="bi bi-geo-alt me-1"></i>{{ $item->row_name }}
+                                        <i class="bi bi-geo-alt me-1"></i>{{ $item->warehouse_display }}
                                     </span>
                                 @else
                                     <span class="text-muted">—</span>
@@ -239,7 +239,7 @@
                                     data-item_code="{{ $item->item_code }}"
                                     data-product_name="{{ $item->product_name }}"
                                     data-warehouse_name="{{ $item->warehouse_name }}"
-                                    data-row_name="{{ $item->row_name ?? '—' }}"
+                                    data-row_name="{{ $item->warehouse_display ?? '—' }}"
                                     data-pallets_used="{{ $item->pallets_used ? number_format($item->pallets_used) : '—' }}"
                                     data-sap_batch="{{ $item->sap_batch ?: '—' }}"
                                     data-vendor_batch="{{ $item->vendor_batch ?: '—' }}"

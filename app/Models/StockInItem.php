@@ -28,6 +28,7 @@ class StockInItem extends Model
         'sound_stock',
         'block_stock',
         'hold_stock',
+        'allow_expired_sale',
         'quality_clearance',
         'remarks',
     ];
@@ -46,6 +47,7 @@ class StockInItem extends Model
         'sound_stock' => 'boolean',
         'block_stock' => 'boolean',
         'hold_stock' => 'boolean',
+        'allow_expired_sale' => 'boolean',
     ];
 
     public static function computeActivePallets($item): int

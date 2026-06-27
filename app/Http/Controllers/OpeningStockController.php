@@ -596,17 +596,23 @@ class OpeningStockController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
+// <<<<<<< HEAD
+//                             $dateVal,
+//                             $item->product->item_code ?? '',
+//                             $item->product->name ?? '',
+// =======
+                            $item->product?->item_code ?? '',
+                            $item->product?->name ?? '',
                             $dateVal,
-                            $item->product->item_code ?? '',
-                            $item->product->name ?? '',
+// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                             $warehouseDisplay,
-                            $item->product->category->name ?? '',
-                            $item->product->uom->name ?? '',
+                            $item->product?->category?->name ?? '',
+                            $item->product?->uom?->name ?? '',
                             $item->ibd_no ?? '',
                             $item->po_no ?? '',
                             $item->vendor_batch ?? '',
                             $item->sap_batch ?? '',
-                            $item->product->packingType->name ?? '',
+                            $item->product?->packingType?->name ?? '',
                             $item->pack_size_snapshot,
                             $perPalletUnits,
                             $palletQty,
@@ -622,17 +628,23 @@ class OpeningStockController extends Controller
                     }
                 } else {
                     fputcsv($file, [
+// <<<<<<< HEAD
+//                         $dateVal,
+//                         $item->product->item_code ?? '',
+//                         $item->product->name ?? '',
+// =======
+                        $item->product?->item_code ?? '',
+                        $item->product?->name ?? '',
                         $dateVal,
-                        $item->product->item_code ?? '',
-                        $item->product->name ?? '',
+// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                         $warehouseDisplay,
-                        $item->product->category->name ?? '',
-                        $item->product->uom->name ?? '',
+                        $item->product?->category?->name ?? '',
+                        $item->product?->uom?->name ?? '',
                         $item->ibd_no ?? '',
                         $item->po_no ?? '',
                         $item->vendor_batch ?? '',
                         $item->sap_batch ?? '',
-                        $item->product->packingType->name ?? '',
+                        $item->product?->packingType?->name ?? '',
                         $item->pack_size_snapshot,
                         $unitsVal,
                         $qtyVal,
