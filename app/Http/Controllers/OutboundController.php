@@ -183,7 +183,6 @@ class OutboundController extends Controller
         }
 
         // For customer sales, exclude expired, near-expiry, blocked, and rejected stock
-        // unless allow_expired_sale is set on the batch
         $outboundType = $request->query('outbound_type');
         if ($outboundType === 'customer') {
             $query->where(function ($q) {
@@ -193,7 +192,7 @@ class OutboundController extends Controller
                       $q2->whereNull('expiry_date')
                          ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
                   });
-            })->orWhere('allow_expired_sale', true);
+            });
         }
 
         $items = $query->orderBy('warehouse_id')
@@ -324,8 +323,9 @@ class OutboundController extends Controller
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
                                      ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
-                              });
-                        })->orWhere('allow_expired_sale', true);
+                              })
+                              ->orWhere('allow_expired_sale', true);
+                        });
                     }
 
                     $batches = $batchQuery->orderBy('expiry_date', 'asc')
@@ -630,8 +630,9 @@ class OutboundController extends Controller
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
                                      ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
-                              });
-                        })->orWhere('allow_expired_sale', true);
+                              })
+                              ->orWhere('allow_expired_sale', true);
+                        });
                     }
 
                     $batches = $batchQuery->orderBy('expiry_date', 'asc')
@@ -905,22 +906,9 @@ class OutboundController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-// <<<<<<< HEAD
-//                 $callback = function () use ($items, $rowLetterMap, $palletOffsetMap, $dynamicPalletStart) {
-//             $file = fopen('php://output', 'w');
-//             fputcsv($file, [
-//                 'Date', 'Item Code', 'Product Name', 'Type', 'Warehouse',
-//                 'Category', 'UOM', 'Packing', 'Pack Size',
-//                 'Units Dispatched', 'Dispatch Qty', 'Pallets',
-//                 'Customer / Destination', 'Transporter', 'Vehicle No',
-//                 'Driver Name', 'Dispatched Invoice', 'PO', 'IBD', 'STO',
-//                 'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date',
-//                 'Remarks'
-//             ]);
-// =======
         $csv = fopen('php://memory', 'w');
         fputcsv($csv, [
-            'Item Code', 'Product Name', 'Date', 'Type', 'Warehouse',
+            'Date', 'Item Code', 'Product Name', 'Type', 'Warehouse',
             'Category', 'UOM', 'Packing', 'Pack Size',
             'Units Dispatched', 'Dispatch Qty', 'Pallets',
             'Customer / Destination', 'Transporter', 'Vehicle No',
@@ -928,7 +916,6 @@ class OutboundController extends Controller
             'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date',
             'Remarks'
         ]);
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
 
         foreach ($items as $item) {
             $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
@@ -938,48 +925,6 @@ class OutboundController extends Controller
             $row = $item->warehouseRow ?: optional($sourceItem)->warehouseRow;
             $whId = $item->warehouse_id;
 
-// <<<<<<< HEAD
-//                 $warehouseDisplay = optional($item->warehouse)->name ?? '';
-//                 if ($row && $sourceItem) {
-//                     $palletStart = $sourceItem->pallet_start ?? ($dynamicPalletStart[$sourceItem->id] ?? null);
-//                     $rowKey = $whId . '-' . $row->row_name;
-//                     $letter = $rowLetterMap[$rowKey] ?? '';
-//                     $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
-//                     $palletOffset = $palletOffsetMap[$item->id] ?? 1;
-//                     $absolutePallet = ($palletStart ?? 0) + $palletOffset - 1;
-//                     $absolutePallet = max(1, $absolutePallet);
-//                     $psPadded = str_pad($absolutePallet, 3, '0', STR_PAD_LEFT);
-//                     $warehouseDisplay = "W{$wp}.{$letter}{$psPadded}";
-//                 }
-
-//                 fputcsv($file, [
-//                     $dateVal,
-//                     $item->product->item_code ?? '',
-//                     $item->product->name ?? '',
-//                     $type,
-//                     $warehouseDisplay,
-//                     optional($item->product->category)->name ?? '',
-//                     optional($item->product->uom)->name ?? '',
-//                     optional($item->product->packingType)->name ?? '',
-//                     $item->pack_size_snapshot,
-//                     $item->units_dispatch,
-//                     $item->dispatch_quantity,
-//                     $item->pallets_returned,
-//                     optional($item->stockOut->customer)->name ?? optional($item->stockOut->toWarehouse)->name ?? '',
-//                     optional($item->stockOut->transporter)->name ?? '',
-//                     optional($item->stockOut)->vehicle_no ?? '',
-//                     optional($item->stockOut)->driver_name ?? '',
-//                     optional($item->stockOut)->dispatched_invoice_no ?? '',
-//                     $item->po_no ?? optional($item->sourceStockInItem)->po_no ?? '',
-//                     $item->ibd_no ?? optional($item->sourceStockInItem)->ibd_no ?? '',
-//                     $item->sto_no ?? '',
-//                     $item->sap_batch ?? optional($item->sourceStockInItem)->sap_batch ?? '',
-//                     $item->vendor_batch ?? optional($item->sourceStockInItem)->vendor_batch ?? '',
-//                     $item->mfg_date ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d.m.Y') : $item->mfg_date) : '',
-//                     $item->expiry_date ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d.m.Y') : $item->expiry_date) : '',
-//                     optional($item->stockOut)->remarks ?? '',
-//                 ]);
-// =======
             $warehouseDisplay = optional($item->warehouse)->name ?? '';
             if ($row && $sourceItem) {
                 $palletStart = $sourceItem->pallet_start ?? ($dynamicPalletStart[$sourceItem->id] ?? null);
@@ -991,13 +936,12 @@ class OutboundController extends Controller
                 $absolutePallet = max(1, $absolutePallet);
                 $psPadded = str_pad($absolutePallet, 3, '0', STR_PAD_LEFT);
                 $warehouseDisplay = "W{$wp}.{$letter}{$psPadded}";
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
             }
 
             fputcsv($csv, [
+                $dateVal,
                 optional($item->product)->item_code ?? '',
                 optional($item->product)->name ?? '',
-                $dateVal,
                 $type,
                 $warehouseDisplay,
                 optional(optional($item->product)->category)->name ?? '',
@@ -1227,8 +1171,9 @@ class OutboundController extends Controller
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
                                      ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
-                              });
-                        })->orWhere('allow_expired_sale', true);
+                              })
+                              ->orWhere('allow_expired_sale', true);
+                        });
                     }
 
                     $whId = $item['warehouse_id'] ?? $request->warehouse_id;

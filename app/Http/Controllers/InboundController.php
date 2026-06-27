@@ -1105,15 +1105,9 @@ class InboundController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
-// <<<<<<< HEAD
-//                             $dateVal,
-//                             $item->product->item_code ?? '',
-//                             $item->product->name ?? '',
-// =======
+                            $dateVal,
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
-                            $dateVal,
-
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? '',
@@ -1145,15 +1139,9 @@ class InboundController extends Controller
                     $warehouseDisplay = $item->warehouse->name ?? '';
 
                     fputcsv($file, [
-// <<<<<<< HEAD
-//                         $dateVal,
-//                         $item->product->item_code ?? '',
-//                         $item->product->name ?? '',
-// =======
+                        $dateVal,
                         $item->product?->item_code ?? '',
                         $item->product?->name ?? '',
-                        $dateVal,
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                         $warehouseDisplay,
                         $item->product?->category?->name ?? '',
                         $item->product?->uom?->name ?? '',

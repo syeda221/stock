@@ -350,14 +350,9 @@ class ReportController extends Controller
                             $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
-// <<<<<<< HEAD
-//                                 $stockIn->created_at->format('d.m.Y H:i'),
-//                                 $item->product->item_code ?? '',
-//                                 $item->product->name ?? '',
-// =======
+                                $stockIn->created_at->format('d.m.Y H:i'),
                                 $item->product?->item_code ?? '',
                                 $item->product?->name ?? '',
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                                 $warehouseDisplay,
                                 $item->product?->category?->name ?? '',
                                 $item->product?->uom?->name ?? ($item->uom_snapshot ?? ''),
@@ -403,14 +398,9 @@ class ReportController extends Controller
                         }
                     } else {
                         fputcsv($file, [
-// <<<<<<< HEAD
-//                             $stockIn->created_at->format('d.m.Y H:i'),
-//                             $item->product->item_code ?? '',
-//                             $item->product->name ?? '',
-// =======
+                            $stockIn->created_at->format('d.m.Y H:i'),
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? ($item->uom_snapshot ?? ''),
@@ -599,14 +589,9 @@ $item->hold_stock ? 'Yes' : 'No',
                             $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
-// <<<<<<< HEAD
-//                                 $stockOut->created_at->format('d.m.Y H:i'),
-//                                 $item->product->item_code ?? '',
-//                                 $item->product->name ?? '',
-// =======
+                                $stockOut->created_at->format('d.m.Y H:i'),
                                 $item->product?->item_code ?? '',
                                 $item->product?->name ?? '',
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                                 $warehouseDisplay,
                                 $item->product?->category?->name ?? '',
                                 $item->product?->uom?->name ?? '',
@@ -650,14 +635,9 @@ $item->hold_stock ? 'Yes' : 'No',
                         }
                     } else {
                         fputcsv($file, [
-// <<<<<<< HEAD
-//                             $stockOut->created_at->format('d.m.Y H:i'),
-//                             $item->product->item_code ?? '',
-//                             $item->product->name ?? '',
-// =======
+                            $stockOut->created_at->format('d.m.Y H:i'),
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
-// >>>>>>> 0fb9e4214fa68092fb4a166c4883c179ad3586c2
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? '',
@@ -2108,12 +2088,12 @@ $item->hold_stock ? 'Yes' : 'No',
             
             // Header row — matches inbound export structure
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
                 'Units', 'Total Qty', 'MFG Date', 'Expiry Date',
                 'Days in Warehouse', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold',
-                'Entry ID', 'Date', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
+                'Entry ID', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
                 'Inbound Invoice', 'Dispatched Invoice', 'Shipment No', 'STO No',
                 'Delivery No', 'Vehicle No', 'Vehicle Size', 'Driver Name', 'Driver Mobile',
                 'Vehicle In Time', 'Vehicle Out Time', 'Picker', 'Shipment Type',
@@ -2134,6 +2114,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 $days = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
 
                 fputcsv($file, [
+                    \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y H:i'),
                     $entry->item_code ?? '',
                     $entry->product_name ?? '',
                     $warehouseDisplay,
@@ -2157,7 +2138,6 @@ $item->hold_stock ? 'Yes' : 'No',
                     $blocked,
                     $hold,
                     $entry->transaction_id ?? '',
-                    \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y H:i'),
                     $srcLabel($entry->source_type ?? $entry->direction),
                     $party,
                     $arrivedFrom,

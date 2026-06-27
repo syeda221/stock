@@ -338,8 +338,9 @@ document.addEventListener('click', e => {
     const warehouseSelect = row.querySelector('.warehouse-select');
     warehouseSelect.innerHTML = '<option value="">Loading Stock...</option>';
     
-    const outboundType = document.getElementById('outboundType')?.value || 'customer';
-    fetch(`/outbound/product-stock/${productId}?t=${new Date().getTime()}&outbound_type=${outboundType}`)
+    const outboundType = document.getElementById('outboundType')?.value || '';
+    const otParam = outboundType ? `&outbound_type=${outboundType}` : '';
+    fetch(`/outbound/product-stock/${productId}?t=${new Date().getTime()}${otParam}`)
         .then(r => r.json())
         .then(data => {
             if (data.length > 0) {
@@ -363,6 +364,9 @@ document.addEventListener('click', e => {
             } else {
                 warehouseSelect.innerHTML = '<option value="">No Stock Available</option>';
             }
+        })
+        .catch(() => {
+            warehouseSelect.innerHTML = '<option value="">Error loading stock</option>';
         });
 });
 
