@@ -546,7 +546,7 @@ class OpeningStockController extends Controller
         $callback = function () use ($items, $openingPositions) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Record ID', 'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
@@ -596,9 +596,10 @@ class OpeningStockController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
-                            $dateVal,
+                            $item->id,
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
+                            $dateVal,
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? '',
@@ -622,9 +623,10 @@ class OpeningStockController extends Controller
                     }
                 } else {
                     fputcsv($file, [
-                        $dateVal,
+                        $item->id,
                         $item->product?->item_code ?? '',
                         $item->product?->name ?? '',
+                        $dateVal,
                         $warehouseDisplay,
                         $item->product?->category?->name ?? '',
                         $item->product?->uom?->name ?? '',
@@ -665,17 +667,17 @@ class OpeningStockController extends Controller
         $callback = function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Record ID', 'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
-                'Expiry Date', 'Balance Qty', 'Quality Check',
+                'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold'
             ]);
             fputcsv($file, [
-                '001', 'Sample Product', '', '', '',
+                '', '001', 'Sample Product', '2024-01-01 10:00', '', '', '',
                 'IBD-001', 'PO-001', 'VENDOR-001', 'SAP-001', '',
-                '', '100', '', '2024-01-15', '2025-01-15', 
-                '', 'approved', 'Yes', 'No', 'No'
+                '', '100', '', '15.01.2024', '15.01.2025', 
+                '', '', 'approved', 'Yes', 'No', 'No'
             ]);
             fclose($file);
         };
@@ -711,6 +713,7 @@ class OpeningStockController extends Controller
 
         // Flexible field aliases
         $fieldAliases = [
+            'Record ID'      => ['Record ID', 'Record ID', 'record_id', 'ID', 'id'],
             'Item Code'      => ['Item Code', 'Item Code', 'item_code', 'ItemCode', 'Code'],
             'Units Received' => ['Units Received', 'Units Received', 'units_received', 'Units'],
             'IBD'            => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
@@ -811,6 +814,13 @@ class OpeningStockController extends Controller
             $product = null;
             if (!empty($itemCode)) {
                 $product = $allProducts->get($itemCode);
+                if (!$product) {
+                    // Excel often strips leading zeros, e.g. '002' becomes '2'. Try to find it.
+                    $product = $allProducts->first(function($p) use ($itemCode) {
+                        return ltrim($p->item_code, '0') === ltrim($itemCode, '0') || 
+                               strtolower(trim($p->item_code)) === strtolower(trim($itemCode));
+                    });
+                }
                 if (!$product) $rowErrors[] = "Product '{$itemCode}' not found";
             }
 
@@ -837,7 +847,16 @@ class OpeningStockController extends Controller
             elseif (in_array($qcValue, ['fail', 'rejected'])) $qcValue = 'rejected';
             else $qcValue = 'pending';
 
+            $parseDate = function($dateStr) {
+                if (empty($dateStr)) return null;
+                if (preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/', $dateStr, $matches)) {
+                    return $matches[3] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT) . '-' . str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+                }
+                return $dateStr;
+            };
+
             $items[] = [
+                'record_id' => $getCell($row, 'Record ID'),
                 'product' => $product,
                 'units' => (int) $units,
                 'warehouse' => $rowWarehouse,
@@ -846,8 +865,8 @@ class OpeningStockController extends Controller
                 'sap_batch' => $getCell($row, 'SAP Batch'),
                 'vendor_batch' => $getCell($row, 'Vendor Batch'),
                 'pallets_used' => '', // auto-calculated below
-                'mfg_date' => $getCell($row, 'MFG Date'),
-                'expiry_date' => $getCell($row, 'Expiry Date'),
+                'mfg_date' => $parseDate($getCell($row, 'MFG Date')),
+                'expiry_date' => $parseDate($getCell($row, 'Expiry Date')),
                 'quality_clearance' => $qcValue,
                 'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
                 'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
@@ -858,12 +877,93 @@ class OpeningStockController extends Controller
         fclose($handle);
 
         if (count($items) === 0) {
-            return back()->with('error', 'No valid rows found in CSV');
+            $errorMsg = 'No valid rows found in CSV.';
+            if (count($errors) > 0) {
+                $errorMsg .= '<br>Details:<br>' . implode('<br>', array_slice($errors, 0, 10));
+            }
+            return back()->with('error', $errorMsg);
         }
 
         try {
             DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
+                // Step 1: Pre-process items to identify existing records by Product ID if Record ID is missing
+                foreach ($items as $k => $item) {
+                    if (empty($item['record_id']) && $item['product']) {
+                        $existing = StockInItem::where('product_id', $item['product']->id)
+                            ->whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
+                            ->get();
+                        // Only auto-match by Product ID if there is exactly 1 opening stock entry to avoid ambiguous overrides
+                        if ($existing->count() === 1) {
+                            $items[$k]['record_id'] = $existing->first()->id;
+                        }
+                    }
+                }
+                
+                // Step 2: Aggregate items by Record ID
+                $aggregatedItems = [];
+                $newItems = [];
                 foreach ($items as $item) {
+                    $rid = $item['record_id'];
+                    if (!empty($rid)) {
+                        if (isset($aggregatedItems[$rid])) {
+                            $aggregatedItems[$rid]['units'] += $item['units'];
+                        } else {
+                            $aggregatedItems[$rid] = $item;
+                        }
+                    } else {
+                        $newItems[] = $item;
+                    }
+                }
+                
+                // Step 3: Update existing items (ONLY Opening Stock records)
+                foreach ($aggregatedItems as $rid => $item) {
+                    $existingItem = StockInItem::find($rid);
+                    if ($existingItem) {
+                        $packSize = (float) $existingItem->pack_size_snapshot;
+                        if (!$packSize && $item['product']) $packSize = (float) $item['product']->pack_size;
+                        if (!$packSize) $packSize = 1;
+
+                        // Only update basic fields, isolated to Opening Stock
+                        $updateData = [
+                            'ibd_no'             => $item['ibd_no'] ?: null,
+                            'po_no'              => $item['po_no'] ?: null,
+                            'sap_batch'          => $item['sap_batch'] ?: null,
+                            'vendor_batch'       => $item['vendor_batch'] ?: null,
+                            'mfg_date'           => $item['mfg_date'] ?: null,
+                            'expiry_date'        => $item['expiry_date'] ?: null,
+                            'sound_stock'        => !$item['blocked'] && !$item['hold'],
+                            'block_stock'        => $item['blocked'],
+                            'hold_stock'         => $item['hold'],
+                            'quality_clearance'  => $item['quality_clearance'],
+                            'remarks'            => $item['remarks'] ?: null,
+                        ];
+                        
+                        if ($existingItem->units_received != $item['units']) {
+                            // If units changed, just update units and total_quantity directly
+                            $updateData['units_received'] = $item['units'];
+                            $newQty = round($item['units'] * $packSize, 4);
+                            $updateData['total_quantity'] = $newQty;
+                            $updateData['balance_quantity'] = $newQty;
+                            
+                            // Recalculate pallets automatically based on units and cartons_per_pallet
+                            $cartonsPerPallet = (int) ($item['product']->cartons_per_pallet ?? 0);
+                            if ($cartonsPerPallet > 0) {
+                                $updateData['pallets_used'] = max(1, (int) ceil($item['units'] / $cartonsPerPallet));
+                            } else {
+                                $updateData['pallets_used'] = 1;
+                            }
+                        }
+
+                        $existingItem->update($updateData);
+                        $imported++;
+                    } else {
+                        $errors[] = "Record ID '{$rid}' not found in database. To import as a new entry, leave the Record ID column blank.";
+                        $skipped++;
+                    }
+                }
+
+                // Step 4: Insert new items
+                foreach ($newItems as $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
                     $packSize      = (float) $product->pack_size;
