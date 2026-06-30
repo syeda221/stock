@@ -111,9 +111,6 @@ class WarehouseController extends Controller
 
         DB::transaction(function () use ($request, $warehouse) {
 
-            // Remove old rows
-            $warehouse->rows()->delete();
-
             $warehouse->update([
                 'name' => $request->name,
                 'city' => $request->city,
@@ -127,26 +124,50 @@ class WarehouseController extends Controller
             ]);
 
             // ROW MODE
-            if ($request->capacity_mode === 'row' && $request->rows) {
+            if ($request->capacity_mode === 'row') {
                 $total = 0;
+                $submittedRowIds = [];
 
-                foreach ($request->rows as $row) {
-                    if (!empty($row['row_name']) && !empty($row['pallet_capacity'])) {
-                        WarehouseRow::create([
-                            'warehouse_id' => $warehouse->id,
-                            'row_name' => $row['row_name'],
-                            'pallet_capacity' => $row['pallet_capacity'],
-                        ]);
+                if ($request->rows) {
+                    foreach ($request->rows as $row) {
+                        if (!empty($row['row_name']) && !empty($row['pallet_capacity'])) {
+                            if (!empty($row['id'])) {
+                                // Update existing row
+                                $existingRow = WarehouseRow::where('id', $row['id'])
+                                    ->where('warehouse_id', $warehouse->id)
+                                    ->first();
+                                
+                                if ($existingRow) {
+                                    $existingRow->update([
+                                        'row_name' => $row['row_name'],
+                                        'pallet_capacity' => $row['pallet_capacity'],
+                                    ]);
+                                    $submittedRowIds[] = $existingRow->id;
+                                }
+                            } else {
+                                // Create new row
+                                $newRow = WarehouseRow::create([
+                                    'warehouse_id' => $warehouse->id,
+                                    'row_name' => $row['row_name'],
+                                    'pallet_capacity' => $row['pallet_capacity'],
+                                ]);
+                                $submittedRowIds[] = $newRow->id;
+                            }
 
-                        $total += (int) $row['pallet_capacity'];
+                            $total += (int) $row['pallet_capacity'];
+                        }
                     }
                 }
 
+                // Delete rows that were removed
+                $warehouse->rows()->whereNotIn('id', $submittedRowIds)->delete();
                 $warehouse->update(['total_capacity' => $total]);
             }
 
             // MANUAL MODE
             if ($request->capacity_mode === 'manual') {
+                // Remove old rows if switching from row mode to manual mode
+                $warehouse->rows()->delete();
                 $warehouse->update([
                     'total_capacity' => $request->manual_capacity,
                 ]);

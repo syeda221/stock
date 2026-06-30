@@ -131,6 +131,7 @@
                                 @foreach($warehouse->rows as $i => $row)
                                     <tr>
                                         <td>
+                                            <input type="hidden" name="rows[{{ $i }}][id]" value="{{ $row->id }}">
                                             <input type="text"
                                                    name="rows[{{ $i }}][row_name]"
                                                    value="{{ old("rows.$i.row_name", $row->row_name) }}"
