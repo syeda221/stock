@@ -17,6 +17,9 @@
         <small class="text-muted">Detailed batch-level stock transactions with complete history</small>
     </div>
     <div class="d-flex gap-2">
+        <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="true" aria-controls="filterCollapse">
+            <i class="bi bi-funnel me-1"></i> Filters
+        </button>
         <button type="button" class="btn btn-outline-success" onclick="exportLedger()">
             <i class="bi bi-file-earmark-excel me-1"></i> Export
         </button>
@@ -30,52 +33,73 @@
 <div class="row g-3 mb-4">
     <div class="col-md col-sm-6">
         <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-            <div class="card-body text-white text-center py-3">
-                <i class="bi bi-list-ol fs-4"></i>
-                <h6 class="text-white-50 mb-1 small">Total Entries</h6>
-                <h4 class="mb-0 fw-bold">{{ number_format($summary['total_entries']) }}</h4>
+            <div class="card-body text-white py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-start">
+                        <h6 class="text-white-50 mb-1" style="font-size: 0.75rem;">Total Entries</h6>
+                        <h5 class="mb-0 fw-bold">{{ number_format($summary['total_entries']) }}</h5>
+                    </div>
+                    <i class="bi bi-list-ol fs-3 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md col-sm-6">
         <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
-            <div class="card-body text-white text-center py-3">
-                <i class="bi bi-arrow-down-circle fs-4"></i>
-                <h6 class="text-white-50 mb-1 small">Total Inbound</h6>
-                <h4 class="mb-0 fw-bold">{{ number_format($summary['total_inbound_qty'], 2) }}</h4>
+            <div class="card-body text-white py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-start">
+                        <h6 class="text-white-50 mb-1" style="font-size: 0.75rem;">Total Inbound</h6>
+                        <h5 class="mb-0 fw-bold">{{ number_format($summary['total_inbound_qty'], 2) }}</h5>
+                    </div>
+                    <i class="bi bi-arrow-down-circle fs-3 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md col-sm-6">
         <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);">
-            <div class="card-body text-white text-center py-3">
-                <i class="bi bi-arrow-up-circle fs-4"></i>
-                <h6 class="text-white-50 mb-1 small">Total Outbound</h6>
-                <h4 class="mb-0 fw-bold">{{ number_format($summary['total_outbound_qty'], 2) }}</h4>
+            <div class="card-body text-white py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-start">
+                        <h6 class="text-white-50 mb-1" style="font-size: 0.75rem;">Total Outbound</h6>
+                        <h5 class="mb-0 fw-bold">{{ number_format($summary['total_outbound_qty'], 2) }}</h5>
+                    </div>
+                    <i class="bi bi-arrow-up-circle fs-3 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md col-sm-6">
         <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #0061ff 0%, #60efff 100%);">
-            <div class="card-body text-white text-center py-3">
-                <i class="bi bi-check-circle fs-4"></i>
-                <h6 class="text-white-50 mb-1 small">Current Balance</h6>
-                <h4 class="mb-0 fw-bold">{{ number_format($summary['total_balance'], 2) }}</h4>
+            <div class="card-body text-white py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-start">
+                        <h6 class="text-white-50 mb-1" style="font-size: 0.75rem;">Current Balance</h6>
+                        <h5 class="mb-0 fw-bold">{{ number_format($summary['total_balance'], 2) }}</h5>
+                    </div>
+                    <i class="bi bi-check-circle fs-3 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md col-sm-6">
         <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #8e44ad 0%, #c0392b 100%);">
-            <div class="card-body text-white text-center py-3">
-                <i class="bi bi-box-seam fs-4"></i>
-                <h6 class="text-white-50 mb-1 small">Unique Products</h6>
-                <h4 class="mb-0 fw-bold">{{ number_format($summary['unique_products']) }}</h4>
+            <div class="card-body text-white py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-start">
+                        <h6 class="text-white-50 mb-1" style="font-size: 0.75rem;">Unique Products</h6>
+                        <h5 class="mb-0 fw-bold">{{ number_format($summary['unique_products']) }}</h5>
+                    </div>
+                    <i class="bi bi-box-seam fs-3 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 {{-- Filter Section --}}
+<div class="collapse filter-section show" id="filterCollapse">
 <div class="card border-0 shadow-sm rounded-4 mb-3">
     <div class="card-body p-3">
         <form id="ledgerFilterForm" method="GET" action="{{ route('reports.stock-ledger') }}">
@@ -183,13 +207,14 @@
         </form>
     </div>
 </div>
+</div>
 
 {{-- Data Table --}}
-<div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+<div class="card border-0 shadow-lg rounded-4 mb-0">
     <div class="card-body p-0">
-        <div class="table-responsive">
+        <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
             <table class="table table-hover align-middle mb-0" style="font-size: 13px;">
-                <thead class="table-dark">
+                <thead class="table-dark" style="position: sticky; top: 0; z-index: 10;">
                     <tr>
                         <th style="width:40px;">#</th>
                         <th style="width:80px;">Date</th>
