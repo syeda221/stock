@@ -37,6 +37,7 @@
         <table class="table table-borderless mb-2">
             <tr>
                 <td width="60%">
+                    <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 150px;" class="mb-2"><br>
                     <strong>Unilever Pakistan Limited</strong><br>
                     Dispatch Location: {{ $stockOut->warehouse->name }}
                 </td>
