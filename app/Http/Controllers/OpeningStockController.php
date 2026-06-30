@@ -546,7 +546,7 @@ class OpeningStockController extends Controller
         $callback = function () use ($items, $openingPositions) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Record ID', 'Item Code', 'Product Name', 'Date', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Record ID', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
@@ -596,10 +596,10 @@ class OpeningStockController extends Controller
                         $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
+                            $dateVal,
                             $item->id,
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
-                            $dateVal,
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? '',
@@ -623,10 +623,10 @@ class OpeningStockController extends Controller
                     }
                 } else {
                     fputcsv($file, [
+                        $dateVal,
                         $item->id,
                         $item->product?->item_code ?? '',
                         $item->product?->name ?? '',
-                        $dateVal,
                         $warehouseDisplay,
                         $item->product?->category?->name ?? '',
                         $item->product?->uom?->name ?? '',
