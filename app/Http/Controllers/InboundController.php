@@ -1102,7 +1102,9 @@ class InboundController extends Controller
                         $assignedBalance += $palletBalance;
 
                         $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
-                        $warehouseDisplay = "W{$whPadded}.{$rowLetter}{$psPadded}";
+                        $rowNameStr = $item->warehouseRow->row_name ?? '';
+                        $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$whPadded}";
+                        $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
 
                         fputcsv($file, [
                             $dateVal,

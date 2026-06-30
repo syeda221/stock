@@ -935,7 +935,9 @@ class OutboundController extends Controller
                 $absolutePallet = ($palletStart ?? 0) + $palletOffset - 1;
                 $absolutePallet = max(1, $absolutePallet);
                 $psPadded = str_pad($absolutePallet, 3, '0', STR_PAD_LEFT);
-                $warehouseDisplay = "W{$wp}.{$letter}{$psPadded}";
+                $rowNameStr = $row->row_name ?? '';
+                $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$wp}";
+                $warehouseDisplay = "{$wName}.{$letter}{$psPadded}";
             }
 
             fputcsv($csv, [
