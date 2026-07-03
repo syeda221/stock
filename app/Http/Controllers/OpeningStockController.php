@@ -889,17 +889,8 @@ class OpeningStockController extends Controller
         try {
             DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
                 // Step 1: Pre-process items to identify existing records by Product ID if Record ID is missing
-                foreach ($items as $k => $item) {
-                    if (empty($item['record_id']) && $item['product']) {
-                        $existing = StockInItem::where('product_id', $item['product']->id)
-                            ->whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
-                            ->get();
-                        // Only auto-match by Product ID if there is exactly 1 opening stock entry to avoid ambiguous overrides
-                        if ($existing->count() === 1) {
-                            $items[$k]['record_id'] = $existing->first()->id;
-                        }
-                    }
-                }
+                // (Auto-matching by product_id has been removed so that users can import multiple batches of the same product without overwriting)
+                // If an update is desired, the user MUST provide the Record ID in the CSV.
                 
                 // Step 2: Aggregate items by Record ID
                 $aggregatedItems = [];

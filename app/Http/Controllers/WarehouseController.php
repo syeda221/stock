@@ -224,18 +224,49 @@ class WarehouseController extends Controller
             $row->is_full = $row->free_pallets !== null && $row->free_pallets === 0;
             return $row;
         });
+
+        // Add virtual row for unassigned stock
+        $unassignedItems = StockInItem::with('product')
+            ->where('warehouse_id', $warehouse->id)
+            ->whereNull('warehouse_row_id')
+            ->where('balance_quantity', '>', 0)
+            ->get();
+            
+        if ($unassignedItems->isNotEmpty()) {
+            $usedPallets = $unassignedItems->sum(fn($i) => StockInItem::computeActivePallets($i));
+            $rows->push((object)[
+                'id' => 'unassigned',
+                'row_name' => 'Unassigned Stock (No Row)',
+                'pallet_capacity' => $usedPallets,
+                'used_pallets' => (int) $usedPallets,
+                'free_pallets' => 0,
+                'is_full' => true,
+            ]);
+        }
+
         return response()->json($rows);
     }
 
-    public function getPallets(WarehouseRow $row)
+    public function getPallets($rowId)
     {
-        $row->load('warehouse');
-        $items = StockInItem::with('product')
-            ->where('warehouse_row_id', $row->id)
-            ->where('balance_quantity', '>', 0)
-            ->orderBy('pallet_start')
-            ->orderBy('id')
-            ->get();
+        if ($rowId === 'unassigned') {
+            $items = StockInItem::with('product')
+                ->whereNull('warehouse_row_id')
+                ->where('balance_quantity', '>', 0)
+                ->orderBy('id')
+                ->get();
+            $totalCapacity = $items->sum(fn($i) => StockInItem::computeActivePallets($i));
+            $row = (object)['pallet_capacity' => $totalCapacity, 'row_name' => 'Unassigned Stock'];
+        } else {
+            $row = WarehouseRow::findOrFail($rowId);
+            $row->load('warehouse');
+            $items = StockInItem::with('product')
+                ->where('warehouse_row_id', $row->id)
+                ->where('balance_quantity', '>', 0)
+                ->orderBy('pallet_start')
+                ->orderBy('id')
+                ->get();
+        }
 
         $totalCapacity = $row->pallet_capacity;
         $occupied = [];
@@ -259,7 +290,7 @@ class WarehouseController extends Controller
 
             $remainingUnits = $item->balance_quantity;
 
-            for ($i = $start; $i <= $end && $i <= $totalCapacity; $i++) {
+            for ($i = $start; $i <= $end; $i++) {
                 if ($maxPerPallet) {
                     $maxPerPalletInUnits = $maxPerPallet * $item->pack_size_snapshot;
                     $qty = min($maxPerPalletInUnits, $remainingUnits);
@@ -293,7 +324,9 @@ class WarehouseController extends Controller
         }
 
         $palletData = [];
-        for ($i = 1; $i <= $totalCapacity; $i++) {
+        $maxRenderPallet = max($totalCapacity, max(array_keys($occupied) ?: [0]));
+        
+        for ($i = 1; $i <= $maxRenderPallet; $i++) {
             if (isset($occupied[$i])) {
                 $palletData[] = $occupied[$i];
             } else {
@@ -349,6 +382,20 @@ class WarehouseController extends Controller
                         ? max(0, $row->pallet_capacity - $used)
                         : null;
                 });
+
+                // Add virtual row for unassigned stock in PDF
+                $unassignedItems = $byRow->get('', collect()); // null keys in groupBy are cast to empty string
+                if ($unassignedItems->isNotEmpty()) {
+                    $used = $unassignedItems->sum(fn($i) => StockInItem::computeActivePallets($i));
+                    $warehouse->rows->push((object)[
+                        'id' => 'unassigned',
+                        'row_name' => 'Unassigned Stock (No Row)',
+                        'pallet_capacity' => $used,
+                        'used_pallets' => (int) $used,
+                        'free_pallets' => 0,
+                        'is_full' => true,
+                    ]);
+                }
 
                 return $warehouse;
             });

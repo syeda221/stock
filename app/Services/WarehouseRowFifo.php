@@ -87,33 +87,63 @@ class WarehouseRowFifo
     public static function getFreeRowCapacity(int $warehouseId): int
     {
         $rows = WarehouseRow::where('warehouse_id', $warehouseId)->get();
-        $maxPos = self::getRowMaxPositions($warehouseId);
+        $usedPallets = self::usedPalletsPerRow($warehouseId);
+        
         $free = 0;
         foreach ($rows as $row) {
             $capacity = (int) $row->pallet_capacity;
-            $pos = (int) ($maxPos[$row->id] ?? 0);
-            $free += max(0, $capacity - $pos);
+            $used = (int) ($usedPallets[$row->id] ?? 0);
+            $free += max(0, $capacity - $used);
         }
         return $free;
     }
 
     /**
-     * Get the highest occupied pallet position in each row for a warehouse.
-     * Only counts stock_in_items with balance_quantity > 0 and pallet_start set.
+     * Helper to find contiguous free blocks of pallets in a row.
      */
-    public static function getRowMaxPositions(int $warehouseId): array
+    public static function getFreeBlocksForRow(int $rowId, int $capacity): array
     {
-        $rows = WarehouseRow::where('warehouse_id', $warehouseId)->pluck('pallet_capacity', 'id');
-        $result = [];
-        foreach ($rows as $rowId => $capacity) {
-            $maxPos = StockInItem::where('warehouse_row_id', $rowId)
-                ->where('balance_quantity', '>', 0)
-                ->whereNotNull('pallet_start')
-                ->where('pallets_used', '>', 0)
-                ->max(\Illuminate\Support\Facades\DB::raw('pallet_start + pallets_used - 1'));
-            $result[$rowId] = (int) $maxPos;
+        $items = StockInItem::with('product')
+            ->where('warehouse_row_id', $rowId)
+            ->where('balance_quantity', '>', 0)
+            ->whereNotNull('pallet_start')
+            ->where('pallets_used', '>', 0)
+            ->get();
+
+        $occupied = [];
+        foreach ($items as $item) {
+            $activePallets = StockInItem::computeActivePallets($item);
+            $start = $item->pallet_start;
+            $end = $start + $activePallets - 1;
+            for ($i = $start; $i <= $end; $i++) {
+                $occupied[$i] = true;
+            }
         }
-        return $result;
+
+        $blocks = [];
+        $currentStart = null;
+        $currentLength = 0;
+
+        for ($i = 1; $i <= $capacity; $i++) {
+            if (!isset($occupied[$i])) {
+                if ($currentStart === null) {
+                    $currentStart = $i;
+                }
+                $currentLength++;
+            } else {
+                if ($currentStart !== null) {
+                    $blocks[] = ['start' => $currentStart, 'length' => $currentLength];
+                    $currentStart = null;
+                    $currentLength = 0;
+                }
+            }
+        }
+
+        if ($currentStart !== null) {
+            $blocks[] = ['start' => $currentStart, 'length' => $currentLength];
+        }
+
+        return $blocks;
     }
 
     /**
@@ -121,6 +151,7 @@ class WarehouseRowFifo
      *
      * Returns an array of "splits", each with:
      *   - warehouse_row_id  : ID of assigned row (null if no rows configured)
+     *   - pallet_start      : start position of pallets
      *   - pallets           : pallets assigned to this split
      *   - units             : units for this split
      *   - qty               : units × pack_size
@@ -152,7 +183,6 @@ class WarehouseRowFifo
             ]];
         }
 
-        $rowMaxPos     = self::getRowMaxPositions($warehouseId);
         $remaining      = $palletsNeeded;
         $remainingUnits = $totalUnits;
         $splits         = [];
@@ -160,37 +190,35 @@ class WarehouseRowFifo
         foreach ($rows as $row) {
             if ($remaining <= 0) break;
 
-            $capacity    = (int) $row->pallet_capacity;
-            $maxPos      = (int) ($rowMaxPos[$row->id] ?? 0);
-            $available   = max(0, $capacity - $maxPos);
+            $capacity   = (int) $row->pallet_capacity;
+            $freeBlocks = self::getFreeBlocksForRow($row->id, $capacity);
 
-            if ($available <= 0) continue; // row is full — skip
+            foreach ($freeBlocks as $block) {
+                if ($remaining <= 0) break;
 
-            $palletsHere = min($remaining, $available);
+                $palletsHere = min($remaining, $block['length']);
 
-            // Sequential fill: each row gets as many units as its pallets can hold
-            if ($palletsHere >= $remaining) {
-                $unitsHere = $remainingUnits;
-            } elseif ($cartonsPerPallet > 0) {
-                $unitsHere = min($remainingUnits, $palletsHere * $cartonsPerPallet);
-            } else {
-                $unitsHere = (int) round($totalUnits * ($palletsHere / $palletsNeeded));
-                $unitsHere = min($unitsHere, $remainingUnits);
+                // Sequential fill: each row gets as many units as its pallets can hold
+                if ($palletsHere >= $remaining) {
+                    $unitsHere = $remainingUnits;
+                } elseif ($cartonsPerPallet > 0) {
+                    $unitsHere = min($remainingUnits, $palletsHere * $cartonsPerPallet);
+                } else {
+                    $unitsHere = (int) round($totalUnits * ($palletsHere / $palletsNeeded));
+                    $unitsHere = min($unitsHere, $remainingUnits);
+                }
+
+                $splits[] = [
+                    'warehouse_row_id' => $row->id,
+                    'pallet_start'     => $block['start'],
+                    'pallets'          => $palletsHere,
+                    'units'            => $unitsHere,
+                    'qty'              => round($unitsHere * $packSize, 4),
+                ];
+
+                $remaining      -= $palletsHere;
+                $remainingUnits -= $unitsHere;
             }
-
-            $palletStart   = $maxPos + 1;
-            $rowMaxPos[$row->id] = $maxPos + $palletsHere;
-
-            $remaining      -= $palletsHere;
-            $remainingUnits -= $unitsHere;
-
-            $splits[] = [
-                'warehouse_row_id' => $row->id,
-                'pallet_start'     => $palletStart,
-                'pallets'          => $palletsHere,
-                'units'            => $unitsHere,
-                'qty'              => round($unitsHere * $packSize, 4),
-            ];
         }
 
         if ($remaining > 0) {
