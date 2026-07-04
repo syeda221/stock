@@ -1060,7 +1060,7 @@ class InboundController extends Controller
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold', 'Vendor', 'Transporter', 'Vehicle No',
-                'Driver Name', 'Inbound Invoice', 'Remarks'
+                'Driver Name', 'Inbound Invoice', 'Remarks', 'Vehicle In Time', 'Vehicle Out Time'
             ]);
 
             foreach ($items as $item) {
@@ -1135,6 +1135,8 @@ class InboundController extends Controller
                             $item->stockIn?->driver_name ?? '',
                             $item->stockIn?->inbound_invoice_no ?? '',
                             $item->remarks ?? '',
+                            $item->stockIn?->vehicle_in_time ?? '',
+                            $item->stockIn?->vehicle_out_time ?? '',
                         ]);
                     }
                 } else {
@@ -1169,6 +1171,8 @@ class InboundController extends Controller
                         $item->stockIn?->driver_name ?? '',
                         $item->stockIn?->inbound_invoice_no ?? '',
                         $item->remarks ?? '',
+                        $item->stockIn?->vehicle_in_time ?? '',
+                        $item->stockIn?->vehicle_out_time ?? '',
                     ]);
                 }
             }

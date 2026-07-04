@@ -514,14 +514,15 @@ $item->hold_stock ? 'Yes' : 'No',
             $whId = $item->warehouse_id;
             $row = $item->warehouseRow;
             if (!$whId || !$row || !$row->row_name) continue;
-            $palletCount = (int)$item->pallets_returned;
+            
             $rowKey = $whId . '-' . $row->row_name;
-            if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
-            $palletStart = $rowPalletOffsets[$rowKey] + 1;
-            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
-            $rowPalletOffsets[$rowKey] = $palletEnd;
             $rw = $rowLetterMap[$rowKey] ?? '';
             $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+            
+            $palletStart = $item->pallet_position !== null ? (int)$item->pallet_position : 1;
+            $palletCount = (int)$item->pallets_returned;
+            $palletEnd = $item->pallet_position !== null ? $palletStart + $palletCount - 1 : $palletStart;
+            
             $outboundPositions[$item->id] = [
                 'start' => $palletStart, 'end' => $palletEnd,
                 'letter' => $rw, 'wh_padded' => $wp,
@@ -1607,53 +1608,17 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = collect();
         }
 
-        // Format warehouse_display for outbound entries using source stock_in_item pallet position
+        // Format warehouse_display for outbound entries using database pallet position
         if ($outboundData->isNotEmpty()) {
-            $stockInItemIds = $outboundData->pluck('stock_in_item_id')->filter()->unique();
-            if ($stockInItemIds->isNotEmpty()) {
-                $sourceItems = DB::table('stock_in_items')
-                    ->whereIn('id', $stockInItemIds)
-                    ->get()
-                    ->keyBy('id');
-                $warehouseRowIds = $sourceItems->pluck('warehouse_row_id')->filter()->unique();
-                $allRowItems = collect();
-                if ($warehouseRowIds->isNotEmpty()) {
-                    $allRowItems = DB::table('stock_in_items')
-                        ->whereIn('warehouse_row_id', $warehouseRowIds)
-                        ->orderBy('warehouse_row_id')
-                        ->orderBy('id')
-                        ->get();
-                }
-                $palletStartMap = [];
-                $currentRowId = null;
-                $offset = 0;
-                foreach ($allRowItems as $item) {
-                    if ($item->warehouse_row_id !== $currentRowId) {
-                        $currentRowId = $item->warehouse_row_id;
-                        $offset = 0;
-                    }
-                    if ($item->pallet_start !== null) {
-                        $start = (int)$item->pallet_start;
-                        $offset = max($offset, $start + $item->pallets_used - 1);
-                    } else {
-                        $start = $offset + 1;
-                        $offset = $start + $item->pallets_used - 1;
-                    }
-                    $palletStartMap[$item->id] = $start;
-                }
-                foreach ($outboundData as $entry) {
-                    if ($entry->stock_in_item_id && isset($palletStartMap[$entry->stock_in_item_id])) {
-                        $basePosition = $palletStartMap[$entry->stock_in_item_id];
-                        $palletNum = $entry->pallet_position
-                            ? $basePosition + $entry->pallet_position - 1
-                            : $basePosition;
-                        $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
-                        $rowLetter = $rowLetterMap[$rowKey] ?? '';
-                        if ($rowLetter) {
-                            $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                            $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
-                            $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
-                        }
+            foreach ($outboundData as $entry) {
+                if ($entry->pallet_position !== null && $entry->warehouse_id && $entry->row_name) {
+                    $palletNum = $entry->pallet_position;
+                    $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                    $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                    if ($rowLetter) {
+                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                        $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     }
                 }
             }
@@ -2008,53 +1973,17 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = collect();
         }
 
-        // Format warehouse_display for outbound entries using source stock_in_item pallet position
+        // Format warehouse_display for outbound entries using database pallet position
         if ($outboundData->isNotEmpty()) {
-            $stockInItemIds = $outboundData->pluck('stock_in_item_id')->filter()->unique();
-            if ($stockInItemIds->isNotEmpty()) {
-                $sourceItems = DB::table('stock_in_items')
-                    ->whereIn('id', $stockInItemIds)
-                    ->get()
-                    ->keyBy('id');
-                $warehouseRowIds = $sourceItems->pluck('warehouse_row_id')->filter()->unique();
-                $allRowItems = collect();
-                if ($warehouseRowIds->isNotEmpty()) {
-                    $allRowItems = DB::table('stock_in_items')
-                        ->whereIn('warehouse_row_id', $warehouseRowIds)
-                        ->orderBy('warehouse_row_id')
-                        ->orderBy('id')
-                        ->get();
-                }
-                $palletStartMap = [];
-                $currentRowId = null;
-                $offset = 0;
-                foreach ($allRowItems as $item) {
-                    if ($item->warehouse_row_id !== $currentRowId) {
-                        $currentRowId = $item->warehouse_row_id;
-                        $offset = 0;
-                    }
-                    if ($item->pallet_start !== null) {
-                        $start = (int)$item->pallet_start;
-                        $offset = max($offset, $start + $item->pallets_used - 1);
-                    } else {
-                        $start = $offset + 1;
-                        $offset = $start + $item->pallets_used - 1;
-                    }
-                    $palletStartMap[$item->id] = $start;
-                }
-                foreach ($outboundData as $entry) {
-                    if ($entry->stock_in_item_id && isset($palletStartMap[$entry->stock_in_item_id])) {
-                        $basePosition = $palletStartMap[$entry->stock_in_item_id];
-                        $palletNum = $entry->pallet_position
-                            ? $basePosition + $entry->pallet_position - 1
-                            : $basePosition;
-                        $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
-                        $rowLetter = $rowLetterMap[$rowKey] ?? '';
-                        if ($rowLetter) {
-                            $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                            $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
-                            $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
-                        }
+            foreach ($outboundData as $entry) {
+                if ($entry->pallet_position !== null && $entry->warehouse_id && $entry->row_name) {
+                    $palletNum = $entry->pallet_position;
+                    $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                    $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                    if ($rowLetter) {
+                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                        $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     }
                 }
             }

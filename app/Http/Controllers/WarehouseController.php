@@ -288,18 +288,33 @@ class WarehouseController extends Controller
             $totalCapacityCheck = $maxPerPallet ? $item->pallets_used * $maxPerPallet : null;
             $itemIsOverCapacity = $totalCapacityCheck && $item->units_received > $totalCapacityCheck;
 
-            $remainingUnits = $item->balance_quantity;
-
-            for ($i = $start; $i <= $end; $i++) {
-                if ($maxPerPallet) {
-                    $maxPerPalletInUnits = $maxPerPallet * $item->pack_size_snapshot;
-                    $qty = min($maxPerPalletInUnits, $remainingUnits);
-                    $remainingUnits -= $qty;
-                } else {
-                    $qty = $activePallets > 0
-                        ? round($item->balance_quantity / $activePallets, 2)
-                        : $item->balance_quantity;
+            $currentPalletsArr = [];
+            if ($maxPerPallet && $maxPerPallet > 0 && $item->pallets_used > 0) {
+                $packSize = $item->pack_size_snapshot > 0 ? $item->pack_size_snapshot : 1;
+                $maxPerPalletInUnits = $maxPerPallet * $packSize;
+                
+                $rem = $item->balance_quantity;
+                // Fill right-to-left over active pallets to correctly represent FIFO
+                for ($i = $activePallets - 1; $i >= 0; $i--) {
+                    if ($rem > 0) {
+                        $fill = min($maxPerPalletInUnits, $rem);
+                        $currentPalletsArr[$i] = $fill;
+                        $rem -= $fill;
+                    } else {
+                        $currentPalletsArr[$i] = 0;
+                    }
                 }
+                ksort($currentPalletsArr);
+            } else {
+                $qtyPer = $activePallets > 0 ? round($item->balance_quantity / $activePallets, 2) : $item->balance_quantity;
+                for ($i = 0; $i < $activePallets; $i++) {
+                    $currentPalletsArr[$i] = $qtyPer;
+                }
+            }
+
+            foreach ($currentPalletsArr as $idx => $qty) {
+                if ($qty <= 0) continue;
+                $i = $start + $idx;
 
                 $cartonQtyDisplay = $maxPerPallet ? $qty / $item->pack_size_snapshot : $qty;
 

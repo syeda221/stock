@@ -368,32 +368,75 @@ class OutboundController extends Controller
                         // Deduct from source batch using Eloquent (ensures transaction participation)
                         $batch->decrement('balance_quantity', $qtyToTake);
 
-                        // Proportional pallets for this batch deduction
-                        $palletsToTake = 0;
-                        if ($totalUnitsForThisItem > 0) {
-                            if ($unitsToTake == $unitsRemaining) {
-                                // Last batch for this item takes remaining pallets
-                                $palletsToTake = max(0, $totalPalletsForThisItem - $palletsDistributed);
-                            } else {
-                                $palletsToTake = (int) round($totalPalletsForThisItem * ($unitsToTake / $totalUnitsForThisItem));
+                        // Calculate FIFO pallet deductions
+                        $maxPerPallet = $batch->product?->cartons_per_pallet ?? null;
+                        
+                        $palletDeductions = [];
+                        
+                        if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
+                            $maxPerPalletInUnits = $maxPerPallet * $pack;
+                            
+                            // Reconstruct PRE-deduction pallet state right-to-left over active pallets
+                            $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
+                            $preRemainingCartons = (int) ceil($preDecrementBalance / $pack);
+                            $preActivePallets = max(1, min((int) ceil($preRemainingCartons / $maxPerPallet), $batch->pallets_used));
+                            
+                            $currentPallets = [];
+                            $rem = $preDecrementBalance;
+                            for ($i = $preActivePallets - 1; $i >= 0; $i--) {
+                                if ($rem > 0) {
+                                    $fill = min($maxPerPalletInUnits, $rem);
+                                    $currentPallets[$i] = $fill;
+                                    $rem -= $fill;
+                                } else {
+                                    $currentPallets[$i] = 0;
+                                }
                             }
+                            ksort($currentPallets);
+                            
+                            // Now deduct from the LEFTMOST (earliest) pallets first
+                            $remTake = $qtyToTake;
+                            for ($i = 0; $i < $preActivePallets; $i++) {
+                                if ($remTake <= 0) break;
+                                if ($currentPallets[$i] <= 0) continue;
+                                
+                                $takeHere = min($remTake, $currentPallets[$i]);
+                                $remTake -= $takeHere;
+                                $currentPallets[$i] -= $takeHere;
+                                
+                                $palletDeductions[] = [
+                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $i) : null,
+                                    'qty' => $takeHere,
+                                    'units' => $takeHere / $pack
+                                ];
+                            }
+                            
+                            // Check if any pallets were completely emptied
+                            $emptiedCount = 0;
+                            foreach ($currentPallets as $pQty) {
+                                if ($pQty <= 0) {
+                                    $emptiedCount++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            if ($emptiedCount > 0) {
+                                if ($batch->pallet_start !== null) {
+                                    $batch->pallet_start += $emptiedCount;
+                                }
+                                $batch->pallets_used -= $emptiedCount;
+                                $batch->save();
+                            }
+                        } else {
+                            $palletDeductions[] = [
+                                'position' => null,
+                                'qty' => $qtyToTake,
+                                'units' => $unitsToTake
+                            ];
                         }
-                        $palletsDistributed += $palletsToTake;
 
-                        /* ===== CREATE OUTBOUND ITEMS (one per pallet consumed) ===== */
-                        $effectivePallets = max(1, $palletsToTake);
-                        $perPalletUnits = $unitsToTake / $effectivePallets;
-                        $perPalletQty = $qtyToTake / $effectivePallets;
-                        $palletUnitsRemaining = $unitsToTake;
-                        $palletQtyRemaining = $qtyToTake;
-
-                        for ($p = 0; $p < $effectivePallets; $p++) {
-                            $isLastPallet = ($p === $effectivePallets - 1);
-                            $thisUnits = $isLastPallet ? $palletUnitsRemaining : round($perPalletUnits);
-                            $thisQty = $isLastPallet ? $palletQtyRemaining : round($perPalletQty, 3);
-                            $palletUnitsRemaining -= $thisUnits;
-                            $palletQtyRemaining -= $thisQty;
-
+                        foreach ($palletDeductions as $pIdx => $deduction) {
                             StockOutItem::create([
                                 'stock_out_id'        => $stockOut->id,
                                 'stock_in_item_id'    => $batch->id,
@@ -402,16 +445,16 @@ class OutboundController extends Controller
                                 'warehouse_row_id'    => $batch->warehouse_row_id,
                                 'sap_batch'           => $batch->sap_batch,
                                 'vendor_batch'        => $batch->vendor_batch,
-                                'units_dispatch'      => $thisUnits,
+                                'units_dispatch'      => $deduction['units'],
                                 'pack_size_snapshot'  => $pack,
-                                'dispatch_quantity'   => $thisQty,
+                                'dispatch_quantity'   => $deduction['qty'],
                                 'po_no'               => $userPo ?: $batch->po_no,
                                 'ibd_no'              => $userIbd ?: $batch->ibd_no,
                                 'sto_no'              => $stoNo,
                                 'mfg_date'            => $batch->mfg_date,
                                 'expiry_date'         => $batch->expiry_date,
                                 'pallets_returned'    => 1,
-                                'pallet_position'     => $palletsToTake > 0 ? ($p + 1) : null,
+                                'pallet_position'     => $deduction['position'],
                             ]);
                         }
 
@@ -663,30 +706,75 @@ class OutboundController extends Controller
 
                         $batch->decrement('balance_quantity', $qtyToTake);
 
-                        $palletsToTake = 0;
-                        if ($totalUnitsForThisItem > 0) {
-                            if ($unitsToTake == $unitsRemaining) {
-                                $palletsToTake = max(0, $totalPalletsForThisItem - $palletsDistributed);
-                            } else {
-                                $palletsToTake = (int) round($totalPalletsForThisItem * ($unitsToTake / $totalUnitsForThisItem));
+                        // Calculate FIFO pallet deductions
+                        $maxPerPallet = $batch->product?->cartons_per_pallet ?? null;
+                        
+                        $palletDeductions = [];
+                        
+                        if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
+                            $maxPerPalletInUnits = $maxPerPallet * $pack;
+                            
+                            // Reconstruct PRE-deduction pallet state right-to-left over active pallets
+                            $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
+                            $preRemainingCartons = (int) ceil($preDecrementBalance / $pack);
+                            $preActivePallets = max(1, min((int) ceil($preRemainingCartons / $maxPerPallet), $batch->pallets_used));
+                            
+                            $currentPallets = [];
+                            $rem = $preDecrementBalance;
+                            for ($i = $preActivePallets - 1; $i >= 0; $i--) {
+                                if ($rem > 0) {
+                                    $fill = min($maxPerPalletInUnits, $rem);
+                                    $currentPallets[$i] = $fill;
+                                    $rem -= $fill;
+                                } else {
+                                    $currentPallets[$i] = 0;
+                                }
                             }
+                            ksort($currentPallets);
+                            
+                            // Now deduct from the LEFTMOST (earliest) pallets first
+                            $remTake = $qtyToTake;
+                            for ($i = 0; $i < $preActivePallets; $i++) {
+                                if ($remTake <= 0) break;
+                                if ($currentPallets[$i] <= 0) continue;
+                                
+                                $takeHere = min($remTake, $currentPallets[$i]);
+                                $remTake -= $takeHere;
+                                $currentPallets[$i] -= $takeHere;
+                                
+                                $palletDeductions[] = [
+                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $i) : null,
+                                    'qty' => $takeHere,
+                                    'units' => $takeHere / $pack
+                                ];
+                            }
+                            
+                            // Check if any pallets were completely emptied
+                            $emptiedCount = 0;
+                            foreach ($currentPallets as $pQty) {
+                                if ($pQty <= 0) {
+                                    $emptiedCount++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            if ($emptiedCount > 0) {
+                                if ($batch->pallet_start !== null) {
+                                    $batch->pallet_start += $emptiedCount;
+                                }
+                                $batch->pallets_used -= $emptiedCount;
+                                $batch->save();
+                            }
+                        } else {
+                            $palletDeductions[] = [
+                                'position' => null,
+                                'qty' => $qtyToTake,
+                                'units' => $unitsToTake
+                            ];
                         }
-                        $palletsDistributed += $palletsToTake;
 
-                        /* ===== CREATE OUTBOUND ITEMS (one per pallet consumed) ===== */
-                        $effectivePallets = max(1, $palletsToTake);
-                        $perPalletUnits = $unitsToTake / $effectivePallets;
-                        $perPalletQty = $qtyToTake / $effectivePallets;
-                        $palletUnitsRemaining = $unitsToTake;
-                        $palletQtyRemaining = $qtyToTake;
-
-                        for ($p = 0; $p < $effectivePallets; $p++) {
-                            $isLastPallet = ($p === $effectivePallets - 1);
-                            $thisUnits = $isLastPallet ? $palletUnitsRemaining : round($perPalletUnits);
-                            $thisQty = $isLastPallet ? $palletQtyRemaining : round($perPalletQty, 3);
-                            $palletUnitsRemaining -= $thisUnits;
-                            $palletQtyRemaining -= $thisQty;
-
+                        foreach ($palletDeductions as $pIdx => $deduction) {
                             StockOutItem::create([
                                 'stock_out_id'        => $stockOut->id,
                                 'stock_in_item_id'    => $batch->id,
@@ -695,16 +783,16 @@ class OutboundController extends Controller
                                 'warehouse_row_id'    => $batch->warehouse_row_id,
                                 'sap_batch'           => $batch->sap_batch,
                                 'vendor_batch'        => $batch->vendor_batch,
-                                'units_dispatch'      => $thisUnits,
+                                'units_dispatch'      => $deduction['units'],
                                 'pack_size_snapshot'  => $pack,
-                                'dispatch_quantity'   => $thisQty,
+                                'dispatch_quantity'   => $deduction['qty'],
                                 'po_no'               => $userPo ?: $batch->po_no,
                                 'ibd_no'              => $userIbd ?: $batch->ibd_no,
                                 'sto_no'              => $stoNo,
                                 'mfg_date'            => $batch->mfg_date,
                                 'expiry_date'         => $batch->expiry_date,
                                 'pallets_returned'    => 1,
-                                'pallet_position'     => $palletsToTake > 0 ? ($p + 1) : null,
+                                'pallet_position'     => $deduction['position'],
                             ]);
                         }
 
@@ -798,22 +886,8 @@ class OutboundController extends Controller
 
     public function export(Request $request)
     {
-        // Pre-compute per-source-item pallet offsets so we can assign sequential positions
-        $sourcePalletCounters = [];
-        $palletOffsetMap = [];
-        $allOutItems = StockOutItem::whereNotNull('stock_in_item_id')
-            ->orderBy('id')
-            ->get(['id', 'stock_in_item_id']);
-        foreach ($allOutItems as $oi) {
-            $key = (int) $oi->stock_in_item_id;
-            if (!isset($sourcePalletCounters[$key])) $sourcePalletCounters[$key] = 0;
-            $sourcePalletCounters[$key]++;
-            $palletOffsetMap[$oi->id] = $sourcePalletCounters[$key];
-        }
-
-        // Build row-letter mapping and compute pallet_start for source items that lack it
+        // Build row-letter mapping
         $rowLetterMap = [];
-        $rowPalletOffsets = [];
         $allRows = WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
         foreach ($allRows as $whId => $rows) {
             $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
@@ -828,25 +902,6 @@ class OutboundController extends Controller
                 $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
             }
         }
-        // Compute dynamic pallet_start for ALL current items so we can resolve any source item
-        $dynamicPalletStart = [];
-        StockInItem::whereNotNull('warehouse_row_id')
-            ->where('pallets_used', '>', 0)
-            ->with('warehouseRow')
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->chunk(100, function ($chunk) use (&$rowPalletOffsets, &$dynamicPalletStart) {
-                foreach ($chunk as $item) {
-                    $whId = $item->warehouse_id;
-                    $row = $item->warehouseRow;
-                    if (!$row || !$row->row_name) continue;
-                    $rowKey = $whId . '-' . $row->row_name;
-                    if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
-                    $computedStart = $rowPalletOffsets[$rowKey] + 1;
-                    $rowPalletOffsets[$rowKey] += (int)$item->pallets_used;
-                    $dynamicPalletStart[$item->id] = $computedStart;
-                }
-            });
 
         $query = StockOutItem::with([
             'stockOut.warehouse', 'stockOut.customer', 'stockOut.toWarehouse', 'stockOut.transporter',
@@ -912,7 +967,8 @@ class OutboundController extends Controller
             'Category', 'UOM', 'Packing', 'Pack Size',
             'Units Dispatched', 'Dispatch Qty', 'Pallets',
             'Customer / Destination', 'Transporter', 'Vehicle No',
-            'Driver Name', 'Dispatched Invoice', 'PO', 'IBD', 'STO',
+            'Driver Name', 'Vehicle In Time', 'Vehicle Out Time',
+            'Dispatched Invoice', 'PO', 'IBD', 'STO',
             'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date',
             'Remarks'
         ]);
@@ -926,18 +982,20 @@ class OutboundController extends Controller
             $whId = $item->warehouse_id;
 
             $warehouseDisplay = optional($item->warehouse)->name ?? '';
-            if ($row && $sourceItem) {
-                $palletStart = $sourceItem->pallet_start ?? ($dynamicPalletStart[$sourceItem->id] ?? null);
+            if ($row) {
+                $palletNum = $item->pallet_position;
                 $rowKey = $whId . '-' . $row->row_name;
                 $letter = $rowLetterMap[$rowKey] ?? '';
-                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
-                $palletOffset = $palletOffsetMap[$item->id] ?? 1;
-                $absolutePallet = ($palletStart ?? 0) + $palletOffset - 1;
-                $absolutePallet = max(1, $absolutePallet);
-                $psPadded = str_pad($absolutePallet, 3, '0', STR_PAD_LEFT);
-                $rowNameStr = $row->row_name ?? '';
-                $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$wp}";
-                $warehouseDisplay = "{$wName}.{$letter}{$psPadded}";
+                
+                if ($letter && $palletNum !== null) {
+                    $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                    $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                    $rowNameStr = $row->row_name ?? '';
+                    $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$wp}";
+                    $warehouseDisplay = "{$wName}.{$letter}{$psPadded}";
+                } elseif ($row->row_name) {
+                    $warehouseDisplay = $row->row_name;
+                }
             }
 
             fputcsv($csv, [
@@ -957,6 +1015,8 @@ class OutboundController extends Controller
                 optional($item->stockOut->transporter)->name ?? '',
                 optional($item->stockOut)->vehicle_no ?? '',
                 optional($item->stockOut)->driver_name ?? '',
+                optional($item->stockOut)->vehicle_in_time ? (method_exists(optional($item->stockOut)->vehicle_in_time, 'format') ? optional($item->stockOut)->vehicle_in_time->format('d.m.Y H:i') : date('d.m.Y H:i', strtotime(optional($item->stockOut)->vehicle_in_time))) : '',
+                optional($item->stockOut)->vehicle_out_time ? (method_exists(optional($item->stockOut)->vehicle_out_time, 'format') ? optional($item->stockOut)->vehicle_out_time->format('d.m.Y H:i') : date('d.m.Y H:i', strtotime(optional($item->stockOut)->vehicle_out_time))) : '',
                 optional($item->stockOut)->dispatched_invoice_no ?? '',
                 $item->po_no ?? optional($item->sourceStockInItem)->po_no ?? '',
                 $item->ibd_no ?? optional($item->sourceStockInItem)->ibd_no ?? '',
