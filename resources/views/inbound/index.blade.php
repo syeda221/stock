@@ -205,10 +205,25 @@
             </div>
         @endif
 
+        <div id="selectionToolbar" class="d-none align-items-center text-white p-2 rounded m-3 shadow-sm" style="background-color: var(--bs-primary) !important;">
+            <div class="me-auto fw-semibold ms-2" id="selectionCount">0 selected</div>
+            <form id="exportSelectedForm" method="POST" action="{{ route('inbound.exportSelected') }}" class="m-0 p-0 d-flex align-items-center">
+                @csrf
+                <div id="hiddenInputsContainer"></div>
+                <button type="submit" class="btn btn-sm btn-outline-light me-2">
+                    <i class="bi bi-file-earmark-arrow-down"></i> Export selected
+                </button>
+            </form>
+            <button type="button" class="btn btn-sm btn-light text-primary fw-semibold me-2" id="clearSelectionBtn">Clear</button>
+        </div>
+
         <div class="table-responsive rounded-bottom">
             <table class="table table-hover table-sm mb-0 align-middle">
                 <thead class="table-primary small">
                     <tr>
+                        <th style="width:30px">
+                            <input type="checkbox" id="selectAllCheckbox" class="form-check-input shadow-none">
+                        </th>
                         <th style="width:40px">#</th>
                         <th style="min-width:140px">Product</th>
                         <th style="width:90px">Group</th>
@@ -218,6 +233,7 @@
                         <th style="width:80px">Status</th>
                         <th style="width:100px">QC</th>
                         <th style="width:110px">Vehicle/Driver</th>
+                        <th style="width:110px">Dispatch Inv#</th>
                         <th style="width:80px">Days</th>
                         <th style="width:80px">Date</th>
                         <th style="width:80px" class="text-center">Actions</th>
@@ -335,6 +351,9 @@
                         @endphp
 
                         <tr>
+                            <td class="text-center align-middle">
+                                <input type="checkbox" class="form-check-input row-checkbox shadow-none" value="{{ $item->id }}">
+                            </td>
                             <td>{{ ($items->currentPage() - 1) * $items->perPage() + $loop->iteration }}</td>
 
                             <td>
@@ -384,6 +403,10 @@
                             <td style="font-size: 10px;">
                                 <div class="fw-semibold" style="max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $vehicleText }}">{{ Str::limit($vehicleText, 12) }}</div>
                                 <small class="text-muted" style="display: block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $driverText }}">{{ Str::limit($driverText, 12) }}</small>
+                            </td>
+
+                            <td class="text-nowrap" style="font-size: 11px;">
+                                <span class="text-muted fw-semibold">{{ $item->stockIn->dispatched_invoice_no ?? '-' }}</span>
                             </td>
 
                             <td class="text-center">
@@ -886,6 +909,65 @@ function exportInbound() {
     });
     window.location.href = '{{ route("inbound.export") }}?' + params.toString();
 }
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+    const selectionToolbar = document.getElementById('selectionToolbar');
+    const selectionCount = document.getElementById('selectionCount');
+    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
+
+    function updateToolbar() {
+        const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+        const count = selectedCheckboxes.length;
+        
+        if (count > 0) {
+            selectionToolbar.classList.remove('d-none');
+            selectionToolbar.classList.add('d-flex');
+            selectionCount.textContent = count + ' selected';
+            
+            if(selectAllCheckbox) {
+                selectAllCheckbox.checked = count === rowCheckboxes.length;
+                selectAllCheckbox.indeterminate = count > 0 && count < rowCheckboxes.length;
+            }
+            
+            hiddenInputsContainer.innerHTML = '';
+            selectedCheckboxes.forEach(cb => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selected_ids[]';
+                input.value = cb.value;
+                hiddenInputsContainer.appendChild(input);
+            });
+        } else {
+            selectionToolbar.classList.add('d-none');
+            selectionToolbar.classList.remove('d-flex');
+            if(selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+            hiddenInputsContainer.innerHTML = '';
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            rowCheckboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+            updateToolbar();
+        });
+    }
+
+    rowCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateToolbar);
+    });
+
+    if (clearSelectionBtn) {
+        clearSelectionBtn.addEventListener('click', function() {
+            rowCheckboxes.forEach(cb => cb.checked = false);
+            updateToolbar();
+        });
+    }
+});
 </script>
 @endpush
 

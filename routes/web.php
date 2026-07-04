@@ -144,6 +144,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/inbound/{stockIn}/edit', [InboundController::class, 'edit'])->name('inbound.edit');
     Route::put('/inbound/{stockIn}', [InboundController::class, 'update'])->name('inbound.update');
     Route::get('/inbound/export/csv', [InboundController::class, 'export'])->name('inbound.export');
+    Route::post('/inbound/export/selected', [InboundController::class, 'export'])->name('inbound.exportSelected');
     Route::get('/inbound/import/template', [InboundController::class, 'downloadTemplate'])->name('inbound.import.template');
     Route::get('/inbound/import', [InboundController::class, 'importForm'])->name('inbound.import');
     Route::post('/inbound/import', [InboundController::class, 'importStore'])->name('inbound.import.store');

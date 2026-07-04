@@ -948,6 +948,11 @@ class InboundController extends Controller
         $query = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'inbound'))
             ->with(['product.category', 'product.uom', 'product.packingType', 'warehouse', 'stockIn', 'stockIn.warehouse', 'stockIn.vendor', 'stockIn.transporter', 'stockIn.arrivedFrom', 'warehouseRow']);
 
+        if ($request->filled('selected_ids')) {
+            $selectedIds = is_array($request->selected_ids) ? $request->selected_ids : explode(',', $request->selected_ids);
+            $query->whereIn('id', $selectedIds);
+        }
+
         if ($request->filled('qc_status')) {
             $query->where('quality_clearance', $request->qc_status);
         }
@@ -1060,7 +1065,7 @@ class InboundController extends Controller
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold', 'Vendor', 'Transporter', 'Vehicle No',
-                'Driver Name', 'Inbound Invoice', 'Remarks', 'Vehicle In Time', 'Vehicle Out Time'
+                'Driver Name', 'GATE PASS#', 'DC#', 'CHALAN #', 'BILTY #', 'Remarks', 'Vehicle In DATE & Time', 'Vehicle Out DATE & Time'
             ]);
 
             foreach ($items as $item) {
@@ -1133,7 +1138,10 @@ class InboundController extends Controller
                             $item->stockIn?->transporter?->name ?? '',
                             $item->stockIn?->vehicle_no ?? '',
                             $item->stockIn?->driver_name ?? '',
-                            $item->stockIn?->inbound_invoice_no ?? '',
+                            $item->stockIn?->dispatched_invoice_no ?? '',
+                            $item->stockIn?->dispatcher_sig ?? '',
+                            $item->stockIn?->picker ?? '',
+                            $item->stockIn?->shipment_no ?? '',
                             $item->remarks ?? '',
                             $item->stockIn?->vehicle_in_time ?? '',
                             $item->stockIn?->vehicle_out_time ?? '',
@@ -1169,7 +1177,10 @@ class InboundController extends Controller
                         $item->stockIn?->transporter?->name ?? '',
                         $item->stockIn?->vehicle_no ?? '',
                         $item->stockIn?->driver_name ?? '',
-                        $item->stockIn?->inbound_invoice_no ?? '',
+                        $item->stockIn?->dispatched_invoice_no ?? '',
+                        $item->stockIn?->dispatcher_sig ?? '',
+                        $item->stockIn?->picker ?? '',
+                        $item->stockIn?->shipment_no ?? '',
                         $item->remarks ?? '',
                         $item->stockIn?->vehicle_in_time ?? '',
                         $item->stockIn?->vehicle_out_time ?? '',
@@ -1196,9 +1207,9 @@ class InboundController extends Controller
         fputcsv($file, [
             'Item Code', 'Product Name', 'Warehouse', 'Vendor', 'Transporter',
             'Arrived From', 'Vehicle No', 'Vehicle Size', 'Driver Name',
-            'Driver Mobile', 'Vehicle In Time', 'Vehicle Out Time',
-            'Delivery No', 'Shipment No', 'STO No', 'Dispatch Invoice',
-            'Dispatcher Sig', 'Picker', 'Shipment Type',
+            'Driver Mobile', 'Vehicle In DATE & Time', 'Vehicle Out DATE & Time',
+            'Delivery No', 'BILTY #', 'STO No', 'GATE PASS#',
+            'DC#', 'CHALAN #', 'Shipment Type',
             'IBD', 'PO', 'SAP Batch', 'Vendor Batch',
             'Units Received', 'MFG Date', 'Expiry Date', 'Quality Check',
             'Blocked', 'Hold', 'Remarks'
@@ -1266,14 +1277,14 @@ class InboundController extends Controller
             'Vehicle Size'     => ['Vehicle Size', 'vehicle_size'],
             'Driver Name'      => ['Driver Name', 'driver_name'],
             'Driver Mobile'    => ['Driver Mobile', 'driver_mobile', 'Driver Phone'],
-            'Vehicle In Time'  => ['Vehicle In Time', 'vehicle_in_time', 'In Time'],
-            'Vehicle Out Time' => ['Vehicle Out Time', 'vehicle_out_time', 'Out Time'],
+            'Vehicle In Time'  => ['Vehicle In DATE & Time', 'Vehicle In Time', 'vehicle_in_time', 'In Time'],
+            'Vehicle Out Time' => ['Vehicle Out DATE & Time', 'Vehicle Out Time', 'vehicle_out_time', 'Out Time'],
             'Delivery No'      => ['Delivery No', 'delivery_no', 'Delivery Number'],
-            'Shipment No'      => ['Shipment No', 'shipment_no', 'Shipment Number'],
+            'Shipment No'      => ['BILTY #', 'Shipment No', 'shipment_no', 'Shipment Number'],
             'STO No'           => ['STO No', 'sto_no', 'STO'],
-            'Dispatch Invoice' => ['Dispatch Invoice', 'dispatched_invoice_no', 'Dispatch No'],
-            'Dispatcher Sig'   => ['Dispatcher Sig', 'dispatcher_sig', 'Signature'],
-            'Picker'           => ['Picker', 'picker'],
+            'Dispatch Invoice' => ['GATE PASS#', 'Dispatch Invoice', 'dispatched_invoice_no', 'Dispatch No'],
+            'Dispatcher Sig'   => ['DC#', 'Dispatcher Sig', 'dispatcher_sig', 'Signature'],
+            'Picker'           => ['CHALAN #', 'Picker', 'picker'],
             'Shipment Type'    => ['Shipment Type', 'shipment_type'],
         ];
 
