@@ -266,7 +266,9 @@ class ProductController extends Controller
 
             $data = [];
             foreach ($headerMap as $field => $index) {
-                $data[$field] = trim($row[$index] ?? '');
+                $val = trim($row[$index] ?? '');
+                // Convert encoding to UTF-8 to prevent MySQL "Incorrect string value" errors for symbols like ®
+                $data[$field] = mb_convert_encoding($val, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
             }
 
             $itemCode       = $data['Item Code'];

@@ -1147,7 +1147,8 @@ class OutboundController extends Controller
         $getCell = function($row, $field) use ($headerMap) {
             if (!isset($headerMap[$field])) return '';
             $idx = $headerMap[$field];
-            return trim($row[$idx] ?? '');
+            $val = trim($row[$idx] ?? '');
+            return mb_convert_encoding($val, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
         };
 
         $rowNum = 1;
