@@ -313,7 +313,7 @@
                                     </span>
                                     <br><small class="fw-normal text-muted">({{ rtrim(rtrim(number_format($entry->balance_quantity, 2), '0'), '.') }})</small>
                                 @else
-                                    <span class="text-muted">-</span>
+                                    <span class="text-muted">0</span>
                                 @endif
                             </td>
                             <td><small>{{ $entry->mfg_date ? \Carbon\Carbon::parse($entry->mfg_date)->format('d.m.Y') : '-' }}</small></td>
