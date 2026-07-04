@@ -285,8 +285,10 @@ class WarehouseController extends Controller
             $activePallets = StockInItem::computeActivePallets($item);
 
             $end = $start + $activePallets - 1;
-            $totalCapacityCheck = $maxPerPallet ? $item->pallets_used * $maxPerPallet : null;
-            $itemIsOverCapacity = $totalCapacityCheck && $item->units_received > $totalCapacityCheck;
+            $packSize = $item->pack_size_snapshot > 0 ? $item->pack_size_snapshot : 1;
+            $maxPerPalletInUnits = $maxPerPallet ? $maxPerPallet * $packSize : null;
+            $totalCapacityCheckInUnits = $maxPerPalletInUnits ? $item->pallets_used * $maxPerPalletInUnits : null;
+            $itemIsOverCapacity = $totalCapacityCheckInUnits && $item->balance_quantity > $totalCapacityCheckInUnits;
 
             $currentPalletsArr = [];
             if ($maxPerPallet && $maxPerPallet > 0 && $item->pallets_used > 0) {
