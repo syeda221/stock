@@ -250,7 +250,7 @@
                         @php
                             $isIn = $entry->direction == 'IN';
                             $balUnits = $isIn && $entry->pack_size > 0 ? $entry->balance_quantity / $entry->pack_size : 0;
-                            $daysInWh = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
+                            $daysInWh = $entry->created_at ? abs((int)now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay(), false)) : '';
                             $expiry = $entry->expiry_date ? \Carbon\Carbon::parse($entry->expiry_date) : null;
                             $daysToExpiry = $expiry ? now()->diffInDays($expiry, false) : null;
                         @endphp
