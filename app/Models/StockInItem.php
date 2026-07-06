@@ -64,6 +64,58 @@ class StockInItem extends Model
         return $item->pallets_used ?? 0;
     }
 
+    public function getPalletBalances(): array
+    {
+        $maxPerPallet = $this->product?->cartons_per_pallet ?? null;
+        $active = self::computeActivePallets($this);
+
+        if (!$maxPerPallet || $maxPerPallet <= 0 || $this->pallets_used <= 0) {
+            $qtyPer = $active > 0 ? round($this->balance_quantity / $active, 4) : $this->balance_quantity;
+            $arr = [];
+            for ($i = 0; $i < $active; $i++) {
+                $arr[$i] = $qtyPer;
+            }
+            return $arr;
+        }
+
+        $packSize = $this->pack_size_snapshot > 0 ? $this->pack_size_snapshot : 1;
+        $maxPerPalletInUnits = $maxPerPallet * $packSize;
+        
+        $originalQty = round((float)$this->units_received * $packSize, 4);
+        
+        $pallets = [];
+        $remainingOriginal = $originalQty;
+        for ($i = 0; $i < $this->pallets_used; $i++) {
+            $fill = min($maxPerPalletInUnits, $remainingOriginal);
+            $pallets[$i] = $fill;
+            $remainingOriginal -= $fill;
+            if ($remainingOriginal <= 0) break;
+        }
+        
+        $dispatchedQty = max(0, $originalQty - (float)$this->balance_quantity);
+        $remainingToDrain = $dispatchedQty;
+        
+        foreach ($pallets as $i => $qty) {
+            if ($remainingToDrain <= 0) break;
+            $take = min($remainingToDrain, $qty);
+            $pallets[$i] -= $take;
+            $remainingToDrain -= $take;
+        }
+        
+        $activePallets = [];
+        foreach ($pallets as $qty) {
+            if ($qty > 0.0001) {
+                $activePallets[] = $qty;
+            }
+        }
+        
+        if (empty($activePallets)) {
+            return [0 => $this->balance_quantity];
+        }
+        
+        return $activePallets;
+    }
+
     public function stockIn()
     {
         return $this->belongsTo(StockIn::class);

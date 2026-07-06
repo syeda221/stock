@@ -984,7 +984,9 @@ class OpeningStockController extends Controller
                                 $product->id,
                                 $simulatedRemainingUnits,
                                 $packSize,
-                                $cartonsPerPallet
+                                $cartonsPerPallet,
+                                $item['sap_batch'] ?? null,
+                                $item['vendor_batch'] ?? null
                             );
 
                             if (!empty($partialResult['splits'])) {

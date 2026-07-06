@@ -378,7 +378,9 @@ class InboundController extends Controller
                     $product->id,
                     $units,
                     $packSize,
-                    (int) $product->cartons_per_pallet
+                    (int) $product->cartons_per_pallet,
+                    $item['sap_batch'] ?? null,
+                    $item['vendor_batch'] ?? null
                 );
 
                 foreach ($partialResult['splits'] as $split) {
@@ -1546,7 +1548,9 @@ class InboundController extends Controller
                                 $product->id,
                                 $simulatedRemainingUnits,
                                 $packSize,
-                                $cartonsPerPallet
+                                $cartonsPerPallet,
+                                $item['sap_batch'] ?? null,
+                                $item['vendor_batch'] ?? null
                             );
 
                             if (!empty($partialResult['splits'])) {

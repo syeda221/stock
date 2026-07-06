@@ -46,7 +46,9 @@ class WarehouseRowFifo
         ?int   $productId,
         int    $totalUnits,
         float  $packSize,
-        int    $cartonsPerPallet
+        int    $cartonsPerPallet,
+        ?string $sapBatch = null,
+        ?string $vendorBatch = null
     ): array {
         $splits = [];
         $remaining = $totalUnits;
@@ -55,12 +57,28 @@ class WarehouseRowFifo
             return ['splits' => $splits, 'remaining_units' => $remaining];
         }
 
-        $partials = StockInItem::where('warehouse_id', $warehouseId)
+        $query = StockInItem::where('warehouse_id', $warehouseId)
             ->where('product_id', $productId)
             ->where('balance_quantity', '>', 0)
-            ->where('last_pallet_vacant', '>', 0)
-            ->orderBy('id')
-            ->get();
+            ->where('last_pallet_vacant', '>', 0);
+
+        if ($sapBatch !== null && $sapBatch !== '') {
+            $query->where('sap_batch', $sapBatch);
+        } else {
+            $query->where(function($q) {
+                $q->whereNull('sap_batch')->orWhere('sap_batch', '');
+            });
+        }
+
+        if ($vendorBatch !== null && $vendorBatch !== '') {
+            $query->where('vendor_batch', $vendorBatch);
+        } else {
+            $query->where(function($q) {
+                $q->whereNull('vendor_batch')->orWhere('vendor_batch', '');
+            });
+        }
+
+        $partials = $query->orderBy('id')->get();
 
         foreach ($partials as $partial) {
             if ($remaining <= 0) break;

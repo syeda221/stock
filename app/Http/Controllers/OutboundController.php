@@ -390,23 +390,18 @@ class OutboundController extends Controller
                         if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
                             $maxPerPalletInUnits = $maxPerPallet * $pack;
                             
-                            // Reconstruct PRE-deduction pallet state right-to-left over active pallets
+                            // Reconstruct PRE-deduction pallet state
                             $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
-                            $preRemainingCartons = (int) ceil($preDecrementBalance / $pack);
-                            $preActivePallets = max(1, min((int) ceil($preRemainingCartons / $maxPerPallet), $batch->pallets_used));
                             
-                            $currentPallets = [];
-                            $rem = $preDecrementBalance;
-                            for ($i = $preActivePallets - 1; $i >= 0; $i--) {
-                                if ($rem > 0) {
-                                    $fill = min($maxPerPalletInUnits, $rem);
-                                    $currentPallets[$i] = $fill;
-                                    $rem -= $fill;
-                                } else {
-                                    $currentPallets[$i] = 0;
-                                }
-                            }
-                            ksort($currentPallets);
+                            // Temporarily set balance_quantity to pre-decrement to get correct pallets
+                            $originalBalance = $batch->balance_quantity;
+                            $batch->balance_quantity = $preDecrementBalance;
+                            $currentPallets = $batch->getPalletBalances();
+                            $batch->balance_quantity = $originalBalance;
+                            
+                            // getPalletBalances() skips emptied pallets (qty=0). 
+                            // The keys are sequential integers (0, 1, 2, ...) corresponding to active pallets.
+                            $preActivePallets = count($currentPallets);
                             
                             // Now deduct from the LEFTMOST (earliest) pallets first
                             $remTake = $qtyToTake;
