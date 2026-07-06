@@ -233,7 +233,7 @@
                         <th style="width:80px">Status</th>
                         <th style="width:100px">QC</th>
                         <th style="width:110px">Vehicle/Driver</th>
-                        <th style="width:110px">Dispatch Inv#</th>
+                        <th style="width:110px">Inbound Invoice</th>
                         <th style="width:80px">Days</th>
                         <th style="width:80px">Date</th>
                         <th style="width:80px" class="text-center">Actions</th>
@@ -272,7 +272,7 @@
                             'Driver Name' => $item->stockIn->driver_name ?? '-',
                             'Driver Mobile' => $item->stockIn->driver_mobile ?? '-',
 
-                            'Dispatched Invoice No' => $item->stockIn->dispatched_invoice_no ?? '-',
+                            'Inbound Invoice' => $item->stockIn->dispatched_invoice_no ?? '-',
                             'Dispatcher Sig' => $item->stockIn->dispatcher_sig ?? '-',
                             'Picker' => $item->stockIn->picker ?? '-',
 
@@ -654,7 +654,7 @@
                     'Vehicle Out Time': headerData['Vehicle Out Time'],
                     'Driver Name': headerData['Driver Name'],
                     'Driver Mobile': headerData['Driver Mobile'],
-                    'Dispatched Invoice No': headerData['Dispatched Invoice No']
+                    'Inbound Invoice': headerData['Inbound Invoice']
                 });
 
                 // Stock Status & Quality

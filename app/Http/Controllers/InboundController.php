@@ -1060,12 +1060,12 @@ class InboundController extends Controller
         $callback = function () use ($items, $inboundPositions) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
-                'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
+                'Date', 'Item Code', 'Product Name', 'Group', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing',
                 'Pack Size', 'Units Received', 'Total Qty', 'MFG Date',
                 'Expiry Date', 'Balance Qty', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold', 'Vendor', 'Transporter', 'Vehicle No',
-                'Driver Name', 'GATE PASS#', 'DC#', 'CHALAN #', 'BILTY #', 'Remarks', 'Vehicle In DATE & Time', 'Vehicle Out DATE & Time'
+                'Driver Name', 'Inbound Invoice', 'DC#', 'CHALAN #', 'BILTY #', 'Remarks', 'Vehicle In DATE & Time', 'Vehicle Out DATE & Time'
             ]);
 
             foreach ($items as $item) {
@@ -1115,6 +1115,7 @@ class InboundController extends Controller
                             $dateVal,
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
+                            $item->product?->group?->name ?? '',
                             $warehouseDisplay,
                             $item->product?->category?->name ?? '',
                             $item->product?->uom?->name ?? '',
@@ -1154,6 +1155,7 @@ class InboundController extends Controller
                         $dateVal,
                         $item->product?->item_code ?? '',
                         $item->product?->name ?? '',
+                        $item->product?->group?->name ?? '',
                         $warehouseDisplay,
                         $item->product?->category?->name ?? '',
                         $item->product?->uom?->name ?? '',
@@ -1205,17 +1207,17 @@ class InboundController extends Controller
         $callback = function () {
         $file = fopen('php://output', 'w');
         fputcsv($file, [
-            'Item Code', 'Product Name', 'Warehouse', 'Vendor', 'Transporter',
+            'Item Code', 'Product Name', 'Group', 'Warehouse', 'Vendor', 'Transporter',
             'Arrived From', 'Vehicle No', 'Vehicle Size', 'Driver Name',
             'Driver Mobile', 'Vehicle In DATE & Time', 'Vehicle Out DATE & Time',
-            'Delivery No', 'BILTY #', 'STO No', 'GATE PASS#',
+            'Delivery No', 'BILTY #', 'STO No', 'Inbound Invoice',
             'DC#', 'CHALAN #', 'Shipment Type',
             'IBD', 'PO', 'SAP Batch', 'Vendor Batch',
             'Units Received', 'MFG Date', 'Expiry Date', 'Quality Check',
             'Blocked', 'Hold', 'Remarks'
         ]);
         fputcsv($file, [
-            '001', 'Sample Product', 'Main Warehouse', 'ACME Corp', 'FastTrans',
+            '001', 'Sample Product', 'Sample Group', 'Main Warehouse', 'ACME Corp', 'FastTrans',
             'Supplier A', 'ABC-123', '40ft', 'John Doe',
             '0300-1234567', '15.01.2024 08:00', '15.01.2024 10:00',
             'DL-001', 'SH-001', 'STO-001', 'DISP-001',
@@ -1282,7 +1284,7 @@ class InboundController extends Controller
             'Delivery No'      => ['Delivery No', 'delivery_no', 'Delivery Number'],
             'Shipment No'      => ['BILTY #', 'Shipment No', 'shipment_no', 'Shipment Number'],
             'STO No'           => ['STO No', 'sto_no', 'STO'],
-            'Dispatch Invoice' => ['GATE PASS#', 'Dispatch Invoice', 'dispatched_invoice_no', 'Dispatch No'],
+            'Dispatch Invoice' => ['Inbound Invoice', 'GATE PASS#', 'Dispatch Invoice', 'dispatched_invoice_no', 'Dispatch No'],
             'Dispatcher Sig'   => ['DC#', 'Dispatcher Sig', 'dispatcher_sig', 'Signature'],
             'Picker'           => ['CHALAN #', 'Picker', 'picker'],
             'Shipment Type'    => ['Shipment Type', 'shipment_type'],
