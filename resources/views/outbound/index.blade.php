@@ -2,6 +2,21 @@
 
 @section('content')
 
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+/* select2 bootstrap 5 styling fixes */
+.select2-container--default .select2-selection--multiple {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    min-height: calc(1.5em + 0.5rem + 2px);
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    color: #212529;
+}
+</style>
+
 <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
         <h5 class="fw-bold mb-0">Outbound / Dispatch</h5>
@@ -125,6 +140,14 @@
                         <option value="">All Products</option>
                         @foreach(\App\Models\Product::orderBy('name')->get() as $prod)
                             <option value="{{ $prod->id }}">{{ $prod->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small"><i class="bi bi-receipt me-1"></i>Dispatch No</label>
+                    <select name="dispatch_no[]" id="filter_dispatch_no" class="form-select form-select-sm filter-field" multiple data-placeholder="All Dispatch Nos">
+                        @foreach($dispatchNos as $no)
+                            <option value="{{ $no }}">{{ $no }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -532,6 +555,7 @@
 @endsection
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const modalTitle = document.getElementById('supportiveModalLabel');
@@ -629,6 +653,12 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 $(document).ready(function() {
+    $('#filter_dispatch_no').select2({
+        placeholder: "All Dispatch Nos",
+        allowClear: true,
+        width: '100%'
+    });
+
     $('#applyFilters').on('click', function() {
         applyFilters();
     });
@@ -649,6 +679,7 @@ $(document).ready(function() {
             customer_id: $('#filter_customer').val(),
             product_group_id: $('#filter_product_group').val(),
             product_id: $('#filter_product').val(),
+            dispatch_no: $('#filter_dispatch_no').val(),
             date_from: $('#filter_date_from').val(),
             date_to: $('#filter_date_to').val(),
             search: $('#filter_search').val()
@@ -702,6 +733,12 @@ function exportOutbound() {
         date_to: $('#filter_date_to').val(),
         search: $('#filter_search').val()
     });
+
+    const dispatchNos = $('#filter_dispatch_no').val();
+    if (dispatchNos && dispatchNos.length > 0) {
+        dispatchNos.forEach(dn => params.append('dispatch_no[]', dn));
+    }
+
     window.location.href = '{{ route("outbound.export") }}?' + params.toString();
 }
 
