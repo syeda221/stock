@@ -241,8 +241,6 @@ class ReportController extends Controller
         $rowPalletOffsets = [];
         $inboundPositions = [];
         $allItems = \App\Models\StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
-            ->where('balance_quantity', '>', 0)
-            ->where('pallets_used', '>', 0)
             ->whereNotNull('warehouse_row_id')
             ->with('stockIn', 'warehouseRow')
             ->orderBy('created_at')
@@ -1521,7 +1519,7 @@ $item->hold_stock ? 'Yes' : 'No',
         foreach ($inboundData as $entry) {
             $entry->pallet_end = null;
             $entry->warehouse_display = null;
-            if ($entry->warehouse_id && $entry->row_name && $entry->pallets_used > 0) {
+            if ($entry->warehouse_id && $entry->row_name) {
                 $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;

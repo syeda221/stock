@@ -85,7 +85,9 @@ class StockInItem extends Model
         
         $pallets = [];
         $remainingOriginal = $originalQty;
-        for ($i = 0; $i < $this->pallets_used; $i++) {
+        $originalPalletCount = (int) ceil($originalQty / $maxPerPalletInUnits);
+        
+        for ($i = 0; $i < $originalPalletCount; $i++) {
             $fill = min($maxPerPalletInUnits, $remainingOriginal);
             $pallets[$i] = $fill;
             $remainingOriginal -= $fill;

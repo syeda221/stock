@@ -101,6 +101,8 @@
                             <th>Pallet</th>
                             <th>Item Code</th>
                             <th>Product</th>
+                            <th>SAP Batch</th>
+                            <th>Vendor Batch</th>
                             <th class="text-end">Cartons</th>
                             <th class="text-end">Max Cartons/Pallet</th>
                             <th>Status</th>
@@ -204,6 +206,8 @@ $(document).ready(function() {
 
                 const productName = pallet.is_empty ? '<em class="text-muted">— Empty —</em>' : pallet.product_name;
                 const itemCode = pallet.is_empty ? '—' : (pallet.item_code || '—');
+                const sapBatch = pallet.is_empty ? '—' : (pallet.sap_batch || '—');
+                const vendorBatch = pallet.is_empty ? '—' : (pallet.vendor_batch || '—');
                 const cartons = pallet.is_empty ? '—' : numberFormat(pallet.carton_qty);
                 const maxCartons = (pallet.is_empty || !pallet.carton_capacity) ? '—' : pallet.carton_capacity;
                 const overCapacity = pallet.is_over_capacity;
@@ -218,6 +222,8 @@ $(document).ready(function() {
                         <td class="fw-semibold">Pallet ${pallet.pallet_number}</td>
                         <td>${itemCode}</td>
                         <td>${productName}</td>
+                        <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">${sapBatch}</span></td>
+                        <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">${vendorBatch}</span></td>
                         <td class="text-end ${cartonClass}">${cartons}${overBadge}</td>
                         <td class="text-end">${maxCartons}</td>
                         <td>${statusBadge}</td>
