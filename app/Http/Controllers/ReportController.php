@@ -252,8 +252,22 @@ class ReportController extends Controller
             $row = $item->warehouseRow;
             if (!$whId || !$row || !$row->row_name) continue;
             $palletCount = (int)$item->pallets_used;
+            
+            $maxPerPallet = $item->product->cartons_per_pallet ?? null;
+            if ($maxPerPallet > 0 && $item->units_received > 0) {
+                $requiredPallets = ceil((float)$item->units_received / $maxPerPallet);
+                if ($requiredPallets > $palletCount) {
+                    if ($item->pallet_start !== null) {
+                        $currentEnd = (int)$item->pallet_start + $palletCount - 1;
+                        $item->pallet_start = max(1, $currentEnd - $requiredPallets + 1);
+                    }
+                    $palletCount = $requiredPallets;
+                }
+            }
+
             $rowKey = $whId . '-' . $row->row_name;
             if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+            
             if ($item->pallet_start !== null) {
                 $palletStart = (int)$item->pallet_start;
                 $palletEnd = $palletStart + $palletCount - 1;
@@ -923,29 +937,75 @@ $item->hold_stock ? 'Yes' : 'No',
             if ($entry->warehouse_id && $entry->row_name && ($entry->pallets_used ?? 0) > 0) {
                 $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
                 if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
+                $maxPerPallet = $entry->cartons_per_pallet ?? null;
+                if ($maxPerPallet > 0 && $entry->units_received > 0) {
+                    $requiredPallets = ceil((float)$entry->units_received / $maxPerPallet);
+                    if ($requiredPallets > ($entry->pallets_used ?? 0)) {
+                        if (isset($entry->pallet_start)) {
+                            $currentEnd = $entry->pallet_start + $entry->pallets_used - 1;
+                            $entry->pallet_start = max(1, $currentEnd - $requiredPallets + 1);
+                        }
+                        $entry->pallets_used = $requiredPallets;
+                    }
+                }
+
                 $palletStart = $entry->pallet_start ?? ($rowPalletOffsets[$rowKey] + 1);
-                $palletEnd = $palletStart + $entry->pallets_used - 1;
+                $palletEnd = $palletStart + ($entry->pallets_used ?? 1) - 1;
                 $rowPalletOffsets[$rowKey] = max($rowPalletOffsets[$rowKey], $palletEnd);
+                
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
                 $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
 
+                $totalUnits = (float) $entry->units_received;
                 $totalQty = (float) $entry->total_quantity;
                 $totalBalance = (float) $entry->balance_quantity;
+                $remainingUnits = $totalUnits;
                 $assignedQty = 0.0;
                 $assignedBalance = 0.0;
                 $numPallets = $palletEnd - $palletStart + 1;
+
+                $itemDispatches = DB::table('stock_out_items')
+                    ->where('stock_in_item_id', $entry->stock_in_item_id)
+                    ->select('pallet_position', DB::raw('SUM(dispatch_quantity) as qty_out'))
+                    ->groupBy('pallet_position')
+                    ->get();
 
                 for ($p = $palletStart; $p <= $palletEnd; $p++) {
                     $clone = clone $entry;
                     $clone->pallets_used = 1;
                     $isLast = ($p == $palletEnd);
-                    $ratio = $totalQty > 0 ? 1 / $numPallets : 0;
-                    $clone->total_quantity = $isLast ? $totalQty - $assignedQty : round($totalQty / $numPallets, 4);
-                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($totalBalance / $numPallets, 4);
+                    
+                    if ($maxPerPallet) {
+                        $perPalletUnits = min($maxPerPallet, $remainingUnits);
+                    } else {
+                        $perPalletUnits = $numPallets > 0 ? $totalUnits / $numPallets : $totalUnits;
+                    }
+                    $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                    
+                    $originalQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+
+                    $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
+                    $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
+                    $clone->units_received = $perPalletUnits;
+                    $clone->total_quantity = $originalQty;
+                    $clone->balance_quantity = max(0, $originalQty - $qtyOut);
+                    
+                    $remainingUnits -= $perPalletUnits;
                     $assignedQty += $clone->total_quantity;
                     $assignedBalance += $clone->balance_quantity;
-                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+
+                    // Skip empty pallets
+                    if ($clone->balance_quantity <= 0) {
+                        continue;
+                    }
+
+                    // Use row capacity if available, otherwise just use p
+                    // Note: warehouse_rows capacity is not strictly fetched here, but we can assume it's available or not cap
+                    $palletCapacity = \App\Models\WarehouseRow::find($entry->row_id)->pallet_capacity ?? 0;
+                    $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
+                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expanded->push($clone);
                 }
@@ -1428,6 +1488,16 @@ $item->hold_stock ? 'Yes' : 'No',
 
         $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
+        $dispatchSums = collect();
+        if ($inboundData->isNotEmpty()) {
+            $dispatchSums = DB::table('stock_out_items')
+                ->select('stock_in_item_id', 'pallet_position', DB::raw('SUM(units_dispatch) as units_out'), DB::raw('SUM(dispatch_quantity) as qty_out'))
+                ->whereIn('stock_in_item_id', $inboundData->pluck('id')->unique())
+                ->groupBy('stock_in_item_id', 'pallet_position')
+                ->get()
+                ->groupBy('stock_in_item_id');
+        }
+
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
         $rowLetterMap = [];
         $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
@@ -1456,6 +1526,20 @@ $item->hold_stock ? 'Yes' : 'No',
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;
                 }
+                $maxPerPallet = $entry->cartons_per_pallet ?? null;
+                if ($maxPerPallet > 0 && $entry->units > 0) {
+                    $requiredPallets = ceil((float)$entry->units / $maxPerPallet);
+                    if ($requiredPallets > $entry->pallets_used) {
+                        // The backend reduced the pallets_used and moved pallet_start due to outbound,
+                        // but the Ledger must reconstruct the original inbound shape.
+                        if ($entry->pallet_start !== null) {
+                            $currentPalletEnd = $entry->pallet_start + $entry->pallets_used - 1;
+                            $entry->pallet_start = max(1, $currentPalletEnd - $requiredPallets + 1);
+                        }
+                        $entry->pallets_used = $requiredPallets;
+                    }
+                }
+
                 if ($entry->pallet_start !== null) {
                     $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
                 } else {
@@ -1478,8 +1562,12 @@ $item->hold_stock ? 'Yes' : 'No',
                 $assignedBalance = 0.0;
 
                 $palletCapacity = (int) ($entry->pallet_capacity ?? 0);
-                $actualEnd = min($entry->pallet_end, $palletCapacity > 0 ? $palletCapacity : $entry->pallet_end);
+                // Expand to the full pallet_end to ensure all units are distributed correctly (30 per pallet)
+                // without dumping the remainder into the last pallet due to physical capacity constraints.
+                $actualEnd = $entry->pallet_end;
                 $numPallets = $actualEnd - $entry->pallet_start + 1;
+
+                $itemDispatches = $dispatchSums->get($entry->id) ?? collect();
 
                 for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
@@ -1494,14 +1582,22 @@ $item->hold_stock ? 'Yes' : 'No',
                         $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
                     }
                     $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                    
+                    $originalQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+
+                    $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
+                    $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
                     $clone->units = $perPalletUnits;
-                    $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
-                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                    $clone->quantity = $originalQty;
+                    $clone->balance_quantity = max(0, $originalQty - $qtyOut);
+                    
                     $remainingUnits -= $perPalletUnits;
                     $assignedQty += $clone->quantity;
-                    $assignedBalance += $clone->balance_quantity;
 
-                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                    // Cap the displayed pallet number to the physical capacity to prevent fake locations like A011, A012
+                    $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
+                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);
                 }
@@ -1804,6 +1900,18 @@ $item->hold_stock ? 'Yes' : 'No',
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;
                 }
+                $maxPerPallet = $entry->cartons_per_pallet ?? null;
+                if ($maxPerPallet > 0 && $entry->units > 0) {
+                    $requiredPallets = ceil((float)$entry->units / $maxPerPallet);
+                    if ($requiredPallets > $entry->pallets_used) {
+                        if ($entry->pallet_start !== null) {
+                            $currentPalletEnd = $entry->pallet_start + $entry->pallets_used - 1;
+                            $entry->pallet_start = max(1, $currentPalletEnd - $requiredPallets + 1);
+                        }
+                        $entry->pallets_used = $requiredPallets;
+                    }
+                }
+
                 if ($entry->pallet_start !== null) {
                     $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
                 } else {
@@ -1825,9 +1933,16 @@ $item->hold_stock ? 'Yes' : 'No',
                 $assignedQty = 0.0;
                 $assignedBalance = 0.0;
 
-                $palletCapacity = (int) ($entry->pallet_capacity ?? 0);
-                $actualEnd = min($entry->pallet_end, $palletCapacity > 0 ? $palletCapacity : $entry->pallet_end);
+                // Expand to the full pallet_end to ensure all units are distributed correctly
+                $actualEnd = $entry->pallet_end;
                 $numPallets = $actualEnd - $entry->pallet_start + 1;
+                $palletCapacity = (int) ($entry->pallet_capacity ?? 0);
+
+                $itemDispatches = DB::table('stock_out_items')
+                    ->where('stock_in_item_id', $entry->id)
+                    ->select('pallet_position', DB::raw('SUM(dispatch_quantity) as qty_out'))
+                    ->groupBy('pallet_position')
+                    ->get();
 
                 for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
@@ -1842,14 +1957,23 @@ $item->hold_stock ? 'Yes' : 'No',
                         $perPalletUnits = $numPallets > 0 ? $entry->units / $numPallets : $entry->units;
                     }
                     $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
+                    
+                    $originalQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
+
+                    $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
+                    $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
                     $clone->units = $perPalletUnits;
-                    $clone->quantity = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
-                    $clone->balance_quantity = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                    $clone->quantity = $originalQty;
+                    $clone->balance_quantity = max(0, $originalQty - $qtyOut);
+                    
                     $remainingUnits -= $perPalletUnits;
                     $assignedQty += $clone->quantity;
                     $assignedBalance += $clone->balance_quantity;
 
-                    $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                    // Cap the displayed pallet number to the physical capacity
+                    $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
+                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expandedInbound->push($clone);
                 }
