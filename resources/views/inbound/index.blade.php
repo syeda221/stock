@@ -2,9 +2,21 @@
 
 @section('content')
 
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
 .bg-orange {
     background-color: #fd7e14 !important;
+}
+/* select2 bootstrap 5 styling fixes */
+.select2-container--default .select2-selection--multiple {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    min-height: calc(1.5em + 0.5rem + 2px);
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    color: #212529;
 }
 </style>
 
@@ -161,6 +173,14 @@
                         <option value="">All Products</option>
                         @foreach($products as $product)
                             <option value="{{ $product->id }}">{{ $product->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small"><i class="bi bi-receipt me-1"></i>Inbound Invoice</label>
+                    <select name="inbound_invoices[]" id="filter_inbound_invoices" class="form-select form-select-sm filter-field" multiple data-placeholder="All Invoices">
+                        @foreach($inboundInvoices as $invoice)
+                            <option value="{{ $invoice }}">{{ $invoice }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -832,8 +852,15 @@
 </style>
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function() {
+    $('#filter_inbound_invoices').select2({
+        placeholder: "All Invoices",
+        allowClear: true,
+        width: '100%'
+    });
+
     // Apply filters with AJAX
     $('#applyFilters').on('click', function() {
         applyFilters();
@@ -857,6 +884,7 @@ $(document).ready(function() {
             vendor_id: $('#filter_vendor').val(),
             product_group_id: $('#filter_product_group').val(),
             product_id: $('#filter_product').val(),
+            inbound_invoices: $('#filter_inbound_invoices').val(),
             date_from: $('#filter_date_from').val(),
             date_to: $('#filter_date_to').val(),
             search: $('#filter_search').val()
@@ -886,6 +914,14 @@ $(document).ready(function() {
 
                 // Hide loading
                 $('#filterLoadingOverlay').hide();
+
+                // Clear selection on filter
+                if (document.getElementById('selectAllCheckbox')) {
+                    document.getElementById('selectAllCheckbox').checked = false;
+                    document.getElementById('selectAllCheckbox').indeterminate = false;
+                }
+                $('#selectionToolbar').removeClass('d-flex').addClass('d-none');
+                $('#hiddenInputsContainer').empty();
             },
             error: function(xhr, status, error) {
                 console.error('Filter error:', error);
@@ -907,17 +943,23 @@ function exportInbound() {
         date_to: $('#filter_date_to').val(),
         search: $('#filter_search').val()
     });
+
+    const invoices = $('#filter_inbound_invoices').val();
+    if (invoices && invoices.length > 0) {
+        invoices.forEach(inv => params.append('inbound_invoices[]', inv));
+    }
+
     window.location.href = '{{ route("inbound.export") }}?' + params.toString();
 }
 document.addEventListener('DOMContentLoaded', function() {
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const selectionToolbar = document.getElementById('selectionToolbar');
     const selectionCount = document.getElementById('selectionCount');
     const clearSelectionBtn = document.getElementById('clearSelectionBtn');
     const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
 
     function updateToolbar() {
+        const rowCheckboxes = document.querySelectorAll('.row-checkbox');
         const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
         const count = selectedCheckboxes.length;
         
@@ -952,17 +994,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function() {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
             rowCheckboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
             updateToolbar();
         });
     }
 
-    rowCheckboxes.forEach(cb => {
-        cb.addEventListener('change', updateToolbar);
+    // Use event delegation for row checkboxes because they are recreated by AJAX filters
+    $(document).on('change', '.row-checkbox', function() {
+        updateToolbar();
     });
 
     if (clearSelectionBtn) {
         clearSelectionBtn.addEventListener('click', function() {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
             rowCheckboxes.forEach(cb => cb.checked = false);
             updateToolbar();
         });

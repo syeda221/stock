@@ -58,6 +58,14 @@ class InboundController extends Controller
             });
         }
 
+        // Apply inbound invoice filter
+        if ($request->filled('inbound_invoices')) {
+            $invoices = (array) $request->inbound_invoices;
+            $query->whereHas('stockIn', function ($q) use ($invoices) {
+                $q->whereIn('dispatched_invoice_no', $invoices);
+            });
+        }
+
         // Apply date filter
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
@@ -118,8 +126,15 @@ class InboundController extends Controller
         $vendors = Vendor::orderBy('name', 'asc')->get();
         $products = Product::orderBy('name', 'asc')->get();
         $productGroups = ProductGroup::where('status', 1)->orderBy('name', 'asc')->get();
+        
+        $inboundInvoices = StockIn::where('source_type', 'inbound')
+            ->whereNotNull('dispatched_invoice_no')
+            ->where('dispatched_invoice_no', '!=', '')
+            ->distinct()
+            ->orderBy('dispatched_invoice_no', 'asc')
+            ->pluck('dispatched_invoice_no');
 
-        return view('inbound.index', compact('items', 'warehouses', 'vendors', 'products', 'productGroups'));
+        return view('inbound.index', compact('items', 'warehouses', 'vendors', 'products', 'productGroups', 'inboundInvoices'));
     }
 
     private function generateDispatchedInvoiceNo(): string
