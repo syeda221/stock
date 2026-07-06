@@ -169,10 +169,25 @@
             </div>
         @endif
 
+        <div id="selectionToolbar" class="d-none align-items-center text-white p-2 rounded m-3 shadow-sm" style="background-color: var(--bs-primary) !important;">
+            <div class="me-auto fw-semibold ms-2" id="selectionCount">0 selected</div>
+            <form id="exportSelectedForm" method="POST" action="{{ route('outbound.exportSelected') }}" class="m-0 p-0 d-flex align-items-center">
+                @csrf
+                <div id="hiddenInputsContainer"></div>
+                <button type="submit" class="btn btn-sm btn-outline-light me-2">
+                    <i class="bi bi-file-earmark-arrow-down"></i> Export selected
+                </button>
+            </form>
+            <button type="button" class="btn btn-sm btn-light text-primary fw-semibold me-2" id="clearSelectionBtn">Clear</button>
+        </div>
+
         <div class="table-responsive rounded-bottom">
             <table class="table table-hover table-sm align-middle mb-0">
                 <thead class="table-primary small">
                     <tr class="text-nowrap">
+                        <th style="width:30px">
+                            <input type="checkbox" id="selectAllCheckbox" class="form-check-input shadow-none">
+                        </th>
                         <th>WH</th>
                         <th>To / Customer</th>
                         <th>Product</th>
@@ -182,6 +197,7 @@
                         <th class="text-end">Qty</th>
                         <th class="text-end">Pallets</th>
                         <th>Vehicle</th>
+                        <th>Dispatch No</th>
                         <th>Date</th>
                         <th class="text-center">Actions</th>
                     </tr>
@@ -285,6 +301,9 @@
                     @endphp
 
                     <tr>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input row-checkbox shadow-none" value="{{ $item->id }}">
+                        </td>
                         <td>
                             @php
                                 $whName = $item->warehouse->name ?? $out->warehouse->name ?? '-';
@@ -336,6 +355,8 @@
                             </div>
                         </td>
 
+                        <td class="small fw-semibold text-nowrap">{{ $out->dispatched_invoice_no ?? '-' }}</td>
+
                         <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y') }}</td>
 
                         {{-- ACTIONS --}}
@@ -383,8 +404,8 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
-                            <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
+                        <td colspan="13" class="text-center py-4 text-muted">
+                            <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary opacity-50"></i>
                             <p class="mb-0">No outbound records found</p>
                         </td>
                     </tr>
@@ -652,6 +673,14 @@ $(document).ready(function() {
                 $('#totalCount').text(totalCount);
 
                 $('#filterLoadingOverlay').hide();
+
+                // Clear selection on filter
+                if (document.getElementById('selectAllCheckbox')) {
+                    document.getElementById('selectAllCheckbox').checked = false;
+                    document.getElementById('selectAllCheckbox').indeterminate = false;
+                }
+                $('#selectionToolbar').removeClass('d-flex').addClass('d-none');
+                $('#hiddenInputsContainer').empty();
             },
             error: function(xhr, status, error) {
                 console.error('Filter error:', error);
@@ -675,5 +704,67 @@ function exportOutbound() {
     });
     window.location.href = '{{ route("outbound.export") }}?' + params.toString();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectionToolbar = document.getElementById('selectionToolbar');
+    const selectionCount = document.getElementById('selectionCount');
+    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
+
+    function updateToolbar() {
+        const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+        const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
+        const count = selectedCheckboxes.length;
+        
+        if (count > 0) {
+            selectionToolbar.classList.remove('d-none');
+            selectionToolbar.classList.add('d-flex');
+            selectionCount.textContent = count + ' selected';
+            
+            if(selectAllCheckbox) {
+                selectAllCheckbox.checked = count === rowCheckboxes.length;
+                selectAllCheckbox.indeterminate = count > 0 && count < rowCheckboxes.length;
+            }
+            
+            hiddenInputsContainer.innerHTML = '';
+            selectedCheckboxes.forEach(cb => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selected_ids[]';
+                input.value = cb.value;
+                hiddenInputsContainer.appendChild(input);
+            });
+        } else {
+            selectionToolbar.classList.add('d-none');
+            selectionToolbar.classList.remove('d-flex');
+            if(selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+            hiddenInputsContainer.innerHTML = '';
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            rowCheckboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+            updateToolbar();
+        });
+    }
+
+    $(document).on('change', '.row-checkbox', function() {
+        updateToolbar();
+    });
+
+    if (clearSelectionBtn) {
+        clearSelectionBtn.addEventListener('click', function() {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            rowCheckboxes.forEach(cb => cb.checked = false);
+            updateToolbar();
+        });
+    }
+});
 </script>
 @endpush

@@ -160,6 +160,7 @@ Route::post('/outbound', [OutboundController::class, 'store'])->name('outbound.s
 
 // Static routes BEFORE parameterized {stockOut}
 Route::get('/outbound/export/csv', [OutboundController::class, 'export'])->name('outbound.export');
+Route::post('/outbound/export/selected', [OutboundController::class, 'export'])->name('outbound.exportSelected');
 Route::get('/outbound/import/template', [OutboundController::class, 'downloadTemplate'])->name('outbound.import.template');
 Route::get('/outbound/import', [OutboundController::class, 'importForm'])->name('outbound.import');
 Route::post('/outbound/import', [OutboundController::class, 'importStore'])->name('outbound.import.store');

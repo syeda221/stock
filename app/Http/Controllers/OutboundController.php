@@ -100,6 +100,13 @@ class OutboundController extends Controller
             });
         }
 
+        if ($request->filled('dispatch_no')) {
+            $dispatchNos = (array) $request->dispatch_no;
+            $query->whereHas('stockOut', function ($q) use ($dispatchNos) {
+                $q->whereIn('dispatched_invoice_no', $dispatchNos);
+            });
+        }
+
         // Apply date filter
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
@@ -149,10 +156,17 @@ class OutboundController extends Controller
                 $warehouseCapacities[$wid] = max(0, $totalCapacity - $usedPallets);
             }
         }
-
+        $warehouses = Warehouse::orderBy('name')->get();
+        $customers = Customer::where('status', 1)->orderBy('name')->get();
         $productGroups = ProductGroup::where('status', 1)->orderBy('name')->get();
 
-        return view('outbound.index', compact('items', 'warehouseCapacities', 'productGroups'));
+        $dispatchNos = StockOut::whereNotNull('dispatched_invoice_no')
+            ->where('dispatched_invoice_no', '!=', '')
+            ->distinct()
+            ->orderBy('dispatched_invoice_no', 'asc')
+            ->pluck('dispatched_invoice_no');
+
+        return view('outbound.index', compact('items', 'warehouses', 'customers', 'productGroups', 'warehouseCapacities', 'dispatchNos'));
     }
 
     /* ================= CREATE ================= */
@@ -581,6 +595,12 @@ class OutboundController extends Controller
         $customers = Customer::where('status', 1)->orderBy('name')->get();
         $transporters = Transporter::where('status', 1)->orderBy('name')->get();
 
+        $dispatchNos = StockOut::whereNotNull('dispatched_invoice_no')
+            ->where('dispatched_invoice_no', '!=', '')
+            ->distinct()
+            ->orderBy('dispatched_invoice_no', 'asc')
+            ->pluck('dispatched_invoice_no');
+
         return view('outbound.edit', [
             'stockOut' => $stockOut,
             'groupedItems' => $groupedItems,
@@ -588,6 +608,7 @@ class OutboundController extends Controller
             'customers' => $customers,
             'transporters' => $transporters,
             'products' => Product::where('status', 1)->orderBy('name')->get(),
+            'dispatchNos' => $dispatchNos,
         ]);
     }
 
@@ -909,6 +930,11 @@ class OutboundController extends Controller
             'sourceStockInItem', 'sourceStockInItem.warehouseRow', 'warehouseRow',
         ]);
 
+        if ($request->filled('selected_ids')) {
+            $selectedIds = is_array($request->selected_ids) ? $request->selected_ids : explode(',', $request->selected_ids);
+            $query->whereIn('id', $selectedIds);
+        }
+
         // Apply same filters as index
         if ($request->filled('source_type')) {
             $query->whereHas('stockOut', fn($q) => $q->where('source_type', $request->source_type));
@@ -925,6 +951,10 @@ class OutboundController extends Controller
         if ($request->filled('product_group_id')) {
             $groupId = $request->product_group_id;
             $query->whereHas('product', fn($q) => $q->where('product_group_id', $groupId));
+        }
+        if ($request->filled('dispatch_no')) {
+            $dispatchNos = (array) $request->dispatch_no;
+            $query->whereHas('stockOut', fn($q) => $q->whereIn('dispatched_invoice_no', $dispatchNos));
         }
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
