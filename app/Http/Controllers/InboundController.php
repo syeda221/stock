@@ -1623,10 +1623,11 @@ class InboundController extends Controller
 
                         // Create StockIn header on first allocation
                         if (!$stockIn) {
+                            $generatedInvoiceNo = $this->generateDispatchedInvoiceNo();
                             $stockIn = StockIn::create([
                                 'source_type'            => 'inbound',
                                 'warehouse_id'           => $item['warehouse'] ? $item['warehouse']->id : ($request->warehouse_id ?: ($warehousePool->first()->id ?? 1)),
-                                'inbound_invoice_no'     => $this->generateDispatchedInvoiceNo(),
+                                'inbound_invoice_no'     => $generatedInvoiceNo,
                                 'vendor_id'              => $item['vendor_id'],
                                 'transporter_id'         => $item['transporter_id'],
                                 'arrived_from_id'        => $item['arrived_from_id'],
@@ -1639,7 +1640,7 @@ class InboundController extends Controller
                                 'delivery_no'            => $item['delivery_no'] ?: null,
                                 'shipment_no'            => $item['shipment_no'] ?: null,
                                 'sto_no'                => $item['sto_no'] ?: null,
-                                'dispatched_invoice_no'  => $item['dispatched_invoice_no'] ?: null,
+                                'dispatched_invoice_no'  => $item['dispatched_invoice_no'] ?: $generatedInvoiceNo,
                                 'dispatcher_sig'         => $item['dispatcher_sig'] ?: null,
                                 'picker'                 => $item['picker'] ?: null,
                                 'shipment_type'          => $item['shipment_type'] ?: 'manual',
