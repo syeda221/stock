@@ -10,6 +10,7 @@ class StockIn extends Model
         'source_type',
         'warehouse_id',
         'inbound_invoice_no',
+        'gatepass_no',
         'vendor_id',
         'arrived_from_id',
         'transporter_id',
