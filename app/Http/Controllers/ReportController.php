@@ -1494,7 +1494,7 @@ $item->hold_stock ? 'Yes' : 'No',
             $inboundQuery->whereDate('stock_in_items.created_at', '<=', $request->date_to);
         }
         if ($request->filled('source_type')) {
-            $inboundQuery->where('stock_ins.source_type', $request->source_type);
+            $inboundQuery->whereIn('stock_ins.source_type', (array)$request->source_type);
         }
 
         if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
@@ -1741,9 +1741,9 @@ $item->hold_stock ? 'Yes' : 'No',
         }
 
         // Only get outbound if not filtering specifically for inbound types
-        if (!$request->filled('source_type') || !in_array($request->source_type, ['opening', 'inbound'])) {
+        if (!$request->filled('source_type') || count(array_diff((array)$request->source_type, ['opening', 'inbound'])) > 0) {
             if ($request->filled('source_type')) {
-                $outboundQuery->where('stock_outs.source_type', $request->source_type);
+                $outboundQuery->whereIn('stock_outs.source_type', (array)$request->source_type);
             }
             $outboundData = $outboundQuery->get();
         } else {
@@ -1926,7 +1926,7 @@ $item->hold_stock ? 'Yes' : 'No',
             $inboundQuery->whereDate('stock_in_items.created_at', '<=', $request->date_to);
         }
         if ($request->filled('source_type')) {
-            $inboundQuery->where('stock_ins.source_type', $request->source_type);
+            $inboundQuery->whereIn('stock_ins.source_type', (array)$request->source_type);
         }
 
         if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
@@ -2182,9 +2182,9 @@ $item->hold_stock ? 'Yes' : 'No',
         }
 
         // Only get outbound if not filtering specifically for inbound types
-        if (!$request->filled('source_type') || !in_array($request->source_type, ['opening', 'inbound'])) {
+        if (!$request->filled('source_type') || count(array_diff((array)$request->source_type, ['opening', 'inbound'])) > 0) {
             if ($request->filled('source_type')) {
-                $outboundQuery->where('stock_outs.source_type', $request->source_type);
+                $outboundQuery->whereIn('stock_outs.source_type', (array)$request->source_type);
             }
             $outboundData = $outboundQuery->get();
         } else {

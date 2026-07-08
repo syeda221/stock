@@ -144,13 +144,33 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small">Type</label>
-                    <select name="source_type" class="form-select form-select-sm">
-                        <option value="">All Types</option>
-                        <option value="opening" {{ request('source_type') == 'opening' ? 'selected' : '' }}>Opening Stock</option>
-                        <option value="inbound" {{ request('source_type') == 'inbound' ? 'selected' : '' }}>Inbound</option>
-                        <option value="sale" {{ request('source_type') == 'sale' ? 'selected' : '' }}>Sale (Outbound)</option>
-                        <option value="transfer" {{ request('source_type') == 'transfer' ? 'selected' : '' }}>Transfer</option>
-                    </select>
+                    <div class="dropdown custom-multiselect">
+                        <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <span class="multiselect-label text-truncate" data-default="All Types">All Types</span>
+                            <i class="bi bi-chevron-down ms-1" style="font-size: 10px;"></i>
+                        </button>
+                        <div class="dropdown-menu w-100 p-2 shadow" style="max-height: 250px; overflow-y: auto;">
+                            <input type="text" class="form-control form-control-sm mb-2 multiselect-search" placeholder="Search types...">
+                            <div class="multiselect-options">
+                                @php
+                                    $typesList = [
+                                        'opening' => 'Opening Stock',
+                                        'inbound' => 'Inbound',
+                                        'sale' => 'Sale (Outbound)',
+                                        'transfer' => 'Transfer'
+                                    ];
+                                @endphp
+                                @foreach($typesList as $tVal => $tLabel)
+                                    <div class="form-check">
+                                        <input class="form-check-input multiselect-checkbox" type="checkbox" name="source_type[]" value="{{ $tVal }}" id="type_{{ $tVal }}" {{ is_array(request('source_type')) && in_array($tVal, request('source_type')) ? 'checked' : '' }}>
+                                        <label class="form-check-label small" for="type_{{ $tVal }}">
+                                            {{ $tLabel }}
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small">Vendor</label>
