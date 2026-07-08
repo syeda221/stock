@@ -1399,6 +1399,29 @@ $item->hold_stock ? 'Yes' : 'No',
         $vendors = \App\Models\Vendor::orderBy('name')->get();
         $customers = \App\Models\Customer::orderBy('name')->get();
 
+        $inboundInvoicesList = DB::table('stock_ins')
+            ->whereNotNull('inbound_invoice_no')
+            ->where('inbound_invoice_no', '!=', '')
+            ->whereIn('source_type', ['inbound'])
+            ->distinct()
+            ->pluck('inbound_invoice_no')
+            ->sort()
+            ->values();
+
+        $dispatchNosList = DB::table('stock_outs')
+            ->whereNotNull('dispatched_invoice_no')
+            ->where('dispatched_invoice_no', '!=', '')
+            ->distinct()
+            ->pluck('dispatched_invoice_no')
+            ->sort()
+            ->values();
+
+        $recordIdsList = DB::table('stock_ins')
+            ->where('source_type', 'opening')
+            ->pluck('id')
+            ->sort()
+            ->values();
+
         // Build ledger entries (combining inbound + outbound)
         $ledgerEntries = collect();
 
@@ -1472,6 +1495,22 @@ $item->hold_stock ? 'Yes' : 'No',
         }
         if ($request->filled('source_type')) {
             $inboundQuery->where('stock_ins.source_type', $request->source_type);
+        }
+
+        if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
+            $inboundHasFilter = $request->filled('inbound_invoice') || $request->filled('record_id');
+            if ($inboundHasFilter) {
+                $inboundQuery->where(function($q) use ($request) {
+                    if ($request->filled('inbound_invoice')) {
+                        $q->orWhereIn('stock_ins.inbound_invoice_no', (array)$request->inbound_invoice);
+                    }
+                    if ($request->filled('record_id')) {
+                        $q->orWhereIn('stock_ins.id', (array)$request->record_id);
+                    }
+                });
+            } else {
+                $inboundQuery->whereRaw('1 = 0');
+            }
         }
         if ($request->filled('search')) {
             $search = $request->search;
@@ -1681,6 +1720,15 @@ $item->hold_stock ? 'Yes' : 'No',
         if ($request->filled('date_to')) {
             $outboundQuery->whereDate('stock_out_items.created_at', '<=', $request->date_to);
         }
+
+        if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
+            $outboundHasFilter = $request->filled('dispatch_no');
+            if ($outboundHasFilter) {
+                $outboundQuery->whereIn('stock_outs.dispatched_invoice_no', (array)$request->dispatch_no);
+            } else {
+                $outboundQuery->whereRaw('1 = 0');
+            }
+        }
         if ($request->filled('search')) {
             $search = $request->search;
             $outboundQuery->where(function($q) use ($search) {
@@ -1753,9 +1801,32 @@ $item->hold_stock ? 'Yes' : 'No',
             'unique_products' => $ledgerEntries->unique('product_id')->count(),
         ];
 
+        $inboundInvoicesList = DB::table('stock_ins')
+            ->whereNotNull('inbound_invoice_no')
+            ->where('inbound_invoice_no', '!=', '')
+            ->whereIn('source_type', ['inbound'])
+            ->distinct()
+            ->pluck('inbound_invoice_no')
+            ->sort()
+            ->values();
+
+        $dispatchNosList = DB::table('stock_outs')
+            ->whereNotNull('dispatched_invoice_no')
+            ->where('dispatched_invoice_no', '!=', '')
+            ->distinct()
+            ->pluck('dispatched_invoice_no')
+            ->sort()
+            ->values();
+
+        $recordIdsList = DB::table('stock_ins')
+            ->where('source_type', 'opening')
+            ->pluck('id')
+            ->sort()
+            ->values();
+
         return view('reports.stock_ledger', compact(
-            'ledgerPaginated', 'summary', 'warehouses', 'products', 
-            'categories', 'vendors', 'customers'
+            'ledgerPaginated', 'summary', 'warehouses', 'products', 'categories', 'vendors', 'customers',
+            'inboundInvoicesList', 'dispatchNosList', 'recordIdsList'
         ));
     }
 
@@ -1856,6 +1927,22 @@ $item->hold_stock ? 'Yes' : 'No',
         }
         if ($request->filled('source_type')) {
             $inboundQuery->where('stock_ins.source_type', $request->source_type);
+        }
+
+        if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
+            $inboundHasFilter = $request->filled('inbound_invoice') || $request->filled('record_id');
+            if ($inboundHasFilter) {
+                $inboundQuery->where(function($q) use ($request) {
+                    if ($request->filled('inbound_invoice')) {
+                        $q->orWhereIn('stock_ins.inbound_invoice_no', (array)$request->inbound_invoice);
+                    }
+                    if ($request->filled('record_id')) {
+                        $q->orWhereIn('stock_ins.id', (array)$request->record_id);
+                    }
+                });
+            } else {
+                $inboundQuery->whereRaw('1 = 0');
+            }
         }
         if ($request->filled('search')) {
             $search = $request->search;
@@ -2073,6 +2160,15 @@ $item->hold_stock ? 'Yes' : 'No',
         }
         if ($request->filled('date_to')) {
             $outboundQuery->whereDate('stock_out_items.created_at', '<=', $request->date_to);
+        }
+
+        if ($request->filled('inbound_invoice') || $request->filled('record_id') || $request->filled('dispatch_no')) {
+            $outboundHasFilter = $request->filled('dispatch_no');
+            if ($outboundHasFilter) {
+                $outboundQuery->whereIn('stock_outs.dispatched_invoice_no', (array)$request->dispatch_no);
+            } else {
+                $outboundQuery->whereRaw('1 = 0');
+            }
         }
         if ($request->filled('search')) {
             $search = $request->search;

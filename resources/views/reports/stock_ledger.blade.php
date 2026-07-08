@@ -100,7 +100,7 @@
 
 {{-- Filter Section --}}
 <div class="collapse filter-section show" id="filterCollapse">
-<div class="card border-0 shadow-sm rounded-4 mb-3">
+<div class="card border-0 shadow-sm rounded-4 mb-3" style="position: relative; z-index: 1050;">
     <div class="card-body p-3">
         <form id="ledgerFilterForm" method="GET" action="{{ route('reports.stock-ledger') }}">
             <div class="row g-2">
@@ -203,6 +203,73 @@
                         </a>
                     </div>
                 </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Inbound Invoice</label>
+                    <div class="dropdown custom-multiselect">
+                        <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <span class="multiselect-label text-truncate" data-default="All Invoices">All Invoices</span>
+                            <i class="bi bi-chevron-down ms-1" style="font-size: 10px;"></i>
+                        </button>
+                        <div class="dropdown-menu w-100 p-2 shadow" style="max-height: 250px; overflow-y: auto;">
+                            <input type="text" class="form-control form-control-sm mb-2 multiselect-search" placeholder="Search invoices...">
+                            <div class="multiselect-options">
+                                @foreach($inboundInvoicesList as $inv)
+                                    <div class="form-check">
+                                        <input class="form-check-input multiselect-checkbox" type="checkbox" name="inbound_invoice[]" value="{{ $inv }}" id="inv_{{ md5($inv) }}" {{ is_array(request('inbound_invoice')) && in_array($inv, request('inbound_invoice')) ? 'checked' : '' }}>
+                                        <label class="form-check-label small" for="inv_{{ md5($inv) }}">
+                                            {{ $inv }}
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Record ID</label>
+                    <div class="dropdown custom-multiselect">
+                        <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <span class="multiselect-label text-truncate" data-default="All Record IDs">All Record IDs</span>
+                            <i class="bi bi-chevron-down ms-1" style="font-size: 10px;"></i>
+                        </button>
+                        <div class="dropdown-menu w-100 p-2 shadow" style="max-height: 250px; overflow-y: auto;">
+                            <input type="text" class="form-control form-control-sm mb-2 multiselect-search" placeholder="Search Record IDs...">
+                            <div class="multiselect-options">
+                                @foreach($recordIdsList as $rid)
+                                    <div class="form-check">
+                                        <input class="form-check-input multiselect-checkbox" type="checkbox" name="record_id[]" value="{{ $rid }}" id="rid_{{ $rid }}" {{ is_array(request('record_id')) && in_array($rid, request('record_id')) ? 'checked' : '' }}>
+                                        <label class="form-check-label small" for="rid_{{ $rid }}">
+                                            {{ $rid }}
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Dispatch No</label>
+                    <div class="dropdown custom-multiselect">
+                        <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <span class="multiselect-label text-truncate" data-default="All Dispatch Nos">All Dispatch Nos</span>
+                            <i class="bi bi-chevron-down ms-1" style="font-size: 10px;"></i>
+                        </button>
+                        <div class="dropdown-menu w-100 p-2 shadow" style="max-height: 250px; overflow-y: auto;">
+                            <input type="text" class="form-control form-control-sm mb-2 multiselect-search" placeholder="Search dispatch nos...">
+                            <div class="multiselect-options">
+                                @foreach($dispatchNosList as $disp)
+                                    <div class="form-check">
+                                        <input class="form-check-input multiselect-checkbox" type="checkbox" name="dispatch_no[]" value="{{ $disp }}" id="disp_{{ md5($disp) }}" {{ is_array(request('dispatch_no')) && in_array($disp, request('dispatch_no')) ? 'checked' : '' }}>
+                                        <label class="form-check-label small" for="disp_{{ md5($disp) }}">
+                                            {{ $disp }}
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
@@ -239,7 +306,9 @@
                         <th style="width:60px;" class="text-center">QC</th>
                         <th style="width:90px;">Warehouse</th>
                         <th style="width:70px;">Row</th>
-                        <th style="width:90px;">Invoice</th>
+                        <th style="width:80px;">Record ID</th>
+                        <th style="width:100px;">Inbound Invoice</th>
+                        <th style="width:100px;">Dispatch No</th>
                         <th style="width:100px;">Party</th>
                         <th style="width:70px;">Vehicle</th>
                         <th class="text-center" style="width:70px;">Action</th>
@@ -378,12 +447,28 @@
                             </td>
                             <td>
                                 <small>
-                                    @if($entry->invoice_no)
-                                        {{ $entry->invoice_no }}
-                                    @elseif($entry->inbound_invoice_no)
-                                        {{ $entry->inbound_invoice_no }}
+                                    @if($entry->source_type === 'opening')
+                                        {{ $entry->transaction_id }}
                                     @else
-                                        -
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                </small>
+                            </td>
+                            <td>
+                                <small>
+                                    @if($entry->direction === 'IN' && $entry->source_type !== 'opening')
+                                        {{ $entry->inbound_invoice_no ?: '-' }}
+                                    @else
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                </small>
+                            </td>
+                            <td>
+                                <small>
+                                    @if($entry->direction === 'OUT')
+                                        {{ $entry->invoice_no ?: '-' }}
+                                    @else
+                                        <span class="text-muted">-</span>
                                     @endif
                                 </small>
                             </td>
@@ -412,7 +497,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="27" class="text-center py-5">
+                            <td colspan="29" class="text-center py-5">
                                 <div class="text-muted">
                                     <i class="bi bi-journal-x fs-1 d-block mb-2"></i>
                                     No ledger entries found matching your criteria
@@ -464,6 +549,56 @@
 @endsection
 
 @push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Custom Multi-select Logic
+    document.querySelectorAll('.custom-multiselect').forEach(function(dropdown) {
+        const searchInput = dropdown.querySelector('.multiselect-search');
+        const options = dropdown.querySelectorAll('.multiselect-options .form-check');
+        const checkboxes = dropdown.querySelectorAll('.multiselect-checkbox');
+        const label = dropdown.querySelector('.multiselect-label');
+        const defaultText = label.getAttribute('data-default');
+
+        // Search logic
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const term = this.value.toLowerCase();
+                options.forEach(function(opt) {
+                    const text = opt.querySelector('label').textContent.toLowerCase();
+                    if (text.includes(term)) {
+                        opt.style.display = 'block';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        // Update label text based on selected checkboxes
+        function updateLabel() {
+            let count = 0;
+            checkboxes.forEach(function(cb) {
+                if (cb.checked) count++;
+            });
+            if (count === 0) {
+                label.textContent = defaultText;
+            } else if (count === 1) {
+                label.textContent = '1 selected';
+            } else {
+                label.textContent = count + ' selected';
+            }
+        }
+
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', updateLabel);
+        });
+
+        // Initialize label on load
+        updateLabel();
+    });
+});
+</script>
+
 <script>
 function exportLedger() {
     // Build export URL with current filters
