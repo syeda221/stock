@@ -249,6 +249,7 @@ class InboundController extends Controller
             'driver_mobile' => 'nullable|string|max:30',
 
             'delivery_no' => 'nullable|string|max:80',
+            'gatepass_no' => 'nullable|string|max:80',
             'dispatched_invoice_no' => 'nullable|string|max:80',
             'dispatcher_sig' => 'nullable|string|max:255',
             'picker' => 'nullable|string|max:120',
@@ -311,6 +312,7 @@ class InboundController extends Controller
                     'driver_mobile' => $request->driver_mobile,
 
                     'delivery_no' => $request->delivery_no,
+                    'gatepass_no' => $request->gatepass_no,
                     'dispatched_invoice_no' => $request->dispatched_invoice_no,
                     'dispatcher_sig' => $request->dispatcher_sig,
                     'picker' => $request->picker,
@@ -682,6 +684,7 @@ class InboundController extends Controller
             'shipment_no' => 'nullable|string|max:80',
             'sto_no' => 'nullable|string|max:80',
             'delivery_no' => 'nullable|string|max:80',
+            'gatepass_no' => 'nullable|string|max:80',
 
             'dispatched_invoice_no' => 'nullable|string|max:80',
             'dispatcher_sig' => 'nullable|string|max:255',
@@ -700,7 +703,7 @@ class InboundController extends Controller
                     'warehouse_id', 'vendor_id', 'arrived_from_id', 'transporter_id',
                     'shipment_type', 'vehicle_in_time', 'vehicle_out_time', 'vehicle_no',
                     'vehicle_size', 'driver_name', 'driver_mobile', 'po_no', 'ibd_no',
-                    'shipment_no', 'sto_no', 'delivery_no', 'dispatched_invoice_no',
+                    'shipment_no', 'sto_no', 'delivery_no', 'gatepass_no', 'dispatched_invoice_no',
                     'dispatcher_sig', 'picker', 'remarks'
                 ]));
 
@@ -1659,6 +1662,7 @@ class InboundController extends Controller
                                 'delivery_no'            => $item['delivery_no'] ?: null,
                                 'shipment_no'            => $item['shipment_no'] ?: null,
                                 'sto_no'                => $item['sto_no'] ?: null,
+                                'gatepass_no'            => $item['gatepass_no'] ?: null,
                                 'dispatched_invoice_no'  => $item['dispatched_invoice_no'] ?: $generatedInvoiceNo,
                                 'dispatcher_sig'         => $item['dispatcher_sig'] ?: null,
                                 'picker'                 => $item['picker'] ?: null,
