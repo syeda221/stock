@@ -357,13 +357,17 @@
 
                             $productText = ($item->product->item_code ?? '-') . ' - ' . ($item->product->name ?? '-');
                             $statusHtml = '';
-                            if ($item->block_stock) $statusHtml = '<span
-                                class="badge bg-danger wms-pill">Blocked</span>';
-                            elseif ($item->hold_stock) $statusHtml = '<span
-                                class="badge bg-warning text-dark wms-pill">Hold</span>';
-                            elseif (!$item->sound_stock) $statusHtml = '<span class="badge bg-secondary wms-pill">Not
-                                Sound</span>';
-                            else $statusHtml = '<span class="badge bg-success wms-pill">Available</span>';
+                            if ($item->balance_quantity == 0) {
+                                $statusHtml = '<span class="badge bg-secondary wms-pill">N/A</span>';
+                            } elseif ($item->block_stock) {
+                                $statusHtml = '<span class="badge bg-danger wms-pill">Blocked</span>';
+                            } elseif ($item->hold_stock) {
+                                $statusHtml = '<span class="badge bg-warning text-dark wms-pill">Hold</span>';
+                            } elseif (!$item->sound_stock) {
+                                $statusHtml = '<span class="badge bg-secondary wms-pill">Not Sound</span>';
+                            } else {
+                                $statusHtml = '<span class="badge bg-success wms-pill">Available</span>';
+                            }
 
 
                             $vehicleText = $item->stockIn->vehicle_no ?? '-';
