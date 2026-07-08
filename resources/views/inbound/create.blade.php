@@ -166,24 +166,24 @@
 
         {{-- ================= ITEMS ================= --}}
         <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between">
-                <h6 class="mb-0">Inbound Products</h6>
-                <button type="button" id="addRowBtn" class="btn btn-sm btn-success">+ Add Row</button>
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+                <h6 class="card-title mb-0 fw-bold">Inbound Products</h6>
+                <button type="button" id="addRowBtn" class="btn btn-sm btn-success"><i class="bi bi-plus-lg"></i> Add Row</button>
             </div>
 
             <div class="card-body p-0">
-                <div class="table-wrapper">
-                    <table class="table table-bordered table-sm mb-0" id="itemsTable">
-                        <thead>
+                <div class="table-responsive" style="overflow-x: auto;">
+                    <table class="table table-bordered table-hover align-middle mb-0" id="itemsTable" style="min-width: 1000px;">
+                        <thead class="table-light">
                             <tr>
-                                <th width="260">Product</th>
-                                <th>Units</th>
-                                <th>Pack</th>
-                                <th>Total</th>
-                                <th>Pallets</th>
-                                <th>Status</th>
-                                <th>QC</th>
-                                <th></th>
+                                <th style="width: 320px;">Product</th>
+                                <th style="width: 90px;">Units</th>
+                                <th style="width: 90px;">Pack</th>
+                                <th style="width: 100px;">Total</th>
+                                <th style="width: 90px;">Pallets</th>
+                                <th style="width: 120px;" class="text-center">Status</th>
+                                <th style="width: 130px;">QC</th>
+                                <th style="width: 90px;" class="text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -273,9 +273,9 @@
                 itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
 <tr>
 <td>
-<div class="product-search-wrap d-flex align-items-center">
-<input class="form-control form-control-sm product-input me-1" placeholder="Search product" autocomplete="off">
-<button type="button" class="btn btn-sm btn-outline-primary open-batch-btn" title="Batch Details">Batch</button>
+<div class="input-group input-group-sm">
+<input class="form-control product-input" placeholder="Search product" autocomplete="off">
+<button type="button" class="btn btn-outline-primary open-batch-btn" title="Batch Details"><i class="bi bi-tags"></i> Batch</button>
 </div>
 <div class="product-search-wrap">
 <input type="hidden" name="items[${rowIndex}][product_id]" class="product-id">
@@ -283,8 +283,8 @@
 </td>
 
 <td><input name="items[${rowIndex}][units_received]" class="form-control form-control-sm units"></td>
-<td><input class="form-control form-control-sm pack-size" readonly></td>
-<td><input class="form-control form-control-sm total-qty" readonly></td>
+<td><input class="form-control form-control-sm pack-size bg-light" readonly></td>
+<td><input class="form-control form-control-sm total-qty bg-light fw-bold" readonly></td>
 
 <td>
 <input name="items[${rowIndex}][pallets_used]" class="form-control form-control-sm pallets-used" placeholder="Auto">
@@ -292,14 +292,21 @@
 <input type="hidden" class="pallets-per-packing" value="">
 </td>
 
-<td>
-<label><input type="checkbox" name="items[${rowIndex}][sound_stock]" checked> S</label>
-<label><input type="checkbox" name="items[${rowIndex}][block_stock]"> B</label>
-<label><input type="checkbox" name="items[${rowIndex}][hold_stock]"> H</label>
+<td class="text-center">
+<div class="btn-group" role="group">
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][sound_stock]" id="ss_${rowIndex}" checked>
+  <label class="btn btn-outline-success btn-sm px-2 py-1" for="ss_${rowIndex}" title="Sound Stock" style="font-size: 11px; font-weight: 600;">S</label>
+
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][block_stock]" id="bs_${rowIndex}">
+  <label class="btn btn-outline-danger btn-sm px-2 py-1" for="bs_${rowIndex}" title="Block Stock" style="font-size: 11px; font-weight: 600;">B</label>
+
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][hold_stock]" id="hs_${rowIndex}">
+  <label class="btn btn-outline-warning btn-sm px-2 py-1" for="hs_${rowIndex}" title="Hold Stock" style="font-size: 11px; font-weight: 600;">H</label>
+</div>
 </td>
 
 <td>
-<select name="items[${rowIndex}][quality_clearance]" class="form-control form-control-sm qc-select qc-select-pending" onchange="this.className='form-control form-control-sm qc-select qc-select-'+this.value">
+<select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm qc-select qc-select-pending" onchange="this.className='form-select form-select-sm qc-select qc-select-'+this.value">
 <option value="pending">🟡 Pending</option>
 <option value="approved">🟢 Approved</option>
 <option value="rejected">🔴 Rejected</option>
@@ -307,7 +314,10 @@
 </td>
 
 <td>
-<button type="button" class="btn btn-sm btn-danger removeRow">×</button>
+<div class="d-flex gap-1 justify-content-center">
+<button type="button" class="btn btn-sm btn-outline-danger removeRow" title="Remove"><i class="bi bi-trash"></i></button>
+<button type="button" class="btn btn-sm btn-info text-white duplicateRow shadow-sm" title="Duplicate Row"><i class="bi bi-files"></i></button>
+</div>
 <input type="hidden" name="items[${rowIndex}][sap_batch]">
 <input type="hidden" name="items[${rowIndex}][vendor_batch]">
 <input type="hidden" name="items[${rowIndex}][ibd_no]">
@@ -466,9 +476,48 @@
                 }
             });
 
-            /* REMOVE */
+            /* REMOVE & DUPLICATE */
             document.addEventListener('click', e => {
-                if (e.target.classList.contains('removeRow')) e.target.closest('tr').remove();
+                let removeBtn = e.target.closest('.removeRow');
+                if (removeBtn) {
+                    removeBtn.closest('tr').remove();
+                }
+
+                let dupBtn = e.target.closest('.duplicateRow');
+                if (dupBtn) {
+                    const row = dupBtn.closest('tr');
+                    
+                    // Create new row
+                    addRow();
+                    
+                    // Find the newly added row (last row in table)
+                    const allRows = itemsTable.querySelectorAll('tbody tr');
+                    const newRow = allRows[allRows.length - 1];
+
+                    // Copy values
+                    newRow.querySelector('.product-input').value = row.querySelector('.product-input').value;
+                    newRow.querySelector('.product-id').value = row.querySelector('.product-id').value;
+                    newRow.querySelector('.units').value = row.querySelector('.units').value;
+                    newRow.querySelector('.pack-size').value = row.querySelector('.pack-size').value;
+                    newRow.querySelector('.total-qty').value = row.querySelector('.total-qty').value;
+                    newRow.querySelector('.pallets-used').value = row.querySelector('.pallets-used').value;
+                    newRow.querySelector('.pallets-per-packing').value = row.querySelector('.pallets-per-packing').value;
+                    
+                    newRow.querySelector('[name$="[sound_stock]"]').checked = row.querySelector('[name$="[sound_stock]"]').checked;
+                    newRow.querySelector('[name$="[block_stock]"]').checked = row.querySelector('[name$="[block_stock]"]').checked;
+                    newRow.querySelector('[name$="[hold_stock]"]').checked = row.querySelector('[name$="[hold_stock]"]').checked;
+                    
+                    const qcSelect = newRow.querySelector('.qc-select');
+                    qcSelect.value = row.querySelector('.qc-select').value;
+                    qcSelect.className = 'form-select form-select-sm qc-select qc-select-' + qcSelect.value;
+                    
+                    newRow.querySelector('[name$="[sap_batch]"]').value = row.querySelector('[name$="[sap_batch]"]').value;
+                    newRow.querySelector('[name$="[vendor_batch]"]').value = row.querySelector('[name$="[vendor_batch]"]').value;
+                    newRow.querySelector('[name$="[ibd_no]"]').value = row.querySelector('[name$="[ibd_no]"]').value;
+                    newRow.querySelector('[name$="[po_no]"]').value = row.querySelector('[name$="[po_no]"]').value;
+                    newRow.querySelector('[name$="[mfg_date]"]').value = row.querySelector('[name$="[mfg_date]"]').value;
+                    newRow.querySelector('[name$="[expiry_date]"]').value = row.querySelector('[name$="[expiry_date]"]').value;
+                }
             });
 
             /* AUTO-ADD ROW when last row gets a product */

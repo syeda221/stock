@@ -140,24 +140,24 @@
 
         {{-- ================= ITEMS ================= --}}
         <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between">
-                <h6 class="mb-0">Inbound Products</h6>
-                <button type="button" id="addRowBtn" class="btn btn-sm btn-success">+ Add Row</button>
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+                <h6 class="card-title mb-0 fw-bold">Inbound Products</h6>
+                <button type="button" id="addRowBtn" class="btn btn-sm btn-success"><i class="bi bi-plus-lg"></i> Add Row</button>
             </div>
 
             <div class="card-body p-0">
-                <div class="table-wrapper">
-                    <table class="table table-bordered table-sm mb-0" id="itemsTable">
-                        <thead>
+                <div class="table-responsive" style="overflow-x: auto;">
+                    <table class="table table-bordered table-hover align-middle mb-0" id="itemsTable" style="min-width: 1000px;">
+                        <thead class="table-light">
                             <tr>
-                                <th width="260">Product</th>
-                                <th>Units</th>
-                                <th>Pack</th>
-                                <th>Total</th>
-                                <th>Pallets</th>
-                                <th>Status</th>
-                                <th>QC</th>
-                                <th></th>
+                                <th style="width: 320px;">Product</th>
+                                <th style="width: 90px;">Units</th>
+                                <th style="width: 90px;">Pack</th>
+                                <th style="width: 100px;">Total</th>
+                                <th style="width: 90px;">Pallets</th>
+                                <th style="width: 120px;" class="text-center">Status</th>
+                                <th style="width: 130px;">QC</th>
+                                <th style="width: 90px;" class="text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -218,9 +218,9 @@
                 itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
 <tr>
 <td>
-<div class="product-search-wrap d-flex align-items-center">
-<input class="form-control form-control-sm product-input me-1" placeholder="Search product" autocomplete="off" value="${data ? data.item_code + ' - ' + data.product_name : ''}" ${isDispatched ? 'readonly' : ''}>
-<button type="button" class="btn btn-sm btn-outline-primary open-batch-btn" title="Batch Details">Batch</button>
+<div class="input-group input-group-sm">
+<input class="form-control product-input" placeholder="Search product" autocomplete="off" value="${data ? data.item_code + ' - ' + data.product_name : ''}" ${isDispatched ? 'readonly' : ''}>
+<button type="button" class="btn btn-outline-primary open-batch-btn" title="Batch Details"><i class="bi bi-tags"></i> Batch</button>
 </div>
 <div class="product-search-wrap">
 <input type="hidden" name="items[${rowIndex}][product_id]" class="product-id" value="${data ? data.product_id : ''}">
@@ -230,8 +230,8 @@ ${lockMsg}
 </td>
 
 <td><input name="items[${rowIndex}][units_received]" class="form-control form-control-sm units" value="${data ? data.units_received : ''}" ${unitsReadOnly}></td>
-<td><input class="form-control form-control-sm pack-size" value="${data ? data.pack_size : ''}" readonly></td>
-<td><input class="form-control form-control-sm total-qty" value="${data ? data.total_quantity : ''}" readonly></td>
+<td><input class="form-control form-control-sm pack-size bg-light" value="${data ? data.pack_size : ''}" readonly></td>
+<td><input class="form-control form-control-sm total-qty bg-light fw-bold" value="${data ? data.total_quantity : ''}" readonly></td>
 
 <td>
 <input name="items[${rowIndex}][pallets_used]" class="form-control form-control-sm pallets-used" placeholder="Auto" value="${data && data.pallets_used > 0 ? data.pallets_used : ''}" ${isDispatched ? 'readonly' : ''}>
@@ -239,14 +239,21 @@ ${lockMsg}
 <input type="hidden" class="pallets-per-packing" value="${data ? data.cartons_per_pallet || '' : ''}">
 </td>
 
-<td>
-<label><input type="checkbox" name="items[${rowIndex}][sound_stock]" ${!data || data.sound_stock ? 'checked' : ''}> S</label>
-<label><input type="checkbox" name="items[${rowIndex}][block_stock]" ${data && data.block_stock ? 'checked' : ''}> B</label>
-<label><input type="checkbox" name="items[${rowIndex}][hold_stock]" ${data && data.hold_stock ? 'checked' : ''}> H</label>
+<td class="text-center">
+<div class="btn-group" role="group">
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][sound_stock]" id="ss_${rowIndex}" ${!data || data.sound_stock ? 'checked' : ''}>
+  <label class="btn btn-outline-success btn-sm px-2 py-1" for="ss_${rowIndex}" title="Sound Stock" style="font-size: 11px; font-weight: 600;">S</label>
+
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][block_stock]" id="bs_${rowIndex}" ${data && data.block_stock ? 'checked' : ''}>
+  <label class="btn btn-outline-danger btn-sm px-2 py-1" for="bs_${rowIndex}" title="Block Stock" style="font-size: 11px; font-weight: 600;">B</label>
+
+  <input type="checkbox" class="btn-check" name="items[${rowIndex}][hold_stock]" id="hs_${rowIndex}" ${data && data.hold_stock ? 'checked' : ''}>
+  <label class="btn btn-outline-warning btn-sm px-2 py-1" for="hs_${rowIndex}" title="Hold Stock" style="font-size: 11px; font-weight: 600;">H</label>
+</div>
 </td>
 
 <td>
-<select name="items[${rowIndex}][quality_clearance]" class="form-control form-control-sm qc-select qc-select-${data ? data.quality_clearance : 'pending'}" onchange="this.className='form-control form-control-sm qc-select qc-select-'+this.value">
+<select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm qc-select qc-select-${data ? data.quality_clearance : 'pending'}" onchange="this.className='form-select form-select-sm qc-select qc-select-'+this.value">
 <option value="pending" ${data && data.quality_clearance == 'pending' ? 'selected' : ''}>🟡 Pending</option>
 <option value="approved" ${data && data.quality_clearance == 'approved' ? 'selected' : ''}>🟢 Approved</option>
 <option value="rejected" ${data && data.quality_clearance == 'rejected' ? 'selected' : ''}>🔴 Rejected</option>
@@ -254,7 +261,10 @@ ${lockMsg}
 </td>
 
 <td>
-${isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disabled title="Cannot delete dispatched item">×</button>' : '<button type="button" class="btn btn-sm btn-danger removeRow">×</button>'}
+<div class="d-flex gap-1 justify-content-center">
+${isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disabled title="Cannot delete dispatched item"><i class="bi bi-trash"></i></button>' : '<button type="button" class="btn btn-sm btn-outline-danger removeRow" title="Remove"><i class="bi bi-trash"></i></button>'}
+<button type="button" class="btn btn-sm btn-info text-white duplicateRow shadow-sm" title="Duplicate Row"><i class="bi bi-files"></i></button>
+</div>
 <input type="hidden" name="items[${rowIndex}][sap_batch]" value="${data && data.sap_batch ? data.sap_batch : ''}">
 <input type="hidden" name="items[${rowIndex}][vendor_batch]" value="${data && data.vendor_batch ? data.vendor_batch : ''}">
 <input type="hidden" name="items[${rowIndex}][ibd_no]" value="${data && data.ibd_no ? data.ibd_no : ''}">
@@ -413,9 +423,49 @@ ${isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disable
                 }
             });
 
-            /* REMOVE */
+            /* REMOVE & DUPLICATE */
             document.addEventListener('click', e => {
-                if (e.target.classList.contains('removeRow')) e.target.closest('tr').remove();
+                let removeBtn = e.target.closest('.removeRow');
+                if (removeBtn) {
+                    removeBtn.closest('tr').remove();
+                }
+
+                let dupBtn = e.target.closest('.duplicateRow');
+                if (dupBtn) {
+                    const row = dupBtn.closest('tr');
+                    const productInputValue = row.querySelector('.product-input').value;
+                    let itemCode = productInputValue;
+                    let productName = '';
+                    if (productInputValue.includes(' - ')) {
+                        const parts = productInputValue.split(' - ');
+                        itemCode = parts.shift();
+                        productName = parts.join(' - ');
+                    }
+
+                    const data = {
+                        item_code: itemCode,
+                        product_name: productName,
+                        product_id: row.querySelector('.product-id').value,
+                        split_ids: '', // cleared to treat as a new item
+                        units_received: row.querySelector('.units').value,
+                        pack_size: row.querySelector('.pack-size').value,
+                        total_quantity: row.querySelector('.total-qty').value,
+                        pallets_used: row.querySelector('.pallets-used').value,
+                        cartons_per_pallet: row.querySelector('.pallets-per-packing').value,
+                        sound_stock: row.querySelector('[name$="[sound_stock]"]').checked,
+                        block_stock: row.querySelector('[name$="[block_stock]"]').checked,
+                        hold_stock: row.querySelector('[name$="[hold_stock]"]').checked,
+                        quality_clearance: row.querySelector('.qc-select').value,
+                        sap_batch: row.querySelector('[name$="[sap_batch]"]').value,
+                        vendor_batch: row.querySelector('[name$="[vendor_batch]"]').value,
+                        ibd_no: row.querySelector('[name$="[ibd_no]"]').value,
+                        po_no: row.querySelector('[name$="[po_no]"]').value,
+                        mfg_date: row.querySelector('[name$="[mfg_date]"]').value,
+                        expiry_date: row.querySelector('[name$="[expiry_date]"]').value,
+                        is_dispatched: false
+                    };
+                    addRow(data);
+                }
             });
 
             /* AJAX FORM SUBMISSION */
