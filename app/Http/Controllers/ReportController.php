@@ -1305,6 +1305,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_ins.inbound_invoice_no',
                 'warehouse_rows.row_name',
                 'stock_in_items.quality_clearance',
+                'stock_in_items.pallet_start',
                 'stock_in_items.created_at'
             )
             ->get();
@@ -1345,6 +1346,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_ins.inbound_invoice_no',
                 'warehouse_rows.row_name',
                 'stock_in_items.quality_clearance',
+                'stock_in_items.pallet_start',
                 'stock_in_items.created_at'
             )
             ->get();
