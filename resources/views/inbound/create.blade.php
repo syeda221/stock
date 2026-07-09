@@ -119,6 +119,11 @@
                     </div>
 
                     <div class="col-md-2 mb-2">
+                        <label class="form-label">Gate Pass</label>
+                        <input name="gatepass_no" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2 mb-2">
                         <label class="form-label">Picker</label>
                         <input name="picker" class="form-control form-control-sm">
                     </div>

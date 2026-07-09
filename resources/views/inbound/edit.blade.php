@@ -66,8 +66,13 @@
                     </div>
 
                     <div class="col-md-2 mb-2">
-                        <label class="form-label">Dispatcher Sig</label>
+                        <label class="form-label">Inbound Signature</label>
                         <input name="dispatcher_sig" value="{{ $stockIn->dispatcher_sig }}" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2 mb-2">
+                        <label class="form-label">Gate Pass</label>
+                        <input name="gatepass_no" value="{{ $stockIn->gatepass_no }}" class="form-control form-control-sm">
                     </div>
 
                     <div class="col-md-2 mb-2">
