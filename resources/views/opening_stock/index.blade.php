@@ -54,7 +54,6 @@
                         <option value="available">🟢 Available</option>
                         <option value="blocked">🔴 Blocked</option>
                         <option value="hold">🟡 Hold</option>
-                        <option value="stock_out">⚫ Stock Out</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -233,7 +232,7 @@
     <div class="col-md-3"><strong>Units:</strong> <span id="vUnits"></span></div>
     <div class="col-md-3"><strong>Pack Size:</strong> <span id="vPack"></span></div>
     <div class="col-md-3"><strong>Total Qty:</strong> <span id="vTotal"></span></div>
-    <div class="col-md-3"><strong>Balance:</strong> <span id="vBalance"></span></div>
+    <div class="col-md-3"></div>
 
     <div class="col-md-3">
         <strong>Pallets Used:</strong>
@@ -270,7 +269,7 @@
                         <th>SAP / Vendor Batch</th>
                         <th>MFG / Expiry</th>
                         <th class="text-end">Units</th>
-                        <th class="text-end">Balance Qty</th>
+                        <th class="text-end">Total Qty</th>
                         <th class="text-center">Pallets</th>
                         <th>QC</th>
                         <th>Status</th>
@@ -329,7 +328,6 @@ document.addEventListener('click',function(e){
         document.getElementById('vUnits').innerText = d.units_received;
         document.getElementById('vPack').innerText = d.pack_size_snapshot;
         document.getElementById('vTotal').innerText = d.total_quantity;
-        document.getElementById('vBalance').innerText = d.balance_quantity;
         document.getElementById('vPallets').innerText = d.pallets_used ?? '-';
         document.getElementById('vCartonsPerPallet').innerText = d.product?.cartons_per_pallet ? d.product.cartons_per_pallet + ' ctn/pallet' : 'Not set';
         document.getElementById('vRemarks').innerText = d.remarks ?? '-';
@@ -372,15 +370,18 @@ document.addEventListener('click',function(e){
                 const mfg = item.mfg_date ?? '-';
                 const expiry = item.expiry_date ?? '-';
                 const units = item.units_received;
-                const balance = item.balance_quantity;
-                const pallets = item.pallets_used ?? '-';
+                const balance = parseFloat(item.total_quantity).toFixed(2);
+                
+                let originalPallets = item.pallets_used ?? 0;
+                if (item.product && item.product.cartons_per_pallet > 0 && item.units_received > 0) {
+                    originalPallets = Math.ceil(item.units_received / item.product.cartons_per_pallet);
+                }
+                const pallets = originalPallets;
                 const qc = item.quality_clearance ?? 'pending';
 
                 // Status Badge
                 let statusBadge = '';
-                if (item.balance_quantity == 0) {
-                    statusBadge = '<span class="badge bg-dark">Stock Out</span>';
-                } else if (item.block_stock) {
+                if (item.block_stock) {
                     statusBadge = '<span class="badge bg-danger">Blocked</span>';
                 } else if (item.hold_stock) {
                     statusBadge = '<span class="badge bg-warning text-dark">Hold</span>';

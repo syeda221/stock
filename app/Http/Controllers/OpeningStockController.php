@@ -44,15 +44,12 @@ class OpeningStockController extends Controller
         // Apply status filter
         if ($request->filled('stock_status')) {
             if ($request->stock_status === 'available') {
-                $query->where('balance_quantity', '>', 0)
-                      ->where('block_stock', 0)
+                $query->where('block_stock', 0)
                       ->where('hold_stock', 0);
             } elseif ($request->stock_status === 'blocked') {
                 $query->where('block_stock', 1);
             } elseif ($request->stock_status === 'hold') {
                 $query->where('hold_stock', 1);
-            } elseif ($request->stock_status === 'stock_out') {
-                $query->where('balance_quantity', 0);
             }
         }
 
@@ -69,6 +66,13 @@ class OpeningStockController extends Controller
             ->with(['product.category'])
             ->latest('product_id')
             ->paginate(20);
+
+        $items->getCollection()->transform(function($item) {
+            if ($item->product && $item->product->cartons_per_pallet > 0 && $item->total_units > 0) {
+                $item->total_pallets = ceil($item->total_units / $item->product->cartons_per_pallet);
+            }
+            return $item;
+        });
 
         // Get filter options
         $warehouses = Warehouse::orderBy('name')->get();
@@ -501,35 +505,7 @@ class OpeningStockController extends Controller
             }
         }
 
-        // Compute pallet positions across ALL stock items (opening + inbound) so positions match stock ledger
-        $rowPalletOffsets = [];
-        $openingPositions = []; // id => { pallet_start, pallet_end, row_letter, wh_padded }
-        $allItems = \App\Models\StockInItem::whereHas('stockIn', fn($q) => $q->whereIn('source_type', ['opening', 'inbound']))
-            ->where('balance_quantity', '>', 0)
-            ->where('pallets_used', '>', 0)
-            ->whereNotNull('warehouse_row_id')
-            ->with('stockIn', 'warehouseRow')
-            ->orderBy('created_at')
-            ->get();
-        foreach ($allItems as $item) {
-            $whId = $item->warehouse_id;
-            $row = $item->warehouseRow;
-            if (!$whId || !$row || !$row->row_name) continue;
-            $palletCount = (int)$item->pallets_used;
-            $rowKey = $whId . '-' . $row->row_name;
-            if (!isset($rowPalletOffsets[$rowKey])) $rowPalletOffsets[$rowKey] = 0;
-            $palletStart = $rowPalletOffsets[$rowKey] + 1;
-            $palletEnd = $rowPalletOffsets[$rowKey] + $palletCount;
-            $rowPalletOffsets[$rowKey] = $palletEnd;
-            if ($item->stockIn->source_type === 'opening') {
-                $rw = $rowLetterMap[$rowKey] ?? '';
-                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
-                $openingPositions[$item->id] = [
-                    'start' => $palletStart, 'end' => $palletEnd,
-                    'letter' => $rw, 'wh_padded' => $wp,
-                ];
-            }
-        }
+        // (Dynamic computation across ALL stock items is removed so Opening Stock remains historically immutable)
 
         // Now fetch only opening stock items for CSV output
         $items = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
@@ -543,7 +519,7 @@ class OpeningStockController extends Controller
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ];
 
-        $callback = function () use ($items, $openingPositions) {
+        $callback = function () use ($items, $rowLetterMap) {
             $file = fopen('php://output', 'w');
             fputcsv($file, [
                 'Date', 'Record ID', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
@@ -557,23 +533,37 @@ class OpeningStockController extends Controller
                 $warehouseDisplay = $item->warehouse->name ?? '';
                 $unitsVal = $item->units_received;
                 $qtyVal = $item->total_quantity;
-                $balVal = $item->balance_quantity;
-                $palletsVal = $item->pallets_used ?? 0;
+                $balVal = $item->total_quantity; // Export original quantity, not current balance
+                
+                $originalPallets = $item->pallets_used ?? 0;
+                if ($item->product && $item->product->cartons_per_pallet > 0 && $item->units_received > 0) {
+                    $originalPallets = max($originalPallets, (int) ceil($item->units_received / $item->product->cartons_per_pallet));
+                }
+                $palletsVal = $originalPallets;
+                
                 $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
 
-                $pos = $openingPositions[$item->id] ?? null;
-
-                if ($pos) {
-                    $whPadded = $pos['wh_padded'];
-                    $rowLetter = $pos['letter'];
-                    $palletStart = $pos['start'];
-                    $palletEnd = $pos['end'];
+                if ($item->warehouse_row_id) {
+                    $pStart = (int) $item->pallet_start;
+                    $pUsed = (int) $item->pallets_used;
+                    if ($originalPallets > $pUsed && $pStart > 0) {
+                        $pStart = $pStart + $pUsed - $originalPallets;
+                    }
+                    
+                    $palletStart = $pStart > 0 ? $pStart : 1;
+                    $palletEnd = $palletStart + $originalPallets - 1;
+                    
+                    $whId = $item->warehouse_id;
+                    $rowNameStr = $item->warehouseRow->row_name ?? '';
+                    $rowKey = $whId . '-' . $rowNameStr;
+                    $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                    $whPadded = str_pad($whId, 2, '0', STR_PAD_LEFT);
 
                     $maxPerPallet = $item->product->cartons_per_pallet ?? null;
-                    $numPallets = $palletEnd - $palletStart + 1;
+                    $numPallets = $originalPallets;
                     $totalUnits = (float) $item->units_received;
                     $totalQty = (float) $item->total_quantity;
-                    $totalBalance = (float) $item->balance_quantity;
+                    $totalBalance = (float) $item->total_quantity; // Export original quantity, not current balance
                     $remainingUnits = $totalUnits;
                     $assignedQty = 0.0;
                     $assignedBalance = 0.0;

@@ -568,10 +568,38 @@ $(document).ready(function() {
                     if (data.opening_batches.length > 0) {
                         data.opening_batches.forEach((item, index) => {
                             const qcBadge = getQcBadge(item.quality_clearance);
+                            let rowDisplay = item.row_name || '-';
+                            let originalPallets = item.pallets_used || 0;
+                            if (data.product && data.product.cartons_per_pallet > 0 && item.units_received > 0) {
+                                originalPallets = Math.ceil(item.units_received / data.product.cartons_per_pallet);
+                            }
+
+                            if (item.row_name && item.pallet_start) {
+                                const match = item.row_name.match(/^(.+?)(\d+)\s+to\s+/i);
+                                if (match) {
+                                    const prefix = match[1];
+                                    const padLen = match[2].length;
+                                    let pStart = parseInt(item.pallet_start, 10);
+                                    let pUsed = parseInt(item.pallets_used, 10) || 0;
+                                    
+                                    if (originalPallets > pUsed && !isNaN(pStart)) {
+                                        pStart = pStart + pUsed - originalPallets;
+                                        pUsed = originalPallets;
+                                    }
+
+                                    const startName = prefix + String(pStart).padStart(padLen, '0');
+                                    if (pUsed > 1) {
+                                        const endName = prefix + String(pStart + pUsed - 1).padStart(padLen, '0');
+                                        rowDisplay = `${startName} to ${endName}`;
+                                    } else {
+                                        rowDisplay = startName;
+                                    }
+                                }
+                            }
                             openingHtml += `<tr>
                                 <td>${index + 1}</td>
                                 <td>${item.warehouse_name}</td>
-                                <td>${item.row_name || '-'}</td>
+                                <td>${rowDisplay}</td>
                                 <td>${item.vendor_name || '-'}</td>
                                 <td>${item.transporter_name || '-'}</td>
                                 <td>${item.vehicle_no || '-'}</td>
@@ -582,10 +610,10 @@ $(document).ready(function() {
                                 <td>${item.po_no || '-'}</td>
                                 <td class="text-end">${item.units_received || 0}</td>
                                 <td class="text-end">${parseFloat(item.total_quantity).toFixed(2)}</td>
-                                <td class="text-end fw-bold">${parseFloat(item.balance_quantity).toFixed(2)}</td>
+                                <td class="text-end fw-bold">${parseFloat(item.total_quantity).toFixed(2)}</td>
                                 <td>${item.mfg_date ? formatDate(item.mfg_date) : '-'}</td>
                                 <td>${item.expiry_date ? formatDate(item.expiry_date) : '-'}</td>
-                                <td class="text-end">${item.pallets_used || 0}</td>
+                                <td class="text-end">${originalPallets || 0}</td>
                                 <td>${qcBadge}</td>
                                 <td class="text-center">${item.sound_stock ? 'Yes' : 'No'}</td>
                                 <td class="text-center">${item.block_stock ? 'Yes' : 'No'}</td>
@@ -608,10 +636,38 @@ $(document).ready(function() {
                     if (data.inbound_batches.length > 0) {
                         data.inbound_batches.forEach((item, index) => {
                             const qcBadge = getQcBadge(item.quality_clearance);
+                            let rowDisplay = item.row_name || '-';
+                            let originalPallets = item.pallets_used || 0;
+                            if (data.product && data.product.cartons_per_pallet > 0 && item.units_received > 0) {
+                                originalPallets = Math.ceil(item.units_received / data.product.cartons_per_pallet);
+                            }
+
+                            if (item.row_name && item.pallet_start) {
+                                const match = item.row_name.match(/^(.+?)(\d+)\s+to\s+/i);
+                                if (match) {
+                                    const prefix = match[1];
+                                    const padLen = match[2].length;
+                                    let pStart = parseInt(item.pallet_start, 10);
+                                    let pUsed = parseInt(item.pallets_used, 10) || 0;
+                                    
+                                    if (originalPallets > pUsed && !isNaN(pStart)) {
+                                        pStart = pStart + pUsed - originalPallets;
+                                        pUsed = originalPallets;
+                                    }
+
+                                    const startName = prefix + String(pStart).padStart(padLen, '0');
+                                    if (pUsed > 1) {
+                                        const endName = prefix + String(pStart + pUsed - 1).padStart(padLen, '0');
+                                        rowDisplay = `${startName} to ${endName}`;
+                                    } else {
+                                        rowDisplay = startName;
+                                    }
+                                }
+                            }
                             inboundHtml += `<tr>
                                 <td>${index + 1}</td>
                                 <td>${item.warehouse_name}</td>
-                                <td>${item.row_name || '-'}</td>
+                                <td>${rowDisplay}</td>
                                 <td>${item.vendor_name || '-'}</td>
                                 <td>${item.transporter_name || '-'}</td>
                                 <td>${item.vehicle_no || '-'}</td>
@@ -647,10 +703,25 @@ $(document).ready(function() {
                     let outboundHtml = '';
                     if (data.outbound_records.length > 0) {
                         data.outbound_records.forEach((item, index) => {
+                            let palletPosDisplay = item.pallet_position || '-';
+                            if (item.row_name && item.pallet_position && String(item.pallet_position).trim() !== '') {
+                                const match = item.row_name.match(/^(.+?)(\d+)\s+to\s+/i);
+                                if (match) {
+                                    let positions = String(item.pallet_position).split(',');
+                                    palletPosDisplay = positions.map(p => {
+                                        let pNum = p.trim();
+                                        if (!isNaN(pNum) && pNum !== '') {
+                                            return match[1] + String(pNum).padStart(match[2].length, '0');
+                                        }
+                                        return pNum;
+                                    }).join(', ');
+                                }
+                            }
+
                             outboundHtml += `<tr>
                                 <td>${index + 1}</td>
                                 <td>${item.warehouse_name}</td>
-                                <td>${item.row_name || '-'}</td>
+                                <td>${palletPosDisplay !== '-' ? palletPosDisplay : (item.row_name || '-')}</td>
                                 <td>${item.customer_name || 'Transfer'}</td>
                                 <td>${item.transporter_name || '-'}</td>
                                 <td>${item.vehicle_no || '-'}</td>
@@ -662,7 +733,7 @@ $(document).ready(function() {
                                 <td>${item.ibd_no || '-'}</td>
                                 <td class="text-end">${parseFloat(item.dispatch_quantity).toFixed(2)}</td>
                                 <td class="text-end">${item.units_dispatch || 0}</td>
-                                <td>${item.pallet_position || '-'}</td>
+                                <td>${palletPosDisplay}</td>
                                 <td>${getStockDurationBadge(item.created_at)}</td>
                                 <td>${formatDate(item.created_at)}</td>
                                 <td><a class="btn btn-sm btn-outline-primary" target="_blank" href="${reportsBase}/outbound/${item.stock_out_id}/pdf">PDF</a></td>

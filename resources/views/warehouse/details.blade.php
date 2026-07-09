@@ -199,6 +199,18 @@ $(document).ready(function() {
             $('#rowCapacityInfo').text('Used: ' + data.used + ' / Empty: ' + data.empty + ' / Total: ' + data.total_capacity + ' pallets');
 
             let html = '';
+            
+            let prefix = 'Pallet ';
+            let padLength = 0;
+            let usePrefixLogic = false;
+            
+            const match = rowName.match(/^(.+?)(\d+)\s+to\s+/i);
+            if (match) {
+                prefix = match[1];
+                padLength = match[2].length;
+                usePrefixLogic = true;
+            }
+
             data.pallets.forEach(function(pallet) {
                 const statusBadge = pallet.is_empty
                     ? '<span class="badge rounded-pill bg-secondary">Empty</span>'
@@ -216,10 +228,14 @@ $(document).ready(function() {
                     ? ' <span class="badge bg-danger" title="Exceeds max cartons per pallet">Over</span>'
                     : '';
 
+                const displayName = usePrefixLogic 
+                    ? prefix + String(pallet.pallet_number).padStart(padLength, '0')
+                    : 'Pallet ' + pallet.pallet_number;
+
                 html += `
                     <tr class="${pallet.is_empty ? 'table-light' : (overCapacity ? 'table-danger' : '')}">
                         <td class="text-muted">${pallet.pallet_number}</td>
-                        <td class="fw-semibold">Pallet ${pallet.pallet_number}</td>
+                        <td class="fw-semibold">${displayName}</td>
                         <td>${itemCode}</td>
                         <td>${productName}</td>
                         <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">${sapBatch}</span></td>
