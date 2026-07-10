@@ -105,9 +105,9 @@ class StockInItem extends Model
         }
         
         $activePallets = [];
-        foreach ($pallets as $qty) {
+        foreach ($pallets as $i => $qty) {
             if ($qty > 0.0001) {
-                $activePallets[] = $qty;
+                $activePallets[$i] = $qty;
             }
         }
         

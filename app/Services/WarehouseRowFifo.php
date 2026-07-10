@@ -130,11 +130,10 @@ class WarehouseRowFifo
 
         $occupied = [];
         foreach ($items as $item) {
-            $activePallets = StockInItem::computeActivePallets($item);
+            $activeBalances = $item->getPalletBalances();
             $start = $item->pallet_start;
-            $end = $start + $activePallets - 1;
-            for ($i = $start; $i <= $end; $i++) {
-                $occupied[$i] = true;
+            foreach ($activeBalances as $offset => $qty) {
+                $occupied[$start + $offset] = true;
             }
         }
 

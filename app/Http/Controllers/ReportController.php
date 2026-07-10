@@ -938,13 +938,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
                 if ($maxPerPallet > 0 && $entry->units_received > 0) {
                     $requiredPallets = ceil((float)$entry->units_received / $maxPerPallet);
-                    if ($requiredPallets > ($entry->pallets_used ?? 0)) {
-                        if (isset($entry->pallet_start)) {
-                            $currentEnd = $entry->pallet_start + $entry->pallets_used - 1;
-                            $entry->pallet_start = max(1, $currentEnd - $requiredPallets + 1);
-                        }
-                        $entry->pallets_used = $requiredPallets;
-                    }
                 }
 
                 $palletStart = $entry->pallet_start ?? ($rowPalletOffsets[$rowKey] + 1);
@@ -1565,19 +1558,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 if (!isset($rowPalletOffsets[$rowKey])) {
                     $rowPalletOffsets[$rowKey] = 0;
                 }
-                $maxPerPallet = $entry->cartons_per_pallet ?? null;
-                if ($maxPerPallet > 0 && $entry->units > 0) {
-                    $requiredPallets = ceil((float)$entry->units / $maxPerPallet);
-                    if ($requiredPallets > $entry->pallets_used) {
-                        // The backend reduced the pallets_used and moved pallet_start due to outbound,
-                        // but the Ledger must reconstruct the original inbound shape.
-                        if ($entry->pallet_start !== null) {
-                            $currentPalletEnd = $entry->pallet_start + $entry->pallets_used - 1;
-                            $entry->pallet_start = max(1, $currentPalletEnd - $requiredPallets + 1);
-                        }
-                        $entry->pallets_used = $requiredPallets;
-                    }
-                }
 
                 if ($entry->pallet_start !== null) {
                     $entry->pallet_end = $entry->pallet_start + $entry->pallets_used - 1;
@@ -1990,13 +1970,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
                 if ($maxPerPallet > 0 && $entry->units > 0) {
                     $requiredPallets = ceil((float)$entry->units / $maxPerPallet);
-                    if ($requiredPallets > $entry->pallets_used) {
-                        if ($entry->pallet_start !== null) {
-                            $currentPalletEnd = $entry->pallet_start + $entry->pallets_used - 1;
-                            $entry->pallet_start = max(1, $currentPalletEnd - $requiredPallets + 1);
-                        }
-                        $entry->pallets_used = $requiredPallets;
-                    }
                 }
 
                 if ($entry->pallet_start !== null) {

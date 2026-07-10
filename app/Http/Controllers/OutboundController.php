@@ -210,8 +210,9 @@ class OutboundController extends Controller
         }
 
         $items = $query->orderBy('warehouse_id')
-            ->orderBy('expiry_date')
-            ->orderBy('created_at') // FIFO within same expiry
+            ->orderBy('created_at', 'asc')
+            ->orderBy('warehouse_row_id', 'asc')
+            ->orderBy('pallet_start', 'asc')
             ->get();
 
         $data = $items->groupBy('warehouse_id')
@@ -342,8 +343,9 @@ class OutboundController extends Controller
                         });
                     }
 
-                    $batches = $batchQuery->orderBy('expiry_date', 'asc')
-                        ->orderBy('created_at', 'asc')
+                    $batches = $batchQuery->orderBy('created_at', 'asc')
+                        ->orderBy('warehouse_row_id', 'asc')
+                        ->orderBy('pallet_start', 'asc')
                         ->lockForUpdate()
                         ->get();
 
@@ -405,37 +407,19 @@ class OutboundController extends Controller
                             
                             // Now deduct from the LEFTMOST (earliest) pallets first
                             $remTake = $qtyToTake;
-                            for ($i = 0; $i < $preActivePallets; $i++) {
+                            foreach ($currentPallets as $pIdx => $pQty) {
                                 if ($remTake <= 0) break;
-                                if ($currentPallets[$i] <= 0) continue;
+                                if ($pQty <= 0) continue;
                                 
-                                $takeHere = min($remTake, $currentPallets[$i]);
+                                $takeHere = min($remTake, $pQty);
                                 $remTake -= $takeHere;
-                                $currentPallets[$i] -= $takeHere;
+                                $currentPallets[$pIdx] -= $takeHere;
                                 
                                 $palletDeductions[] = [
-                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $i) : null,
+                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $pIdx) : null,
                                     'qty' => $takeHere,
                                     'units' => $takeHere / $pack
                                 ];
-                            }
-                            
-                            // Check if any pallets were completely emptied
-                            $emptiedCount = 0;
-                            foreach ($currentPallets as $pQty) {
-                                if ($pQty <= 0) {
-                                    $emptiedCount++;
-                                } else {
-                                    break;
-                                }
-                            }
-                            
-                            if ($emptiedCount > 0) {
-                                if ($batch->pallet_start !== null) {
-                                    $batch->pallet_start += $emptiedCount;
-                                }
-                                $batch->pallets_used -= $emptiedCount;
-                                $batch->save();
                             }
                         } else {
                             $palletDeductions[] = [
@@ -694,8 +678,9 @@ class OutboundController extends Controller
                         });
                     }
 
-                    $batches = $batchQuery->orderBy('expiry_date', 'asc')
-                        ->orderBy('created_at', 'asc')
+                    $batches = $batchQuery->orderBy('created_at', 'asc')
+                        ->orderBy('warehouse_row_id', 'asc')
+                        ->orderBy('pallet_start', 'asc')
                         ->lockForUpdate()
                         ->get();
 
@@ -730,36 +715,24 @@ class OutboundController extends Controller
                         if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
                             $maxPerPalletInUnits = $maxPerPallet * $pack;
                             
-                            // Reconstruct PRE-deduction pallet state right-to-left over active pallets
                             $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
-                            $preRemainingCartons = (int) ceil($preDecrementBalance / $pack);
-                            $preActivePallets = max(1, min((int) ceil($preRemainingCartons / $maxPerPallet), $batch->pallets_used));
-                            
-                            $currentPallets = [];
-                            $rem = $preDecrementBalance;
-                            for ($i = $preActivePallets - 1; $i >= 0; $i--) {
-                                if ($rem > 0) {
-                                    $fill = min($maxPerPalletInUnits, $rem);
-                                    $currentPallets[$i] = $fill;
-                                    $rem -= $fill;
-                                } else {
-                                    $currentPallets[$i] = 0;
-                                }
-                            }
-                            ksort($currentPallets);
+                            $originalBalance = $batch->balance_quantity;
+                            $batch->balance_quantity = $preDecrementBalance;
+                            $currentPallets = $batch->getPalletBalances();
+                            $batch->balance_quantity = $originalBalance;
                             
                             // Now deduct from the LEFTMOST (earliest) pallets first
                             $remTake = $qtyToTake;
-                            for ($i = 0; $i < $preActivePallets; $i++) {
+                            foreach ($currentPallets as $pIdx => $pQty) {
                                 if ($remTake <= 0) break;
-                                if ($currentPallets[$i] <= 0) continue;
+                                if ($pQty <= 0) continue;
                                 
-                                $takeHere = min($remTake, $currentPallets[$i]);
+                                $takeHere = min($remTake, $pQty);
                                 $remTake -= $takeHere;
-                                $currentPallets[$i] -= $takeHere;
+                                $currentPallets[$pIdx] -= $takeHere;
                                 
                                 $palletDeductions[] = [
-                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $i) : null,
+                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $pIdx) : null,
                                     'qty' => $takeHere,
                                     'units' => $takeHere / $pack
                                 ];
@@ -1269,8 +1242,9 @@ class OutboundController extends Controller
                         $batchQuery->where('warehouse_id', $whId);
                     }
 
-                    $batches = $batchQuery->orderBy('expiry_date', 'asc')
-                        ->orderBy('created_at', 'asc')
+                    $batches = $batchQuery->orderBy('created_at', 'asc')
+                        ->orderBy('warehouse_row_id', 'asc')
+                        ->orderBy('pallet_start', 'asc')
                         ->lockForUpdate()
                         ->get();
 
@@ -1311,21 +1285,40 @@ class OutboundController extends Controller
                             ]);
                         }
 
-                        $palletsToTake = max(1, (int) ceil($unitsToTake / $product->cartons_per_pallet));
+                        $maxPerPallet = $batch->product?->cartons_per_pallet ?? null;
+                        $palletDeductions = [];
 
-                        $effectivePallets = max(1, $palletsToTake);
-                        $perPalletUnits = $unitsToTake / $effectivePallets;
-                        $perPalletQty = $qtyToTake / $effectivePallets;
-                        $palletUnitsRemaining = $unitsToTake;
-                        $palletQtyRemaining = $qtyToTake;
-
-                        for ($p = 0; $p < $effectivePallets; $p++) {
-                            $isLastPallet = ($p === $effectivePallets - 1);
-                            $thisUnits = $isLastPallet ? $palletUnitsRemaining : round($perPalletUnits);
-                            $thisQty = $isLastPallet ? $palletQtyRemaining : round($perPalletQty, 3);
-                            $palletUnitsRemaining -= $thisUnits;
-                            $palletQtyRemaining -= $thisQty;
-
+                        if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
+                            $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
+                            $originalBalance = $batch->balance_quantity;
+                            $batch->balance_quantity = $preDecrementBalance;
+                            $currentPallets = $batch->getPalletBalances();
+                            $batch->balance_quantity = $originalBalance;
+                            
+                            $remTake = $qtyToTake;
+                            foreach ($currentPallets as $pIdx => $pQty) {
+                                if ($remTake <= 0) break;
+                                if ($pQty <= 0) continue;
+                                
+                                $takeHere = min($remTake, $pQty);
+                                $remTake -= $takeHere;
+                                $currentPallets[$pIdx] -= $takeHere;
+                                
+                                $palletDeductions[] = [
+                                    'position' => $batch->pallet_start !== null ? ($batch->pallet_start + $pIdx) : null,
+                                    'qty' => $takeHere,
+                                    'units' => $takeHere / $pack
+                                ];
+                            }
+                        } else {
+                            $palletDeductions[] = [
+                                'position' => null,
+                                'qty' => $qtyToTake,
+                                'units' => $unitsToTake
+                            ];
+                        }
+                        
+                        foreach ($palletDeductions as $deduction) {
                             StockOutItem::create([
                                 'stock_out_id'        => $stockOut->id,
                                 'stock_in_item_id'    => $batch->id,
@@ -1334,16 +1327,17 @@ class OutboundController extends Controller
                                 'warehouse_row_id'    => $batch->warehouse_row_id,
                                 'sap_batch'           => $batch->sap_batch,
                                 'vendor_batch'        => $batch->vendor_batch,
-                                'units_dispatch'      => $thisUnits,
+                                'units_dispatch'      => $deduction['units'],
                                 'pack_size_snapshot'  => $pack,
-                                'dispatch_quantity'   => $thisQty,
+                                'dispatch_quantity'   => $deduction['qty'],
                                 'po_no'               => $item['po_no'] ?: $batch->po_no,
                                 'ibd_no'              => $item['ibd_no'] ?: $batch->ibd_no,
                                 'sto_no'              => $item['sto_no'],
                                 'mfg_date'            => $batch->mfg_date,
                                 'expiry_date'         => $batch->expiry_date,
                                 'pallets_returned'    => 1,
-                                'pallet_position'     => $palletsToTake > 0 ? ($p + 1) : null,
+                                'pallet_position'     => $deduction['position'],
+                                'remarks'             => null,
                             ]);
                         }
 
