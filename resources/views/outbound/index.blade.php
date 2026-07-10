@@ -380,7 +380,7 @@
 
                         <td class="small fw-semibold text-nowrap">{{ $out->dispatched_invoice_no ?? '-' }}</td>
 
-                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y') }}</td>
+                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y H:i') }}</td>
 
                         {{-- ACTIONS --}}
                         <td class="text-center text-nowrap">

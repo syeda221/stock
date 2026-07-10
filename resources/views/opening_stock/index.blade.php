@@ -123,7 +123,7 @@
 
                         <td>{{ $item->product->category->name ?? '-' }}</td>
 
-                        <td>{{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d.m.Y') : '-' }}</td>
+                        <td>{{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d.m.Y H:i') : '-' }}</td>
 
                         <td class="text-center">
                             <span class="badge bg-secondary">{{ $item->batch_count }}</span>
@@ -311,7 +311,7 @@ document.addEventListener('click',function(e){
 
         document.getElementById('vWarehouse').innerText = d.stock_in?.warehouse?.name ?? '-';
         document.getElementById('vRow').innerText = d.warehouse_row?.row_name ?? '-';
-        document.getElementById('vDate').innerText = d.created_at?.substring(0,10);
+        document.getElementById('vDate').innerText = d.created_at ? d.created_at.substring(0,16).replace('T', ' ') : '-';
 
         document.getElementById('vCode').innerText = d.product.item_code;
         document.getElementById('vDesc').innerText = d.product.name;
