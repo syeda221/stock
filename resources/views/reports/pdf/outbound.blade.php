@@ -66,6 +66,7 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
+            table-layout: fixed;
         }
         table.data-table th {
             background: #c0392b;
@@ -79,6 +80,8 @@
             padding: 6px 5px;
             border-bottom: 1px solid #ddd;
             font-size: 10px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         table.data-table tr:nth-child(even) {
             background: #f9f9f9;
@@ -266,7 +269,7 @@
         <thead>
             <tr>
                 <th style="width: 30px;">#</th>
-                <th>Product Name</th>
+                <th style="width: 30%;">Product Name</th>
                 <th style="width: 80px;">SAP Batch</th>
                 <th style="width: 80px;">Vendor Batch</th>
                 <th style="width: 60px;" class="text-right">Units</th>

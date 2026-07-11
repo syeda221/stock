@@ -66,6 +66,7 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
+            table-layout: fixed;
         }
         table.data-table th {
             background: #34495e;
@@ -79,6 +80,8 @@
             padding: 6px 5px;
             border-bottom: 1px solid #ddd;
             font-size: 10px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         table.data-table tr:nth-child(even) {
             background: #f9f9f9;
@@ -148,10 +151,7 @@
     <!-- Basic Information -->
     <div class="info-grid">
         <div class="info-row">
-            <div class="info-cell">
-                <span class="info-label">Entry ID:</span>
-                <span class="info-value">#{{ $stockIn->id }}</span>
-            </div>
+            
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
                 <span class="info-value">{{ optional($stockIn->created_at)->format('d.m.Y H:i') }}</span>
@@ -162,10 +162,10 @@
                 <span class="info-label">Source Type:</span>
                 <span class="info-value">{{ ucfirst($stockIn->source_type ?? 'N/A') }}</span>
             </div>
-            <div class="info-cell">
+            <!-- <div class="info-cell">
                 <span class="info-label">Warehouse:</span>
                 <span class="info-value">{{ $stockIn->warehouse->name ?? 'N/A' }}</span>
-            </div>
+            </div> -->
         </div>
     </div>
 
@@ -218,37 +218,56 @@
                 <span class="info-label">Driver Mobile:</span>
                 <span class="info-value">{{ $stockIn->driver_mobile ?? '-' }}</span>
             </div>
-            <div class="info-cell">
+            <!-- <div class="info-cell">
                 <span class="info-label">Picker:</span>
                 <span class="info-value">{{ $stockIn->picker ?? '-' }}</span>
-            </div>
+            </div> -->
         </div>
-        <div class="info-row">
+     <div class="info-row">
             <div class="info-cell">
-                <span class="info-label">Vehicle In Time:</span>
-                <span class="info-value">{{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</span>
+                <!-- <span class="info-label">Vehicle In Time:</span> -->
+                <!-- <span class="info-value">{{ $stockIn->vehicle_in_time ? \Carbon\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</span> -->
             </div>
             <div class="info-cell">
-                <span class="info-label">Vehicle Out Time:</span>
-                <span class="info-value">{{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</span>
+                <!-- <span class="info-label">Vehicle Out Time:</span> -->
+                <!-- <span class="info-value">{{ $stockIn->vehicle_out_time ? \Carbon\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</span> -->
             </div>
         </div>
     </div>
 
-    <!-- Summary -->
     @php
         $totalQty = $stockIn->items->sum('total_quantity');
-        $totalBalance = $stockIn->items->sum('balance_quantity');
+        $totalBalance = 0; // $stockIn->items->sum('balance_quantity');
         $totalUnits = $stockIn->items->sum('units_received');
         $totalBalanceUnits = 0;
-        foreach($stockIn->items as $item) {
+        /* foreach($stockIn->items as $item) {
             $totalBalanceUnits += $item->pack_size_snapshot > 0 ? $item->balance_quantity / $item->pack_size_snapshot : 0;
-        }
+        } */
+        
+        $groupedItems = $stockIn->items->groupBy(function($item) {
+            return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+        })->map(function($group) {
+            $first = clone $group->first();
+            $first->units_received = $group->sum('units_received');
+            $first->total_quantity = $group->sum('total_quantity');
+            
+            // Sum up the sub-items for the details row below
+            $first->pallets_used = $group->sum('pallets_used');
+            // $first->sound_stock = $group->sum('sound_stock');
+            $first->block_stock = $group->sum('block_stock');
+            $first->hold_stock = $group->sum('hold_stock');
+            
+            // Gather row names
+            $rows = $group->map(function($i) { return optional($i->warehouseRow)->name; })->filter()->unique()->implode(', ');
+            $first->row_names = $rows;
+            
+            return $first;
+        })->values();
     @endphp
     <div class="summary-box">
         <div class="summary-item">
             <span class="summary-label">Total Items:</span>
-            <span class="summary-value">{{ $stockIn->items->count() }}</span>
+            <span class="summary-value">{{ $groupedItems->count() }}</span>
         </div>
         <div class="summary-item">
             <span class="summary-label">Total Quantity:</span>
@@ -258,14 +277,14 @@
             <span class="summary-label">Total Units:</span>
             <span class="summary-value">{{ number_format($totalUnits) }}</span>
         </div>
-        <div class="summary-item">
+        <!-- <div class="summary-item">
             <span class="summary-label">Balance Quantity:</span>
             <span class="summary-value">{{ number_format($totalBalance, 2) }}</span>
         </div>
         <div class="summary-item">
             <span class="summary-label">Balance Units:</span>
             <span class="summary-value">{{ number_format($totalBalanceUnits, 2) }}</span>
-        </div>
+        </div> -->
     </div>
 
     <!-- Items Details -->
@@ -274,11 +293,11 @@
         <thead>
             <tr>
                 <th style="width: 30px;">#</th>
-                <th>Product Name</th>
-                <th style="width: 80px;">SAP Batch</th>
+                <th style="width: 30%;">Product Name</th>
+                <!-- <th style="width: 80px;">SAP Batch</th> -->
                 <th style="width: 80px;">Vendor Batch</th>
-                <th>PO</th>
-                <th>IBD</th>
+                <th style="width: 50px;">PO</th>
+                <th style="width: 50px;">IBD</th>
                 <th style="width: 50px;" class="text-center">Units</th>
                 <th style="width: 50px;" class="text-center">Pack Size</th>
                 <th style="width: 70px;" class="text-center">Total Qty</th>
@@ -288,32 +307,11 @@
             </tr>
         </thead>
         <tbody>
-            @php 
-                $groupedItems = $stockIn->items->groupBy(function($item) {
-                    return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
-                })->map(function($group) {
-                    $first = clone $group->first();
-                    $first->units_received = $group->sum('units_received');
-                    $first->total_quantity = $group->sum('total_quantity');
-                    
-                    // Sum up the sub-items for the details row below
-                    $first->pallets_used = $group->sum('pallets_used');
-                    $first->sound_stock = $group->sum('sound_stock');
-                    $first->block_stock = $group->sum('block_stock');
-                    $first->hold_stock = $group->sum('hold_stock');
-                    
-                    // Gather row names
-                    $rows = $group->map(function($i) { return optional($i->warehouseRow)->name; })->filter()->unique()->implode(', ');
-                    $first->row_names = $rows;
-                    
-                    return $first;
-                })->values();
-            @endphp
             @foreach($groupedItems as $i => $item)
             <tr>
                 <td>{{ $i + 1 }}</td>
                 <td>{{ $item->product->name ?? '-' }}{{ $item->product->item_code ? ' ('.$item->product->item_code.')' : '' }}</td>
-                <td>{{ $item->sap_batch ?? '-' }}</td>
+                <!-- <td>{{ $item->sap_batch ?? '-' }}</td> -->
                 <td>{{ $item->vendor_batch ?? '-' }}</td>
                 <td>{{ $item->po_no ?? '-' }}</td>
                 <td>{{ $item->ibd_no ?? '-' }}</td>
@@ -362,7 +360,7 @@
                         <strong>Pallets:</strong> {{ $item->pallets_used }} &nbsp;|&nbsp;
                     @endif
                     @if($item->sound_stock)
-                        <strong>Sound:</strong> {{ number_format($item->sound_stock, 2) }} &nbsp;|&nbsp;
+                        <!-- <strong>Sound:</strong> {{ number_format($item->sound_stock, 2) }} &nbsp;|&nbsp; -->
                     @endif
                     @if($item->block_stock)
                         <strong>Block:</strong> {{ number_format($item->block_stock, 2) }} &nbsp;|&nbsp;
