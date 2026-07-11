@@ -344,7 +344,7 @@
                             $daysToExpiry = $expiry ? now()->diffInDays($expiry, false) : null;
                         @endphp
                         <tr>
-                            <td class="text-muted fw-semibold">{{ $ledgerPaginated->firstItem() + $index }}</td>
+                            <td class="text-muted fw-semibold">{{ $ledgerPaginated->firstItem() + $loop->index }}</td>
                             <td class="text-nowrap">
                                 <small class="text-muted">{{ \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y') }}</small>
                                 <br>
