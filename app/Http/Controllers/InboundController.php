@@ -1113,7 +1113,9 @@ class InboundController extends Controller
                     $totalBalance = (float) $item->balance_quantity;
                     $remainingUnits = $totalUnits;
                     $assignedQty = 0.0;
-                    $assignedBalance = 0.0;
+                    
+                    $dispatchedQty = max(0, $totalQty - $totalBalance);
+                    $remainingToDrain = $dispatchedQty;
 
                     for ($p = $palletStart; $p <= $palletEnd; $p++) {
                         $isLast = ($p == $palletEnd);
@@ -1124,10 +1126,17 @@ class InboundController extends Controller
                         }
                         $ratio = $totalUnits > 0 ? $perPalletUnits / $totalUnits : 0;
                         $palletQty = $isLast ? $totalQty - $assignedQty : round($ratio * $totalQty, 4);
-                        $palletBalance = $isLast ? $totalBalance - $assignedBalance : round($ratio * $totalBalance, 4);
+                        
+                        if ($remainingToDrain >= $palletQty) {
+                            $palletBalance = 0;
+                            $remainingToDrain -= $palletQty;
+                        } else {
+                            $palletBalance = $palletQty - $remainingToDrain;
+                            $remainingToDrain = 0;
+                        }
+
                         $remainingUnits -= $perPalletUnits;
                         $assignedQty += $palletQty;
-                        $assignedBalance += $palletBalance;
 
                         $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
                         $rowNameStr = $item->warehouseRow->row_name ?? '';
