@@ -293,6 +293,7 @@
         <thead>
             <tr>
                 <th style="width: 30px;">#</th>
+                <th style="width: 80px;">Item Code</th>
                 <th style="width: 30%;">Product Name</th>
                 <!-- <th style="width: 80px;">SAP Batch</th> -->
                 <th style="width: 80px;">Vendor Batch</th>
@@ -303,14 +304,14 @@
                 <th style="width: 70px;" class="text-center">Total Qty</th>
                 <th style="width: 100px;" class="text-center">MFG / EXP</th>
                 <th style="width: 60px;" class="text-center">QC Status</th>
-                <th style="width: 80px;" class="text-center">Stock Duration</th>
             </tr>
         </thead>
         <tbody>
             @foreach($groupedItems as $i => $item)
             <tr>
                 <td>{{ $i + 1 }}</td>
-                <td>{{ $item->product->name ?? '-' }}{{ $item->product->item_code ? ' ('.$item->product->item_code.')' : '' }}</td>
+                <td>{{ $item->product->item_code ?? '-' }}</td>
+                <td>{{ $item->product->name ?? '-' }}</td>
                 <!-- <td>{{ $item->sap_batch ?? '-' }}</td> -->
                 <td>{{ $item->vendor_batch ?? '-' }}</td>
                 <td>{{ $item->po_no ?? '-' }}</td>
@@ -328,24 +329,6 @@
                         <span class="badge badge-rejected">REJECTED</span>
                     @else
                         <span>-</span>
-                    @endif
-                </td>
-                <td class="text-center" style="font-size: 9px;">
-                    @php
-                        $stockDate = \Carbon\Carbon::parse($item->created_at);
-                        $now = \Carbon\Carbon::now();
-                        $days = (int) $stockDate->diffInDays($now);
-                    @endphp
-                    @if($days == 0)
-                        <span style="background: #3498db; color: white; padding: 2px 4px; border-radius: 2px;">Today</span>
-                    @elseif($days <= 7)
-                        <span style="background: #27ae60; color: white; padding: 2px 4px; border-radius: 2px;">{{ $days }}d</span>
-                    @elseif($days <= 30)
-                        <span style="background: #f39c12; color: white; padding: 2px 4px; border-radius: 2px;">{{ $days }}d</span>
-                    @elseif($days <= 90)
-                        <span style="background: #e67e22; color: white; padding: 2px 4px; border-radius: 2px;">{{ $days }}d</span>
-                    @else
-                        <span style="background: #e74c3c; color: white; padding: 2px 4px; border-radius: 2px;">{{ $days }}d</span>
                     @endif
                 </td>
             </tr>
