@@ -330,19 +330,8 @@
                         <td>
                             @php
                                 $whName = $item->warehouse->name ?? $out->warehouse->name ?? '-';
-                                $whId = $item->warehouse_id ?? $out->warehouse_id;
-                                $free = $warehouseCapacities[$whId] ?? null;
                             @endphp
                             <div class="fw-bold text-nowrap small">{{ $whName }}</div>
-                            <div class="small text-muted" style="font-size: 10px;">
-                                <i class="bi bi-geo-alt me-1"></i>{{ $palletLocationStr }}
-                            </div>
-                            @if($free !== null)
-                                <div class="small text-success fw-semibold" style="font-size: 10px;">Free: {{ $free }}</div>
-                            @endif
-                            <span class="badge bg-{{ $badge }}" style="font-size: 0.55rem;">
-                                {{ strtoupper($out->source_type) }}
-                            </span>
                         </td>
 
                         <td class="fw-semibold small text-nowrap">{{ $target }}</td>

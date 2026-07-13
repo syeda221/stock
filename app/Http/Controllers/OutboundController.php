@@ -246,8 +246,8 @@ class OutboundController extends Controller
     {
         $request->validate([
             'outbound_type'               => 'required|in:warehouse,customer',
-            'customer_id'                 => 'required_if:outbound_type,customer|nullable',
-            'to_warehouse_id'             => 'required_if:outbound_type,warehouse|nullable',
+            'customer_id'                 => 'required_if:outbound_type,customer',
+            'to_warehouse_id'             => 'required_if:outbound_type,warehouse',
             'shipment_type'               => 'nullable|string',
             'dispatched_invoice_no'        => 'nullable|string|max:80',
             'items'                       => 'required|array|min:1',
@@ -596,8 +596,8 @@ class OutboundController extends Controller
     {
         $request->validate([
             'outbound_type'               => 'required|in:warehouse,customer',
-            'customer_id'                 => 'required_if:outbound_type,customer|nullable',
-            'to_warehouse_id'             => 'required_if:outbound_type,warehouse|nullable',
+            'customer_id'                 => 'required_if:outbound_type,customer',
+            'to_warehouse_id'             => 'required_if:outbound_type,warehouse',
             'shipment_type'               => 'nullable|string',
             'dispatched_invoice_no'        => 'nullable|string|max:80',
             'items'                       => 'required|array|min:1',
