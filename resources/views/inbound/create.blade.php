@@ -188,6 +188,7 @@
                                 <th style="width: 90px;">Pallets</th>
                                 <th style="width: 120px;" class="text-center">Status</th>
                                 <th style="width: 130px;">QC</th>
+                                <th style="width: 150px;">QC Remarks</th>
                                 <th style="width: 90px;" class="text-center">Action</th>
                             </tr>
                         </thead>
@@ -316,6 +317,10 @@
 <option value="approved">🟢 Approved</option>
 <option value="rejected">🔴 Rejected</option>
 </select>
+</td>
+
+<td>
+<input name="items[${rowIndex}][qc_remarks]" class="form-control form-control-sm" placeholder="QC Remarks">
 </td>
 
 <td>

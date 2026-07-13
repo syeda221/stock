@@ -261,6 +261,7 @@ class InboundController extends Controller
             'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.units_received' => 'nullable|integer|min:0',
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
+            'items.*.qc_remarks' => 'nullable|string',
         ]);
 
         if ($request->manual_selection == '1') {
@@ -425,6 +426,7 @@ class InboundController extends Controller
                         'block_stock'        => !empty($item['block_stock']),
                         'hold_stock'         => !empty($item['hold_stock']),
                         'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+                        'qc_remarks'         => $item['qc_remarks'] ?? null,
                         'damage_stock'       => !empty($item['damage_stock']),
                         'remarks'            => $item['remarks'] ?? null,
                         'uom_snapshot'       => optional($product->uom)->name,
@@ -621,6 +623,7 @@ class InboundController extends Controller
                 'block_stock' => $first->block_stock,
                 'hold_stock' => $first->hold_stock,
                 'quality_clearance' => $first->quality_clearance,
+                'qc_remarks' => $first->qc_remarks,
                 'damage_stock' => $first->damage_stock,
                 'remarks' => $first->remarks,
                 // store the IDs of the splits so we can clean them up if modified
@@ -694,6 +697,7 @@ class InboundController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.units_received' => 'nullable|numeric|min:0',
+            'items.*.qc_remarks' => 'nullable|string',
         ]);
 
         try {
@@ -758,6 +762,7 @@ class InboundController extends Controller
                                     'block_stock' => !empty($itemData['block_stock']),
                                     'hold_stock' => !empty($itemData['hold_stock']),
                                     'quality_clearance' => $itemData['quality_clearance'] ?? 'pending',
+                                    'qc_remarks' => $itemData['qc_remarks'] ?? null,
                                     'damage_stock' => !empty($itemData['damage_stock']),
                                 ]);
                             }
@@ -882,6 +887,7 @@ class InboundController extends Controller
                 'block_stock'        => !empty($itemData['block_stock']),
                 'hold_stock'         => !empty($itemData['hold_stock']),
                 'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                'qc_remarks'         => $itemData['qc_remarks'] ?? null,
                 'damage_stock'       => !empty($itemData['damage_stock']),
                 'remarks'            => $itemData['remarks'] ?? null,
                 'uom_snapshot'       => optional($product->uom)->name,
@@ -950,6 +956,7 @@ class InboundController extends Controller
                     'block_stock'        => !empty($itemData['block_stock']),
                     'hold_stock'         => !empty($itemData['hold_stock']),
                     'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                    'qc_remarks'         => $itemData['qc_remarks'] ?? null,
                     'damage_stock'       => !empty($itemData['damage_stock']),
                     'remarks'            => $itemData['remarks'] ?? null,
                     'uom_snapshot'       => optional($product->uom)->name,
@@ -1087,7 +1094,7 @@ class InboundController extends Controller
                 'DC#', 'CHALAN #', 'Delivery#', 'Shipment#',
                 'Vendor', 'Arrived From', 'Vehicle#', 'Vehicle Size',
                 'Transporter', 'DRIVER NAME', 'DRIVER CELL#', 'Vehicle In DATE & Time',
-                'Vehicle Out DATE & Time', 'Shipment Type', 'Quality Check', 'Blocked',
+                'Vehicle Out DATE & Time', 'Shipment Type', 'Quality Check', 'QC Remarks', 'Blocked',
                 'Hold', 'Remarks'
             ]);
 
@@ -1180,6 +1187,7 @@ class InboundController extends Controller
                             $item->stockIn?->vehicle_out_time ?? '',
                             $item->stockIn?->shipment_type ?? '',
                             $item->quality_clearance ?? '',
+                            $item->qc_remarks ?? '',
                             $item->block_stock ? 'Yes' : 'No',
                             $item->hold_stock ? 'Yes' : 'No',
                             $item->remarks ?? '',
@@ -1312,6 +1320,7 @@ class InboundController extends Controller
             'MFG Date'         => ['MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
             'Expiry Date'      => ['Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
             'Quality Check'    => ['Quality Check', 'Quality Clearance', 'quality_clearance', 'QC'],
+            'QC Remarks'       => ['QC Remarks', 'qc_remarks', 'qc remarks'],
             'Blocked'          => ['Blocked', 'block_stock', 'Block'],
             'Hold'             => ['Hold', 'hold_stock'],
             'Remarks'          => ['Remarks', 'remarks', 'Notes', 'Comment'],
@@ -1519,6 +1528,7 @@ class InboundController extends Controller
                 'mfg_date'             => $mfgDate,
                 'expiry_date'          => $expiryDate,
                 'quality_clearance'    => $qcValue,
+                'qc_remarks'           => $getCell($row, 'QC Remarks'),
                 'blocked'              => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
                 'hold'                 => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
                 'remarks'              => $getCell($row, 'Remarks'),
@@ -1713,6 +1723,7 @@ class InboundController extends Controller
                                 'block_stock'        => $item['blocked'],
                                 'hold_stock'         => $item['hold'],
                                 'quality_clearance'  => $item['quality_clearance'],
+                                'qc_remarks'         => $item['qc_remarks'],
                                 'remarks'            => $item['remarks'] ?: null,
                             ]);
                         }

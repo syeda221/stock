@@ -252,6 +252,7 @@
                         <th class="text-end" style="width:65px">Balance</th>
                         <th style="width:80px">Status</th>
                         <th style="width:100px">QC</th>
+                        <th style="width:120px">QC Remarks</th>
                         <th style="width:110px">Vehicle/Driver</th>
                         <th style="width:110px">Inbound Invoice</th>
                         <th style="width:80px">Days</th>
@@ -351,6 +352,7 @@
                             'Block Stock' => (bool) $item->block_stock,
                             'Hold Stock' => (bool) $item->hold_stock,
                             'QC Status' => $item->quality_clearance ?? '-',
+                            'QC Remarks' => $item->qc_remarks ?? '-',
                             'Damage Stock' => (bool) ($item->damage_stock ?? false),
 
                             ];
@@ -422,6 +424,12 @@
                                         🔴 Rejected
                                     </option>
                                 </select>
+                            </td>
+
+                            <td style="font-size: 11px;">
+                                <div style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->qc_remarks ?? '-' }}">
+                                    {{ $item->qc_remarks ?? '-' }}
+                                </div>
                             </td>
 
                             <td style="font-size: 10px;">
@@ -687,6 +695,7 @@
                     'Block Stock': itemData['Block Stock'],
                     'Hold Stock': itemData['Hold Stock'],
                     'QC Status': itemData['QC Status'],
+                    'QC Remarks': itemData['QC Remarks'],
                     'Damage Stock': itemData['Damage Stock'],
                     'Pallets Used': itemData['Pallets Used']
                 });

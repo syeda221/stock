@@ -30,6 +30,7 @@ class StockInItem extends Model
         'hold_stock',
         'allow_expired_sale',
         'quality_clearance',
+        'qc_remarks',
         'remarks',
     ];
 
