@@ -1213,13 +1213,34 @@ class OutboundController extends Controller
 
         try {
             DB::transaction(function () use ($csvRows, $request, &$imported, &$skipped, &$errors) {
-                $stockOut = null;
-
+                $allCustomers = \App\Models\Customer::where('status', 1)->get();
+                
+                $groupedRows = [];
                 foreach ($csvRows as $item) {
-                    $product   = $item['product'];
-                    $units     = $item['units'];
-                    $packSize  = (float) $product->pack_size;
-                    $type      = $item['type'];
+                    $customerName = trim($item['customer'] ?? '');
+                    $groupKey = $item['type'] . '|' . $customerName;
+                    $groupedRows[$groupKey][] = $item;
+                }
+
+                foreach ($groupedRows as $groupKey => $rows) {
+                    $stockOut = null;
+                    $customerId = null;
+                    
+                    $parts = explode('|', $groupKey, 2);
+                    $customerName = $parts[1] ?? '';
+
+                    if ($customerName !== '') {
+                        $matchedCustomer = $allCustomers->first(function($c) use ($customerName) {
+                            return strtolower($c->name) === strtolower($customerName) || $c->id == $customerName;
+                        });
+                        $customerId = $matchedCustomer ? $matchedCustomer->id : null;
+                    }
+
+                    foreach ($rows as $item) {
+                        $product   = $item['product'];
+                        $units     = $item['units'];
+                        $packSize  = (float) $product->pack_size;
+                        $type      = $item['type'];
 
                     // Find available stock batches (FIFO)
                     $batchQuery = StockInItem::where('product_id', $product->id)
@@ -1273,11 +1294,12 @@ class OutboundController extends Controller
 
                         $batch->decrement('balance_quantity', $qtyToTake);
 
-                        // Create StockOut header on first item
+                        // Create StockOut header on first item for this Customer
                         if (!$stockOut) {
                             $invoiceNo = $this->generateDispatchedInvoiceNo();
                             $stockOut = StockOut::create([
                                 'source_type'           => $type === 'sale' ? 'sale' : 'transfer',
+                                'customer_id'           => $customerId,
                                 'warehouse_id'          => $warehouseId,
                                 'dispatched_invoice_no' => $invoiceNo,
                                 'shipment_type'         => 'manual',
@@ -1352,6 +1374,7 @@ class OutboundController extends Controller
 
                     $imported++;
                 }
+                } // End foreach groupedRows
             });
 
             $message = "Dispatched {$imported} product(s)";
