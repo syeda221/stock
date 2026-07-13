@@ -218,10 +218,18 @@
                 <span class="info-label">Driver Mobile:</span>
                 <span class="info-value">{{ $stockIn->driver_mobile ?? '-' }}</span>
             </div>
-            <!-- <div class="info-cell">
-                <span class="info-label">Picker:</span>
-                <span class="info-value">{{ $stockIn->picker ?? '-' }}</span>
-            </div> -->
+            <div class="info-cell">
+                <span class="info-label">Gatepass etc:</span>
+                <span class="info-value"></span>
+            </div>
+        </div>
+        <div class="info-row">
+            <div class="info-cell">
+                <span class="info-label">Seal #:</span>
+                <span class="info-value"></span>
+            </div>
+            <div class="info-cell">
+            </div>
         </div>
      <div class="info-row">
             <div class="info-cell">
