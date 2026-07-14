@@ -117,13 +117,13 @@
         </table>
 
         <div class="row mt-5">
-            <div class="col-md-6">
-                <b>Issued By</b><br><br>
-                ____________________
+            <div class="col-6">
+                <b>DRIVER NAME, CNIC # & SIG:</b><br><br>
+                ______________________________
             </div>
-            <div class="col-md-6 text-end">
-                <b>Received By</b><br><br>
-                ____________________
+            <div class="col-6 text-end">
+                <b>DISPATCHER NAME & SIG:</b><br><br>
+                ______________________________
             </div>
         </div>
 
