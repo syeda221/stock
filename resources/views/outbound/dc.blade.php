@@ -9,31 +9,87 @@
 
     <div class="card-body">
 
-        <div class="dc-header" style="display: flex; justify-content: space-between; align-items: stretch; padding: 25px 0; margin-bottom: 20px;">
-            <!-- Left Section: Details -->
-            <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start;">
-                <div style="display: grid; grid-template-columns: 120px auto; row-gap: 8px;">
-                    <strong>Date:</strong> <span>{{ $stockOut->created_at->format('d-m-Y') }}</span>
-                    <strong>DC No.:</strong> <span>{{ $stockOut->dispatched_invoice_no ?? '-' }}</span>
-                    <strong>Seal No.:</strong> <span>{{ $stockOut->seal_no ?? '-' }}</span>
-                    <strong>Gate Pass No.:</strong> <span>{{ $stockOut->gatepass_no ?? '-' }}</span>
-                    <strong>Dispatch No.:</strong> <span>{{ $stockOut->da_no ?? '-' }}</span>
-                    <strong>Vehicle No.:</strong> <span>{{ $stockOut->vehicle_no ?? '-' }}</span>
-                    <strong>From:</strong> <span>{{ optional($stockOut->warehouse)->name ?? '-' }}</span>
-                    <strong>To:</strong> <span>{{ $stockOut->customer->name ?? $stockOut->toWarehouse->name ?? '-' }}</span>
-                </div>
+        <!-- Header: Logo and Company Info -->
+        <div class="row mb-4 align-items-center">
+            <div class="col-sm-6">
+                <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 80px;">
             </div>
-
-            <!-- Center Section: Logo -->
-            <div style="flex: 1; display: flex; justify-content: center; align-items: flex-start; margin-top: -30px;">
-                <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 130px;">
+            <div class="col-sm-6 text-end">
+                <h5 class="mb-1 fw-bold" style="color: #333;">SPC WARE HOUSE</h5>
+                <p class="mb-0" style="font-size: 14px; color: #555;">
+                    KACHA SADIQ ABAD ROAD NEAR ZOO RYK<br>
+                    <strong>Cell #:</strong> 03008636277
+                </p>
             </div>
+        </div>
 
-            <!-- Right Section: Company Info -->
-            <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; row-gap: 5px; text-align: right;">
-                <div><strong>Address:</strong> Your Company Address</div>
-                <div><strong>Phone No:</strong> +1234567890</div>
-                <div><strong>Email:</strong> info@company.com</div>
+        <hr class="mb-4" style="border-top: 2px solid #eee;">
+
+        <!-- DC Details -->
+        <div class="row mb-4">
+            <div class="col-sm-6">
+                <table class="table table-sm table-borderless mb-0" style="font-size: 14px;">
+                    <tr>
+                        <td style="width: 140px; font-weight: 600; color: #555;">Date & Time:</td>
+                        <td>{{ $stockOut->created_at->format('d-m-Y H:i') }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Outbound Invoice #:</td>
+                        <td><span class="badge bg-light text-dark border">{{ $stockOut->dispatched_invoice_no ?? '-' }}</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Source Type:</td>
+                        <td>{{ strtoupper($stockOut->source_type ?? '-') }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Dispatch To #:</td>
+                        <td>{{ $stockOut->da_no ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">From:</td>
+                        <td>{{ optional($stockOut->warehouse)->name ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">To:</td>
+                        <td>{{ $stockOut->customer->name ?? $stockOut->toWarehouse->name ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Vendor:</td>
+                        <td>{{ optional($stockOut->vendor)->name ?? '-' }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-sm-6">
+                <table class="table table-sm table-borderless mb-0" style="font-size: 14px;">
+                    <tr>
+                        <td style="width: 140px; font-weight: 600; color: #555;">Transporter:</td>
+                        <td>{{ optional($stockOut->transporter)->name ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Vehicle #:</td>
+                        <td>{{ $stockOut->vehicle_no ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Vehicle Size:</td>
+                        <td>{{ $stockOut->vehicle_size ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Driver Name:</td>
+                        <td>{{ $stockOut->driver_name ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Driver Mobile:</td>
+                        <td>{{ $stockOut->driver_mobile ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Seal #:</td>
+                        <td>{{ $stockOut->seal_no ?? '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600; color: #555;">Gate Pass No.:</td>
+                        <td>{{ $stockOut->gatepass_no ?? '-' }}</td>
+                    </tr>
+                </table>
             </div>
         </div>
 
@@ -41,7 +97,8 @@
             <thead class="table-light">
                 <tr>
                     <th style="width: 5%; text-align: center;">#</th>
-                    <th style="width: 60%; text-align: left;">Item</th>
+                    <th style="width: 20%; text-align: left;">Item Code</th>
+                    <th style="width: 40%; text-align: left;">Description</th>
                     <th style="width: 15%; text-align: left;">Batch</th>
                     <th style="width: 20%; text-align: right;">Qty</th>
                 </tr>
@@ -50,8 +107,9 @@
                 @foreach($stockOut->items as $i => $item)
                 <tr>
                     <td style="text-align: center;">{{ $i+1 }}</td>
-                    <td style="text-align: left;">{{ $item->product->name }}</td>
-                    <td style="text-align: left;">{{ $item->sap_batch }}</td>
+                    <td style="text-align: left;">{{ optional($item->product)->item_code ?? '-' }}</td>
+                    <td style="text-align: left;">{{ optional($item->product)->name ?? '-' }}</td>
+                    <td style="text-align: left;">{{ $item->sap_batch ?? '-' }}</td>
                     <td style="text-align: right;">{{ $item->dispatch_quantity }}</td>
                 </tr>
                 @endforeach
