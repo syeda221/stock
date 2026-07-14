@@ -146,30 +146,16 @@
         </table>
 
         {{-- SIGNATURES --}}
-        <table class="signature-table">
-            <tr>
-                <td width="20%">
-                    <span class="signature-title">Shift Incharge</span>
-                    ____________________
-                </td>
-                <td width="20%">
-                    <span class="signature-title">Shift Supervisor</span>
-                    ____________________
-                </td>
-                <td width="20%">
-                    <span class="signature-title">Warehouse Incharge</span>
-                    ____________________
-                </td>
-                <td width="20%">
-                    <span class="signature-title">Security Incharge</span>
-                    ____________________
-                </td>
-                <td width="20%">
-                    <span class="signature-title">Driver Sign</span>
-                    ____________________
-                </td>
-            </tr>
-        </table>
+        <div class="row mt-5">
+            <div class="col-6">
+                <b>RECEIVER NAME & SIG:</b><br><br>
+                ______________________________
+            </div>
+            <div class="col-6 text-end">
+                <b>SYSTEM RECEIVER NAME & SIG:</b><br><br>
+                ______________________________
+            </div>
+        </div>
 
     </div>
 </div>
