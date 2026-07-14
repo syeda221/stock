@@ -45,14 +45,7 @@
                         <td style="font-weight: 600; color: #555;">Dispatch To #:</td>
                         <td>{{ $stockOut->da_no ?? '-' }}</td>
                     </tr>
-                    <tr>
-                        <td style="font-weight: 600; color: #555;">From:</td>
-                        <td>{{ optional($stockOut->warehouse)->name ?? '-' }}</td>
-                    </tr>
-                    <tr>
-                        <td style="font-weight: 600; color: #555;">To:</td>
-                        <td>{{ $stockOut->customer->name ?? $stockOut->toWarehouse->name ?? '-' }}</td>
-                    </tr>
+
                     <tr>
                         <td style="font-weight: 600; color: #555;">Vendor:</td>
                         <td>{{ optional($stockOut->vendor)->name ?? '-' }}</td>
