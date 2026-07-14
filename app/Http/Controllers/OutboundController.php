@@ -858,6 +858,22 @@ class OutboundController extends Controller
         return view('outbound.invoice', compact('stockOut'));
     }
 
+    public function dispatchDetails(StockOut $stockOut)
+    {
+        $stockOut->load([
+            'warehouse',
+            'toWarehouse',
+            'customer',
+            'transporter',
+            'items.product',
+            'items.sourceStockInItem',
+            'items.product.uom',
+            'items.product.packingType',
+        ]);
+
+        return view('outbound.dispatch_details', compact('stockOut'));
+    }
+
     public function dc(StockOut $stockOut)
     {
         $stockOut->load([

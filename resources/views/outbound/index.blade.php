@@ -386,8 +386,15 @@
 
                                 <a href="{{ route('outbound.invoice', $out->id) }}"
                                    class="btn btn-sm btn-outline-success"
-                                   target="_blank" title="Invoice">
+                                   target="_blank" title="Pick List">
                                     <i class="bi bi-file-text"></i>
+                                </a>
+
+                                <a href="{{ route('outbound.dispatch_details', $out->id) }}"
+                                   class="btn btn-sm btn-outline-info"
+                                   target="_blank"
+                                   title="Dispatch Details">
+                                    <i class="bi bi-receipt"></i>
                                 </a>
 
                                 <a href="{{ route('outbound.dc', $out->id) }}"

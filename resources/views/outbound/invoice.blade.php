@@ -27,7 +27,7 @@
 
     {{-- HEADER --}}
     <div class="card-header d-flex justify-content-between align-items-center no-print">
-        <strong>Outbound Invoice</strong>
+        <strong>Pick List</strong>
         <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
     </div>
 
@@ -42,7 +42,7 @@
                     Dispatch Location: {{ $stockOut->warehouse->name }}
                 </td>
                 <td width="40%" class="text-end">
-                    <strong>Invoice</strong><br>
+                    <strong>Pick List</strong><br>
                     Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}
                 </td>
             </tr>
@@ -51,64 +51,27 @@
         {{-- HEADER DETAILS --}}
         <table class="table table-bordered table-sm mb-3">
             <tr>
-                <th>Invoice No</th>
-                <td>{{ $stockOut->dispatched_invoice_no }}</td>
+                <th>Date</th>
+                <td>{{ $stockOut->created_at->format('d.m.Y H:i') }}</td>
 
-                <th>Outbound Type</th>
-                <td>{{ strtoupper($stockOut->source_type) }}</td>
+                <th>Dispatched Invoice #</th>
+                <td>{{ $stockOut->dispatched_invoice_no ?? '-' }}</td>
             </tr>
 
             <tr>
-                <th>From Warehouse</th>
-                <td>{{ $stockOut->warehouse->name }}</td>
+                <th>W/H. (Location)</th>
+                <td>{{ optional($stockOut->warehouse)->name ?? '-' }}</td>
 
-                <th>To</th>
-                <td>{{ $stockOut->customer->name ?? $stockOut->toWarehouse->name ?? '-' }}</td>
+                <th>Dispatch To</th>
+                <td>{{ optional($stockOut->customer)->name ?? optional($stockOut->toWarehouse)->name ?? '-' }}</td>
             </tr>
 
             <tr>
-                <th>Transporter</th>
-                <td>{{ $stockOut->transporter->name ?? '-' }}</td>
+                <th>Vehicle #</th>
+                <td>{{ $stockOut->vehicle_no ?? '-' }}</td>
 
-                <th>Shipment Type</th>
-                <td>{{ strtoupper($stockOut->shipment_type) }}</td>
-            </tr>
-
-            <tr>
-                <th>Vehicle No</th>
-                <td>{{ $stockOut->vehicle_no }}</td>
-
-                <th>Vehicle Size</th>
-                <td>{{ $stockOut->vehicle_size }}</td>
-            </tr>
-
-            <tr>
-                <th>Driver</th>
-                <td>{{ $stockOut->driver_name }} ({{ $stockOut->driver_mobile }})</td>
-
-                <th>DA No</th>
-                <td>{{ $stockOut->da_no ?? '-' }}</td>
-            </tr>
-
-            <tr>
-                <th>Vehicle In</th>
-                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_in_time)->format('d.m.Y H:i:s')}}</td>
-
-                <th>Vehicle Out</th>
-                <td>{{ \Carbon\Carbon::parse($stockOut->Vehicle_out_time)->format('d.m.Y H:i:s') }}</td>
-            </tr>
-
-            <tr>
-                <th>Dispatcher</th>
-                <td>{{ $stockOut->dispatcher_sig }}</td>
-
-                <th>Picker</th>
-                <td>{{ $stockOut->picker }}</td>
-            </tr>
-
-            <tr>
                 <th>Remarks</th>
-                <td colspan="3">{{ $stockOut->remarks ?? '-' }}</td>
+                <td>{{ $stockOut->remarks ?? '-' }}</td>
             </tr>
         </table>
 
@@ -116,20 +79,17 @@
         <table class="table table-bordered table-sm">
             <thead class="table-light text-center">
                 <tr>
-                    <th>SKU</th>
+                    <th>Item Code</th>
                     <th>Description</th>
-                    {{-- <th>From WH</th> --}}
-                    <th>Batch</th>
-                    {{-- <th>PO</th> --}}
-                    <th>IBD</th>
-                    <th>MFG</th>
-                    <th>Expiry</th>
-                    <th>Pack</th>
-                    <th>Units</th>
-                    <th>Qty</th>
-                    <th>STO</th>
+                    <th>Vendor Batch</th>
+                    <th>PO #</th>
+                    <th>Packing</th>
+                    <th>Pack Size</th>
                     <th>UOM</th>
-                    <th>Remarks</th>
+                    <th>Units Dispatched</th>
+                    <th>Dispatch Qty</th>
+                    <th>MFG Date</th>
+                    <th>Expiry Date</th>
                 </tr>
             </thead>
             <tbody>
@@ -137,21 +97,17 @@
                 @foreach($stockOut->items as $item)
                     @php $totalQty += $item->dispatch_quantity; @endphp
                     <tr>
-                        <td>{{ $item->product->item_code }}</td>
-                        <td>{{ $item->product->name }}</td>
-                        {{-- <td>{{ $item->warehouse->name ?? '-' }}</td> --}}
-                        <td>{{ $item->sap_batch ?? $item->vendor_batch }}</td>
-                        {{-- <td>{{ $item->po_no ?? $item->sourceStockInItem->po_no ?? '-' }}</td> --}}
-                        <td>{{ $item->ibd_no ?? $item->sourceStockInItem->ibd_no ?? '-' }}</td>
-                        <td>{{ optional($item->mfg_date)->format('d.m.Y') }}</td>
-                        <td>{{ optional($item->expiry_date)->format('d.m.Y') }}</td>
+                        <td>{{ optional($item->product)->item_code ?? '-' }}</td>
+                        <td>{{ optional($item->product)->name ?? '-' }}</td>
+                        <td>{{ $item->vendor_batch ?? $item->sap_batch ?? '-' }}</td>
+                        <td>{{ $item->po_resolved ?? '-' }}</td>
+                        <td class="text-center">{{ optional(optional($item->product)->packingType)->name ?? '-' }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
+                        <td class="text-center">{{ $item->uom_resolved ?? '-' }}</td>
                         <td class="text-end">{{ $item->units_dispatch }}</td>
                         <td class="text-end fw-bold">{{ $item->dispatch_quantity }}</td>
-                        <td>{{ $item->sto_no ?? '-' }}</td>
-
-                        <td class="text-center">{{ $item->product->uom->name ?? '-' }}</td>
-                        <td>{{ $item->remarks ?? '-' }}</td>
+                        <td>{{ optional($item->mfg_date)->format('d.m.Y') ?? '-' }}</td>
+                        <td>{{ optional($item->expiry_date)->format('d.m.Y') ?? '-' }}</td>
                     </tr>
                 @endforeach
 
@@ -164,30 +120,16 @@
         </table>
 
         {{-- SIGNATURES --}}
-      <table class="signature-table">
-    <tr>
-        <td width="20%">
-            <span class="signature-title">Shift Incharge</span>
-            ____________________
-        </td>
-        <td width="20%">
-            <span class="signature-title">Shift Supervisor</span>
-            ____________________
-        </td>
-        <td width="20%">
-            <span class="signature-title">Warehouse Incharge</span>
-            ____________________
-        </td>
-        <td width="20%">
-            <span class="signature-title">Security Incharge</span>
-            ____________________
-        </td>
-        <td width="20%">
-            <span class="signature-title">Driver Sign</span>
-            ____________________
-        </td>
-    </tr>
-</table>
+        <div class="row mt-5">
+            <div class="col-6">
+                <b>PICKER NAME & SIG:</b><br><br>
+                ______________________________
+            </div>
+            <div class="col-6 text-end">
+                <b>PICKING CREATOR NAME & SIG:</b><br><br>
+                ______________________________
+            </div>
+        </div>
 
     </div>
 </div>

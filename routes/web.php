@@ -188,6 +188,10 @@ Route::get('/outbound/{stockOut}', [OutboundController::class, 'show'])
 Route::get('/outbound/{stockOut}/invoice', [OutboundController::class, 'invoice'])
     ->name('outbound.invoice');
 
+// DISPATCH DETAILS
+Route::get('/outbound/{stockOut}/dispatch-details', [OutboundController::class, 'dispatchDetails'])
+    ->name('outbound.dispatch_details');
+
 // DC (Dispatch Challan – short)
 Route::get('/outbound/{stockOut}/dc', [OutboundController::class, 'dc'])
     ->name('outbound.dc');
