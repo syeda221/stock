@@ -1750,4 +1750,102 @@ class InboundController extends Controller
             return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
     }
+
+    public function gatePassExport($stockInId)
+    {
+        $stockIn = StockIn::with([
+            'items.product.category',
+            'items.product.uom',
+            'items.product.packingType',
+            'items.warehouseRow',
+            'vendor',
+            'warehouse',
+        ])->findOrFail($stockInId);
+
+        $filename = 'GatePass-' . ($stockIn->dispatched_invoice_no ?: $stockIn->inbound_invoice_no ?: $stockIn->id) . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $csv = fopen('php://memory', 'w');
+
+        fputcsv($csv, [
+            'DATE',
+            'Item Code',
+            'DESCRIPTION',
+            'W/H. (LOCATION)',
+            'Group',
+            'UOM',
+            'Vendor Batch',
+            'PO',
+            'Packing',
+            'Pack Size',
+            'RECEIVED Units',
+            'Total Qty',
+            'MFG Date',
+            'Expiry Date',
+            'Inbound Invoice #',
+            'GATE PASS ETC #',
+            'Vehicle In DATE & Time',
+            'Vehicle Out DATE & Time',
+            'Remarks',
+        ]);
+
+        $totalItems = 0;
+
+        foreach ($stockIn->items as $item) {
+            $product = $item->product;
+
+            $location = $stockIn->warehouse->name ?? '';
+
+            $vehicleIn = $stockIn->vehicle_in_time
+                ? ($stockIn->vehicle_in_time instanceof \Carbon\Carbon ? $stockIn->vehicle_in_time->format('d.m.Y H:i') : $stockIn->vehicle_in_time)
+                : '';
+            $vehicleOut = $stockIn->vehicle_out_time
+                ? ($stockIn->vehicle_out_time instanceof \Carbon\Carbon ? $stockIn->vehicle_out_time->format('d.m.Y H:i') : $stockIn->vehicle_out_time)
+                : '';
+            $mfgDate = $item->mfg_date
+                ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d.m.Y') : $item->mfg_date)
+                : '';
+            $expiryDate = $item->expiry_date
+                ? (method_exists($item->expiry_date, 'format') ? $item->expiry_date->format('d.m.Y') : $item->expiry_date)
+                : '';
+
+            fputcsv($csv, [
+                $stockIn->created_at ? $stockIn->created_at->format('d.m.Y') : '',
+                optional($product)->item_code ?? '',
+                optional($product)->name ?? '',
+                $location,
+                optional(optional($product)->group)->name ?? '',
+                optional(optional($product)->uom)->name ?? '',
+                $item->vendor_batch ?? '',
+                $item->po_no ?? ($stockIn->po_no ?? ''),
+                optional(optional($product)->packingType)->name ?? '',
+                $item->pack_size_snapshot ?? '',
+                $item->units_received ?? 0,
+                $item->total_quantity ?? 0,
+                $mfgDate,
+                $expiryDate,
+                $stockIn->inbound_invoice_no ?? '',
+                $stockIn->gatepass_no ?? '',
+                $vehicleIn,
+                $vehicleOut,
+                $item->remarks ?? ($stockIn->remarks ?? ''),
+            ]);
+
+            $totalItems++;
+        }
+
+        fputcsv($csv, ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+        fputcsv($csv, ['Total Items:', $totalItems]);
+
+        rewind($csv);
+        $content = stream_get_contents($csv);
+        fclose($csv);
+
+        return response()->streamDownload(function () use ($content) {
+            echo $content;
+        }, $filename, $headers);
+    }
 }

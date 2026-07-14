@@ -492,6 +492,11 @@
                                        target="_blank">
                                         <i class="bi bi-file-pdf"></i>
                                     </a>
+                                    <a href="{{ route('inbound.gate-pass-export', $item->stock_in_id) }}"
+                                       class="btn btn-sm btn-outline-secondary"
+                                       title="Download Gate Pass">
+                                        <i class="bi bi-download"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
