@@ -27,7 +27,7 @@
 
     {{-- HEADER --}}
     <div class="card-header d-flex justify-content-between align-items-center no-print">
-        <strong>Inbound Receipt</strong>
+        <strong>Put Away</strong>
         <div class="d-flex gap-2">
         <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
 
@@ -40,11 +40,11 @@
         <table class="table table-borderless mb-2">
             <tr>
                 <td width="60%">
-                    <strong>Unilever Pakistan Limited</strong><br>
-                    Receiving Location: {{ optional($stockIn->warehouse)->name ?? '-' }}
+                    <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 150px;" class="mb-2"><br>
+                    <strong>Unilever Pakistan Limited</strong>
                 </td>
                 <td width="40%" class="text-end">
-                    <strong>Receipt</strong><br>
+                    <strong>Put Away</strong><br>
                     Date: {{ optional($stockIn->created_at)->format('d.m.Y H:i') ?? '-' }}
                 </td>
             </tr>
@@ -55,65 +55,20 @@
             <tr>
                 <th>Inbound Invoice No</th>
                 <td>{{ $stockIn->inbound_invoice_no ?? '-' }}</td>
-            </tr>
-
-            <tr class="print-hidden">
-                <th>Inbound Type</th>
-                <td>{{ strtoupper($stockIn->source_type ?? 'inbound') }}</td>
-                <th>Warehouse</th>
+                <th>Warehouse Location</th>
                 <td>{{ optional($stockIn->warehouse)->name ?? '-' }}</td>
             </tr>
-
-            <tr class="print-hidden">
+            <tr>
                 <th>Vendor</th>
                 <td>{{ optional($stockIn->vendor)->name ?? '-' }}</td>
-                <th>Arrived From</th>
-                <td>{{ optional($stockIn->arrivedFrom)->name ?? '-' }}</td>
-            </tr>
-
-            <tr class="print-hidden">
-                <th>Transporter</th>
-                <td>{{ optional($stockIn->transporter)->name ?? '-' }}</td>
-                <th>Shipment Type</th>
-                <td>{{ strtoupper($stockIn->shipment_type ?? 'manual') }}</td>
-            </tr>
-
-            <tr class="print-hidden">
-                <th>Vehicle No</th>
-                <td>{{ $stockIn->vehicle_no ?? '-' }}</td>
-                <th>Vehicle Size</th>
-                <td>{{ $stockIn->vehicle_size ?? '-' }}</td>
-            </tr>
-
-            <tr class="print-hidden">
-                <th>Driver</th>
-                <td>
-                    {{ $stockIn->driver_name ?? '-' }}
-                    @if(!empty($stockIn->driver_mobile))
-                        ({{ $stockIn->driver_mobile }})
-                    @endif
-                </td>
                 <th>Delivery No</th>
                 <td>{{ $stockIn->delivery_no ?? '-' }}</td>
             </tr>
-
-            <tr class="print-hidden">
-                <th>Vehicle In</th>
+            <tr>
+                <th>Vehicle In Date & Time</th>
                 <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</td>
-                <th>Vehicle Out</th>
-                <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</td>
-            </tr>
-
-            <tr class="print-hidden">
-                <th>Dispatcher</th>
-                <td>{{ $stockIn->dispatcher_sig ?? '-' }}</td>
-                <th>Picker</th>
-                <td>{{ $stockIn->picker ?? '-' }}</td>
-            </tr>
-
-            <tr class="print-hidden">
                 <th>Remarks</th>
-                <td colspan="3">{{ $stockIn->remarks ?? '-' }}</td>
+                <td>{{ $stockIn->remarks ?? '-' }}</td>
             </tr>
         </table>
 
@@ -121,18 +76,20 @@
         <table class="table table-bordered table-sm">
             <thead class="table-light text-center">
                 <tr>
-                    <th>SKU</th>
+                    <th>Item Code</th>
                     <th>Description</th>
+                    <th>Group</th>
                     <th>SAP Batch</th>
                     <th>Vendor Batch</th>
                     <th>Delivery No</th>
                     <th>Shipment</th>
                     <th>STO</th>
-                    <th>PO</th>
+                    <th>PO #</th>
                     <th>IBD</th>
                     <th>MFG / EXP</th>
-                    <th>Pack</th>
-                    <th>Units</th>
+                    <th>Packing</th>
+                    <th>Pack Size</th>
+                    <th>Received Qty</th>
                     <th>Total Qty</th>
                     <th>QC</th>
                     <th>UOM</th>
@@ -142,6 +99,7 @@
             <tbody>
                 @php 
                     $totalQty = 0; 
+                    $totalReceived = 0;
                     $groupedItems = $stockIn->items->groupBy(function($item) {
                         return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
                     })->map(function($group) {
@@ -152,10 +110,14 @@
                     });
                 @endphp
                 @foreach($groupedItems as $item)
-                    @php $totalQty += (float) ($item->total_quantity ?? 0); @endphp
+                    @php 
+                        $totalQty += (float) ($item->total_quantity ?? 0); 
+                        $totalReceived += (float) ($item->units_received ?? 0);
+                    @endphp
                     <tr>
                         <td>{{ $item->product->item_code ?? '-' }}</td>
-                        <td>{{ $item->product->name ?? '-' }} ({{ $item->product->item_code ?? '-' }})</td>
+                        <td>{{ $item->product->name ?? '-' }}</td>
+                        <td>{{ optional($item->product->group)->name ?? '-' }}</td>
                         <td>{{ $item->sap_batch ?? '-' }}</td>
                         <td>{{ $item->vendor_batch ?? '-' }}</td>
                         <td>{{ $stockIn->delivery_no ?? '-' }}</td>
@@ -164,6 +126,7 @@
                         <td>{{ $item->po_no ?? $stockIn->po_no ?? '-' }}</td>
                         <td>{{ $item->ibd_no ?? $stockIn->ibd_no ?? '-' }}</td>
                         <td>{{ optional($item->mfg_date)->format('d.m.Y') }} / {{ optional($item->expiry_date)->format('d.m.Y') }}</td>
+                        <td class="text-end">{{ optional($item->product->packingType)->name ?? '-' }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
                         <td class="text-end">{{ $item->units_received ?? 0 }}</td>
                         <td class="text-end fw-bold">{{ $item->total_quantity ?? 0 }}</td>
@@ -174,9 +137,10 @@
                 @endforeach
 
                 <tr class="fw-bold">
-                    <td colspan="11" class="text-end">TOTAL</td>
+                    <td colspan="13" class="text-end">TOTAL</td>
+                    <td class="text-end">{{ $totalReceived }}</td>
                     <td class="text-end">{{ $totalQty }}</td>
-                    <td colspan="4"></td>
+                    <td colspan="3"></td>
                 </tr>
             </tbody>
         </table>

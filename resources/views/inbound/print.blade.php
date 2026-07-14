@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Inbound Receipt</title>
+    <title>Put Away</title>
     <style>
         body { font-family: Arial, sans-serif; font-size: 13px; color: #000; }
         table { width: 100%; border-collapse: collapse; }
@@ -15,7 +15,7 @@
 </head>
 <body onload="window.print()">
 
-<h3 class="center title">Inbound Receipt</h3>
+<h3 class="center title">Put Away</h3>
 
 <p><strong>Inbound Invoice No:</strong> {{ $stockIn->inbound_invoice_no ?? '-' }}</p>
 
