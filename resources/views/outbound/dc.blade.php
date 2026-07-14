@@ -3,7 +3,7 @@
 @section('content')
 <div class="card shadow-sm print-container">
     <div class="card-header d-flex justify-content-between">
-        <strong>Dispatch Challan (DC)</strong>
+        <strong>Gate Pass</strong>
         <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
     </div>
 
@@ -117,11 +117,15 @@
         </table>
 
         <div class="row mt-5">
-            <div class="col-6">
+            <div class="col-4">
                 <b>DRIVER NAME, CNIC # & SIG:</b><br><br>
                 ______________________________
             </div>
-            <div class="col-6 text-end">
+            <div class="col-4 text-center">
+                <b>SECURITY GUARD SIG:</b><br><br>
+                ______________________________
+            </div>
+            <div class="col-4 text-end">
                 <b>DISPATCHER NAME & SIG:</b><br><br>
                 ______________________________
             </div>

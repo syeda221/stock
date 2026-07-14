@@ -399,7 +399,7 @@
 
                                 <a href="{{ route('outbound.dc', $out->id) }}"
                                    class="btn btn-sm btn-outline-secondary"
-                                   target="_blank" title="DC">
+                                   target="_blank" title="Gate Pass">
                                     <i class="bi bi-file-earmark"></i>
                                 </a>
 
