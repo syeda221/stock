@@ -119,6 +119,67 @@ class StockInItem extends Model
         return $activePallets;
     }
 
+    public function getOriginalPallets(): array
+    {
+        $maxPerPallet = $this->product?->cartons_per_pallet ?? null;
+        if (!$maxPerPallet || $maxPerPallet <= 0 || $this->pallets_used <= 0) {
+            $qtyPerUnits = $this->pallets_used > 0 ? round($this->units_received / $this->pallets_used, 4) : $this->units_received;
+            $qtyPerQty = $this->pallets_used > 0 ? round($this->total_quantity / $this->pallets_used, 4) : $this->total_quantity;
+            $arr = [];
+            for ($i = 0; $i < max(1, $this->pallets_used); $i++) {
+                $arr[$i] = [
+                    'units' => $qtyPerUnits,
+                    'qty' => $qtyPerQty,
+                ];
+            }
+            return $arr;
+        }
+
+        $packSize = $this->pack_size_snapshot > 0 ? $this->pack_size_snapshot : 1;
+        $maxPerPalletInUnits = $maxPerPallet * $packSize;
+        
+        $originalQty = round((float)$this->units_received * $packSize, 4);
+        
+        $pallets = [];
+        $remainingOriginal = $originalQty;
+        $originalPalletCount = (int) ceil($originalQty / $maxPerPalletInUnits);
+        
+        for ($i = 0; $i < $originalPalletCount; $i++) {
+            $fillQty = min($maxPerPalletInUnits, $remainingOriginal);
+            $fillUnits = $fillQty / $packSize;
+            $pallets[$i] = [
+                'units' => $fillUnits,
+                'qty' => $fillQty,
+            ];
+            $remainingOriginal -= $fillQty;
+            if ($remainingOriginal <= 0) break;
+        }
+        
+        return $pallets;
+    }
+
+    public function getPalletName($offsetIndex)
+    {
+        $row = $this->warehouseRow;
+        if (!$row || !$this->pallet_start) {
+            return $row ? $row->row_name : '-';
+        }
+
+        $rowName = $row->row_name;
+        $parts = explode(' to ', $rowName);
+        $firstPallet = $parts[0];
+
+        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+            $prefix = $matches[1];
+            $startNum = (int)$matches[2];
+            $actualNum = $startNum + $this->pallet_start - 1 + $offsetIndex;
+            $digits = strlen($matches[2]);
+            return $prefix . sprintf("%0{$digits}d", $actualNum);
+        }
+
+        return $rowName . ' - P' . ($this->pallet_start + $offsetIndex);
+    }
+
     public function stockIn()
     {
         return $this->belongsTo(StockIn::class);
