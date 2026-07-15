@@ -551,7 +551,7 @@ class OutboundController extends Controller
         ]);
 
         $groupedItems = $stockOut->items->groupBy(function($item) {
-            return $item->product_id . '_' . $item->warehouse_id;
+            return $item->product_id . '_' . $item->warehouse_id . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->sto_no;
         })->map(function($group) {
             $first = $group->first();
             return [
@@ -686,6 +686,16 @@ class OutboundController extends Controller
 
                     if ($batches->isEmpty()) {
                         $productName = Product::find($productId)->name ?? $productId;
+                        
+                        $anyStockExists = StockInItem::where('product_id', $productId)
+                            ->where('warehouse_id', $itWarehouseId)
+                            ->where('balance_quantity', '>', 0)
+                            ->exists();
+
+                        if ($anyStockExists && $request->outbound_type === 'customer') {
+                            throw new \Exception("Cannot dispatch product '{$productName}'. Available stock is expired, near-expiry, blocked, or rejected.");
+                        }
+                        
                         throw new \Exception("No valid stock available for product '{$productName}' in selected warehouse.");
                     }
 
@@ -716,12 +726,14 @@ class OutboundController extends Controller
                             $maxPerPalletInUnits = $maxPerPallet * $pack;
                             
                             $preDecrementBalance = $batch->balance_quantity + $qtyToTake;
+                            
                             $originalBalance = $batch->balance_quantity;
                             $batch->balance_quantity = $preDecrementBalance;
                             $currentPallets = $batch->getPalletBalances();
                             $batch->balance_quantity = $originalBalance;
                             
-                            // Now deduct from the LEFTMOST (earliest) pallets first
+                            $preActivePallets = count($currentPallets);
+                            
                             $remTake = $qtyToTake;
                             foreach ($currentPallets as $pIdx => $pQty) {
                                 if ($remTake <= 0) break;
@@ -736,24 +748,6 @@ class OutboundController extends Controller
                                     'qty' => $takeHere,
                                     'units' => $takeHere / $pack
                                 ];
-                            }
-                            
-                            // Check if any pallets were completely emptied
-                            $emptiedCount = 0;
-                            foreach ($currentPallets as $pQty) {
-                                if ($pQty <= 0) {
-                                    $emptiedCount++;
-                                } else {
-                                    break;
-                                }
-                            }
-                            
-                            if ($emptiedCount > 0) {
-                                if ($batch->pallet_start !== null) {
-                                    $batch->pallet_start += $emptiedCount;
-                                }
-                                $batch->pallets_used -= $emptiedCount;
-                                $batch->save();
                             }
                         } else {
                             $palletDeductions[] = [
@@ -1069,17 +1063,18 @@ class OutboundController extends Controller
         $file = fopen('php://output', 'w');
         fputcsv($file, [
             'Item Code', 'Product Name', 'Warehouse', 'Type',
-            'Units Dispatched', 'Customer', 'PO', 'IBD', 'STO',
+            'Units Dispatched', 'Customer', 'Transporter', 'Vehicle No', 'Driver Name', 'Vehicle In Time', 'Vehicle Out Time',
+            'PO', 'IBD', 'STO',
             'SAP Batch', 'Vendor Batch', 'MFG Date', 'Expiry Date', 'Remarks'
         ]);
         fputcsv($file, [
             '001', 'Sample Product', '', 'sale',
-            '100', '', 'PO-001', 'IBD-001', '',
+            '100', 'Customer A', 'Transporter X', 'XYZ-123', 'John Doe', '2024-01-15 10:00', '2024-01-15 11:30', 'PO-001', 'IBD-001', '',
             '', '', '2024-01-15', '2025-01-15', ''
         ]);
         fputcsv($file, [
             '002', 'Sample Product 2', 'Main Warehouse', 'transfer',
-            '50', '', 'PO-002', '', 'STO-001',
+            '50', '', '', '', '', '', '', 'PO-002', '', 'STO-001',
             '', '', '', '', ''
         ]);
         fclose($file);
@@ -1126,7 +1121,12 @@ class OutboundController extends Controller
             'MFG Date'         => ['MFG Date', 'mfg_date', 'MfgDate', 'Manufacturing Date'],
             'Expiry Date'      => ['Expiry Date', 'expiry_date', 'ExpiryDate', 'Exp Date'],
             'Pallets'          => ['Pallets', 'pallets', 'pallets_returned', 'Pallets Returned'],
-            'Customer'         => ['Customer', 'customer', 'Customer Name'],
+            'Customer'         => ['Customer', 'customer', 'Customer Name', 'Customer / Destination'],
+            'Transporter'      => ['Transporter', 'transporter', 'Transporter Name'],
+            'Vehicle No'       => ['Vehicle No', 'vehicle_no', 'Vehicle Number'],
+            'Driver Name'      => ['Driver Name', 'driver_name', 'Driver'],
+            'Vehicle In Time'  => ['Vehicle In Time', 'vehicle_in_time', 'In Time'],
+            'Vehicle Out Time' => ['Vehicle Out Time', 'vehicle_out_time', 'Out Time'],
             'Remarks'          => ['Remarks', 'remarks', 'Notes', 'Comment'],
             'Warehouse'        => ['Warehouse', 'warehouse', 'Warehouse Name', 'WH'],
         ];
@@ -1214,6 +1214,11 @@ class OutboundController extends Controller
                 'units'         => (int) $units,
                 'type'          => $type ?: 'sale',
                 'customer'      => $getCell($row, 'Customer'),
+                'transporter'   => $getCell($row, 'Transporter'),
+                'vehicle_no'    => $getCell($row, 'Vehicle No'),
+                'driver_name'   => $getCell($row, 'Driver Name'),
+                'vehicle_in_time' => $getCell($row, 'Vehicle In Time'),
+                'vehicle_out_time'=> $getCell($row, 'Vehicle Out Time'),
                 'warehouse_id'  => $warehouseId,
                 'po_no'         => $getCell($row, 'PO'),
                 'ibd_no'        => $getCell($row, 'IBD'),
@@ -1235,6 +1240,7 @@ class OutboundController extends Controller
         try {
             DB::transaction(function () use ($csvRows, $request, &$imported, &$skipped, &$errors) {
                 $allCustomers = \App\Models\Customer::where('status', 1)->get();
+                $allTransporters = \App\Models\Transporter::where('status', 1)->get();
                 
                 $groupedRows = [];
                 foreach ($csvRows as $item) {
@@ -1246,6 +1252,7 @@ class OutboundController extends Controller
                 foreach ($groupedRows as $groupKey => $rows) {
                     $stockOut = null;
                     $customerId = null;
+                    $transporterId = null;
                     
                     $parts = explode('|', $groupKey, 2);
                     $customerName = $parts[1] ?? '';
@@ -1255,6 +1262,14 @@ class OutboundController extends Controller
                             return strtolower($c->name) === strtolower($customerName) || $c->id == $customerName;
                         });
                         $customerId = $matchedCustomer ? $matchedCustomer->id : null;
+                    }
+                    
+                    $transporterName = $rows[0]['transporter'] ?? '';
+                    if ($transporterName !== '') {
+                        $matchedTransporter = $allTransporters->first(function($t) use ($transporterName) {
+                            return strtolower($t->name) === strtolower($transporterName) || $t->id == $transporterName;
+                        });
+                        $transporterId = $matchedTransporter ? $matchedTransporter->id : null;
                     }
 
                     foreach ($rows as $item) {
@@ -1321,6 +1336,11 @@ class OutboundController extends Controller
                             $stockOut = StockOut::create([
                                 'source_type'           => $type === 'sale' ? 'sale' : 'transfer',
                                 'customer_id'           => $customerId,
+                                'transporter_id'        => $transporterId,
+                                'vehicle_no'            => $rows[0]['vehicle_no'] ?? null,
+                                'driver_name'           => $rows[0]['driver_name'] ?? null,
+                                'vehicle_in_time'       => $rows[0]['vehicle_in_time'] ?: null,
+                                'vehicle_out_time'      => $rows[0]['vehicle_out_time'] ?: null,
                                 'warehouse_id'          => $warehouseId,
                                 'dispatched_invoice_no' => $invoiceNo,
                                 'shipment_type'         => 'manual',
