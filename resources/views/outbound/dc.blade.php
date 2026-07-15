@@ -3,7 +3,7 @@
 @section('content')
 <div class="card shadow-sm print-container">
     <div class="card-header d-flex justify-content-between">
-        <strong>Gate Pass</strong>
+        <strong>Gate Pass Outbound</strong>
         <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
     </div>
 
@@ -92,20 +92,33 @@
                     <th style="width: 5%; text-align: center;">#</th>
                     <th style="width: 20%; text-align: left;">Item Code</th>
                     <th style="width: 40%; text-align: left;">Description</th>
-                    <th style="width: 15%; text-align: left;">Batch</th>
-                    <th style="width: 20%; text-align: right;">Qty</th>
+                    <th style="width: 15%; text-align: left;">Unit Dispatch</th>
+                    <th style="width: 20%; text-align: right;">Total Qty</th>
                 </tr>
             </thead>
             <tbody>
+                @php 
+                    $totalUnits = 0;
+                    $totalQty = 0;
+                @endphp
                 @foreach($stockOut->items as $i => $item)
+                @php 
+                    $totalUnits += (float) ($item->units_dispatch ?? 0);
+                    $totalQty += (float) ($item->dispatch_quantity ?? 0);
+                @endphp
                 <tr>
                     <td style="text-align: center;">{{ $i+1 }}</td>
                     <td style="text-align: left;">{{ optional($item->product)->item_code ?? '-' }}</td>
                     <td style="text-align: left;">{{ optional($item->product)->name ?? '-' }}</td>
-                    <td style="text-align: left;">{{ $item->sap_batch ?? '-' }}</td>
+                    <td style="text-align: left;">{{ $item->units_dispatch ?? '-' }}</td>
                     <td style="text-align: right;">{{ $item->dispatch_quantity }}</td>
                 </tr>
                 @endforeach
+                <tr class="fw-bold">
+                    <td colspan="3" style="text-align: right;">TOTAL</td>
+                    <td style="text-align: left;">{{ $totalUnits }}</td>
+                    <td style="text-align: right;">{{ number_format($totalQty, 3) }}</td>
+                </tr>
             </tbody>
         </table>
 

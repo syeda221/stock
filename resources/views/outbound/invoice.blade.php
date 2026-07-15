@@ -38,8 +38,11 @@
             <tr>
                 <td width="60%">
                     <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 150px;" class="mb-2"><br>
-                    <strong>Unilever Pakistan Limited</strong><br>
-                    Dispatch Location: {{ $stockOut->warehouse->name }}
+                    <h5 class="mb-1 fw-bold" style="color: #333;">SPC WARE HOUSE</h5>
+                    <p class="mb-0" style="font-size: 14px; color: #555;">
+                        KACHA SADIQ ABAD ROAD NEAR ZOO RYK
+                    </p>
+                    <!-- Dispatch Location: {{ $stockOut->warehouse->name }} -->
                 </td>
                 <td width="40%" class="text-end">
                     <strong>Pick List</strong><br>
@@ -59,19 +62,16 @@
             </tr>
 
             <tr>
-                <th>W/H. (Location)</th>
-                <td>{{ optional($stockOut->warehouse)->name ?? '-' }}</td>
-
                 <th>Dispatch To</th>
                 <td>{{ optional($stockOut->customer)->name ?? optional($stockOut->toWarehouse)->name ?? '-' }}</td>
+
+                <th>Vehicle #</th>
+                <td>{{ $stockOut->vehicle_no ?? '-' }}</td>
             </tr>
 
             <tr>
-                <th>Vehicle #</th>
-                <td>{{ $stockOut->vehicle_no ?? '-' }}</td>
-
                 <th>Remarks</th>
-                <td>{{ $stockOut->remarks ?? '-' }}</td>
+                <td colspan="3">{{ $stockOut->remarks ?? '-' }}</td>
             </tr>
         </table>
 
@@ -94,9 +94,15 @@
                 </tr>
             </thead>
             <tbody>
-                @php $totalQty = 0; @endphp
+                @php 
+                    $totalQty = 0; 
+                    $totalUnits = 0;
+                @endphp
                 @foreach($stockOut->items as $item)
-                    @php $totalQty += $item->dispatch_quantity; @endphp
+                    @php 
+                        $totalQty += $item->dispatch_quantity; 
+                        $totalUnits += $item->units_dispatch;
+                    @endphp
                     <tr>
                         <td>{{ optional($item->product)->item_code ?? '-' }}</td>
                         <td>{{ optional($item->product)->name ?? '-' }}</td>
@@ -114,8 +120,9 @@
                 @endforeach
 
                 <tr class="fw-bold">
-                    <td colspan="9" class="text-end">TOTAL</td>
-                    <td class="text-end">{{ $totalQty }}</td>
+                    <td colspan="8" class="text-end">TOTAL</td>
+                    <td class="text-end">{{ $totalUnits }}</td>
+                    <td class="text-end">{{ number_format($totalQty, 3) }}</td>
                     <td colspan="2"></td>
                 </tr>
             </tbody>
