@@ -35,6 +35,11 @@ class StockOut extends Model
         'remarks',
     ];
 
+    protected $casts = [
+        'vehicle_in_time' => 'datetime',
+        'vehicle_out_time' => 'datetime',
+    ];
+
     /* ================= RELATIONSHIPS ================= */
 
     public function warehouse()
