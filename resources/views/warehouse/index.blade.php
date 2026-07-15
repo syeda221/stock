@@ -134,51 +134,6 @@
                                             <i class="bi bi-list-task me-1"></i> {{ $warehouse->rows->count() }} Rows
                                         </span>
                                     </button>
-
-                                    <!-- Modal -->
-                                    <div class="modal fade" id="rowsModal{{ $warehouse->id }}" tabindex="-1" aria-hidden="true">
-                                        <div class="modal-dialog modal-dialog-centered">
-                                            <div class="modal-content rounded-4 border-0 shadow">
-                                                <div class="modal-header border-0 pb-0">
-                                                    <h5 class="modal-title fw-bold">Rows in {{ $warehouse->name }}</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                </div>
-                                                <div class="modal-body p-4">
-                                                    @if($warehouse->rows->count() > 0)
-                                                        <div class="table-responsive border rounded-3">
-                                                            <table class="table table-sm table-hover align-middle mb-0">
-                                                                <thead class="table-light">
-                                                                    <tr>
-                                                                        <th class="ps-3">Row Name</th>
-                                                                        <th class="text-end pe-3">Pallet Capacity</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    @foreach($warehouse->rows as $row)
-                                                                        <tr>
-                                                                            <td class="ps-3 fw-semibold text-dark">{{ $row->row_name }}</td>
-                                                                            <td class="text-end pe-3">{{ number_format($row->pallet_capacity) }}</td>
-                                                                        </tr>
-                                                                    @endforeach
-                                                                </tbody>
-                                                                <tfoot class="table-light fw-bold">
-                                                                    <tr>
-                                                                        <td class="ps-3">Total</td>
-                                                                        <td class="text-end pe-3">{{ number_format($warehouse->rows->sum('pallet_capacity')) }}</td>
-                                                                    </tr>
-                                                                </tfoot>
-                                                            </table>
-                                                        </div>
-                                                    @else
-                                                        <div class="text-center text-muted py-3">
-                                                            <i class="bi bi-inboxes fs-4 d-block mb-2"></i>
-                                                            No rows found
-                                                        </div>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 @else
                                     <span class="text-muted">-</span>
                                 @endif
@@ -236,6 +191,57 @@
     </div>
 </div>
 
+<div id="warehouseModals">
+    @foreach($warehouses as $warehouse)
+        @if($warehouse->capacity_mode === 'row')
+            <!-- Modal -->
+            <div class="modal fade" id="rowsModal{{ $warehouse->id }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content rounded-4 border-0 shadow">
+                        <div class="modal-header border-0 pb-0">
+                            <h5 class="modal-title fw-bold">Rows in {{ $warehouse->name }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            @if($warehouse->rows->count() > 0)
+                                <div class="table-responsive border rounded-3">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-3">Row Name</th>
+                                                <th class="text-end pe-3">Pallet Capacity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($warehouse->rows as $row)
+                                                <tr>
+                                                    <td class="ps-3 fw-semibold text-dark">{{ $row->row_name }}</td>
+                                                    <td class="text-end pe-3">{{ number_format($row->pallet_capacity) }}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                        <tfoot class="table-light fw-bold">
+                                            <tr>
+                                                <td class="ps-3">Total</td>
+                                                <td class="text-end pe-3">{{ number_format($warehouse->rows->sum('pallet_capacity')) }}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            @else
+                                <div class="text-center text-muted py-3">
+                                    <i class="bi bi-inboxes fs-4 d-block mb-2"></i>
+                                    No rows found
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endforeach
+</div>
+
 @endsection
 
 @push('scripts')
@@ -281,6 +287,12 @@ $(document).ready(function() {
                 const newTableBody = doc.querySelector('#warehouseTableBody');
                 if (newTableBody) {
                     $('#warehouseTableBody').html(newTableBody.innerHTML);
+                }
+
+                // Extract modals
+                const newModals = doc.querySelector('#warehouseModals');
+                if (newModals) {
+                    $('#warehouseModals').html(newModals.innerHTML);
                 }
 
                 // Update count
