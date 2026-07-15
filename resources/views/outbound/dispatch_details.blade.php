@@ -49,20 +49,22 @@
 
     <div class="card-body p-4">
         {{-- HEADER --}}
-        <div class="dispatch-header">
-            <div>
-                <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 80px;" class="mb-2"><br>
-                <div class="company-info">
-                    <strong>SPC WARE HOUSE</strong><br>
-                    KACHA SADIQ ABAD ROAD NEAR ZOO RYK<br>
-                    CELL # 03008636277
-                </div>
-            </div>
-            <div class="document-title">
-                <h2 class="mb-1 fw-bold text-uppercase" style="color: #444;">Dispatch Details</h2>
-                <div>Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}</div>
-            </div>
-        </div>
+        <table class="table table-borderless mb-4">
+            <tr>
+                <td width="60%">
+                    <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 150px;" class="mb-2"><br>
+                    <h5 class="mb-1 fw-bold" style="color: #333;">SPC WARE HOUSE</h5>
+                    <p class="mb-0" style="font-size: 14px; color: #555;">
+                        KACHA SADIQ ABAD ROAD NEAR ZOO RYK<br>
+                        CELL # 03008636277
+                    </p>
+                </td>
+                <td width="40%" class="text-end align-bottom">
+                    <h2 class="mb-1 fw-bold text-uppercase" style="color: #444;">Dispatch Details</h2>
+                    <div>Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}</div>
+                </td>
+            </tr>
+        </table>
 
         {{-- SUMMARY DETAILS --}}
         <div class="row mb-4">
@@ -113,6 +115,7 @@
                     <th>Vendor Batch</th>
                     <th>SAP Batch</th>
                     <th>PO #</th>
+                    <th>IBD #</th>
                     <th>STO #</th>
                     <th>Packing</th>
                     <th>Pack Size</th>
@@ -139,6 +142,7 @@
                         <td>{{ $item->vendor_batch ?? '-' }}</td>
                         <td>{{ $item->sap_batch ?? '-' }}</td>
                         <td>{{ $item->po_resolved ?? $item->po_no ?? optional($item->sourceStockInItem)->po_no ?? '-' }}</td>
+                        <td>{{ $item->ibd_no ?? optional($item->sourceStockInItem)->ibd_no ?? '-' }}</td>
                         <td>{{ $item->sto_no ?? '-' }}</td>
                         <td class="text-center">{{ optional(optional($item->product)->packingType)->name ?? '-' }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
@@ -152,7 +156,7 @@
             </tbody>
             <tfoot>
                 <tr class="fw-bold table-light">
-                    <td colspan="9" class="text-end">TOTAL:</td>
+                    <td colspan="10" class="text-end">TOTAL:</td>
                     <td class="text-end">{{ $totalUnits }}</td>
                     <td class="text-end">{{ number_format($totalQty, 2) }}</td>
                     <td colspan="2"></td>
