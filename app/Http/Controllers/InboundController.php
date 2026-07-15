@@ -389,49 +389,49 @@ class InboundController extends Controller
                 foreach ($partialResult['splits'] as $split) {
                     $existingItem = StockInItem::find($split['stock_in_item_id']);
                     if ($existingItem) {
-                        $existingItem->increment('units_received', $split['units']);
-                        $existingItem->increment('total_quantity', $split['qty']);
-                        $existingItem->increment('balance_quantity', $split['qty']);
                         $existingItem->decrement('last_pallet_vacant', $split['units']);
+                        $leftoverVacancy = $existingItem->fresh()->last_pallet_vacant;
+                        
+                        $sharedPalletStart = null;
+                        if ($existingItem->pallet_start !== null && $existingItem->pallets_used > 0) {
+                            $sharedPalletStart = $existingItem->pallet_start + $existingItem->pallets_used - 1;
+                        }
+
+                        StockInItem::create([
+                            'stock_in_id'        => $stockIn->id,
+                            'product_id'         => $product->id,
+                            'warehouse_id'       => $primaryWarehouse->id,
+                            'warehouse_row_id'   => $split['warehouse_row_id'] ?? null,
+                            'sap_batch'          => $item['sap_batch'] ?? null,
+                            'vendor_batch'       => $item['vendor_batch'] ?? null,
+                            'ibd_no'             => $item['ibd_no'] ?? $request->ibd_no,
+                            'po_no'              => $item['po_no'] ?? $request->po_no,
+                            'mfg_date'           => $item['mfg_date'] ?? null,
+                            'expiry_date'        => $item['expiry_date'] ?? null,
+                            'units_received'     => $split['units'],
+                            'pack_size_snapshot' => $packSize,
+                            'total_quantity'     => $split['qty'],
+                            'balance_quantity'   => $split['qty'],
+                            'use_pallets'        => $sharedPalletStart !== null ? 1 : 0,
+                            'pallets_used'       => $sharedPalletStart !== null ? 1 : null,
+                            'pallet_start'       => $sharedPalletStart,
+                            'last_pallet_vacant' => $leftoverVacancy,
+                            'sound_stock'        => !empty($item['sound_stock']),
+                            'block_stock'        => !empty($item['block_stock']),
+                            'hold_stock'         => !empty($item['hold_stock']),
+                            'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+                            'qc_remarks'         => $item['qc_remarks'] ?? null,
+                            'damage_stock'       => !empty($item['damage_stock']),
+                            'remarks'            => $item['remarks'] ?? null,
+                            'uom_snapshot'       => optional($product->uom)->name,
+                            'packing_snapshot'   => optional($product->packingType)->name,
+                        ]);
+                        $existingItem->update(['last_pallet_vacant' => 0]);
                     }
                 }
 
                 $remainingUnits = $partialResult['remaining_units'];
                 if ($remainingUnits <= 0) {
-                    // All units went to partial fills — create a record-keeping item
-                    // so the inbound invoice shows this entry.
-                    $filledUnits = $units;
-                    $filledQty   = round($filledUnits * $packSize, 4);
-                    $firstSplit  = $partialResult['splits'][0] ?? null;
-                    StockInItem::create([
-                        'stock_in_id'        => $stockIn->id,
-                        'product_id'         => $product->id,
-                        'warehouse_id'       => $primaryWarehouse->id,
-                        'warehouse_row_id'   => $firstSplit['warehouse_row_id'] ?? null,
-                        'sap_batch'          => $item['sap_batch'] ?? null,
-                        'vendor_batch'       => $item['vendor_batch'] ?? null,
-                        'ibd_no'             => $item['ibd_no'] ?? $request->ibd_no,
-                        'po_no'              => $item['po_no'] ?? $request->po_no,
-                        'mfg_date'           => $item['mfg_date'] ?? null,
-                        'expiry_date'        => $item['expiry_date'] ?? null,
-                        'units_received'     => $filledUnits,
-                        'pack_size_snapshot' => $packSize,
-                        'total_quantity'     => $filledQty,
-                        'balance_quantity'   => 0,
-                        'use_pallets'        => 0,
-                        'pallets_used'       => null,
-                        'pallet_start'       => null,
-                        'last_pallet_vacant' => 0,
-                        'sound_stock'        => !empty($item['sound_stock']),
-                        'block_stock'        => !empty($item['block_stock']),
-                        'hold_stock'         => !empty($item['hold_stock']),
-                        'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
-                        'qc_remarks'         => $item['qc_remarks'] ?? null,
-                        'damage_stock'       => !empty($item['damage_stock']),
-                        'remarks'            => $item['remarks'] ?? null,
-                        'uom_snapshot'       => optional($product->uom)->name,
-                        'packing_snapshot'   => optional($product->packingType)->name,
-                    ]);
                     continue;
                 }
 
@@ -852,47 +852,49 @@ class InboundController extends Controller
         foreach ($partialResult['splits'] as $split) {
             $existingItem = StockInItem::find($split['stock_in_item_id']);
             if ($existingItem) {
-                $existingItem->increment('units_received', $split['units']);
-                $existingItem->increment('total_quantity', $split['qty']);
-                $existingItem->increment('balance_quantity', $split['qty']);
                 $existingItem->decrement('last_pallet_vacant', $split['units']);
+                $leftoverVacancy = $existingItem->fresh()->last_pallet_vacant;
+                
+                $sharedPalletStart = null;
+                if ($existingItem->pallet_start !== null && $existingItem->pallets_used > 0) {
+                    $sharedPalletStart = $existingItem->pallet_start + $existingItem->pallets_used - 1;
+                }
+
+                StockInItem::create([
+                    'stock_in_id'        => $stockIn->id,
+                    'product_id'         => $product->id,
+                    'warehouse_id'       => $primaryWarehouse->id,
+                    'warehouse_row_id'   => $split['warehouse_row_id'] ?? null,
+                    'sap_batch'          => $itemData['sap_batch'] ?? null,
+                    'vendor_batch'       => $itemData['vendor_batch'] ?? null,
+                    'ibd_no'             => $itemData['ibd_no'] ?? null,
+                    'po_no'              => $itemData['po_no'] ?? null,
+                    'mfg_date'           => $itemData['mfg_date'] ?? null,
+                    'expiry_date'        => $itemData['expiry_date'] ?? null,
+                    'units_received'     => $split['units'],
+                    'pack_size_snapshot' => $packSize,
+                    'total_quantity'     => $split['qty'],
+                    'balance_quantity'   => $split['qty'],
+                    'use_pallets'        => $sharedPalletStart !== null ? 1 : 0,
+                    'pallets_used'       => $sharedPalletStart !== null ? 1 : null,
+                    'pallet_start'       => $sharedPalletStart,
+                    'last_pallet_vacant' => $leftoverVacancy,
+                    'sound_stock'        => !empty($itemData['sound_stock']),
+                    'block_stock'        => !empty($itemData['block_stock']),
+                    'hold_stock'         => !empty($itemData['hold_stock']),
+                    'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                    'qc_remarks'         => $itemData['qc_remarks'] ?? null,
+                    'damage_stock'       => !empty($itemData['damage_stock']),
+                    'remarks'            => $itemData['remarks'] ?? null,
+                    'uom_snapshot'       => optional($product->uom)->name,
+                    'packing_snapshot'   => optional($product->packingType)->name,
+                ]);
+                $existingItem->update(['last_pallet_vacant' => 0]);
             }
         }
 
         $remainingUnits = $partialResult['remaining_units'];
         if ($remainingUnits <= 0) {
-            $filledUnits = (int) $units;
-            $filledQty   = round($filledUnits * $packSize, 4);
-            $firstSplit  = $partialResult['splits'][0] ?? null;
-            StockInItem::create([
-                'stock_in_id'        => $stockIn->id,
-                'product_id'         => $product->id,
-                'warehouse_id'       => $primaryWarehouse->id,
-                'warehouse_row_id'   => $firstSplit['warehouse_row_id'] ?? null,
-                'sap_batch'          => $itemData['sap_batch'] ?? null,
-                'vendor_batch'       => $itemData['vendor_batch'] ?? null,
-                'ibd_no'             => $itemData['ibd_no'] ?? null,
-                'po_no'              => $itemData['po_no'] ?? null,
-                'mfg_date'           => $itemData['mfg_date'] ?? null,
-                'expiry_date'        => $itemData['expiry_date'] ?? null,
-                'units_received'     => $filledUnits,
-                'pack_size_snapshot' => $packSize,
-                'total_quantity'     => $filledQty,
-                'balance_quantity'   => 0,
-                'use_pallets'        => 0,
-                'pallets_used'       => null,
-                'pallet_start'       => null,
-                'last_pallet_vacant' => 0,
-                'sound_stock'        => !empty($itemData['sound_stock']),
-                'block_stock'        => !empty($itemData['block_stock']),
-                'hold_stock'         => !empty($itemData['hold_stock']),
-                'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
-                'qc_remarks'         => $itemData['qc_remarks'] ?? null,
-                'damage_stock'       => !empty($itemData['damage_stock']),
-                'remarks'            => $itemData['remarks'] ?? null,
-                'uom_snapshot'       => optional($product->uom)->name,
-                'packing_snapshot'   => optional($product->packingType)->name,
-            ]);
             return;
         }
 
