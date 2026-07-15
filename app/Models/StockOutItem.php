@@ -80,4 +80,27 @@ class StockOutItem extends Model
             ?? optional($this->product->uom)->code
             ?? '-';
     }
+
+    public function getSpecificPalletAttribute()
+    {
+        $row = $this->warehouseRow ?? optional($this->sourceStockInItem)->warehouseRow;
+        if (!$row || !$this->pallet_position) {
+            return $row ? $row->row_name : '-';
+        }
+
+        $rowName = $row->row_name;
+        
+        $parts = explode(' to ', $rowName);
+        $firstPallet = $parts[0];
+
+        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+            $prefix = $matches[1];
+            $startNum = (int)$matches[2];
+            $actualNum = $startNum + $this->pallet_position - 1;
+            $digits = strlen($matches[2]);
+            return $prefix . sprintf("%0{$digits}d", $actualNum);
+        }
+
+        return $rowName . ' - P' . $this->pallet_position;
+    }
 }

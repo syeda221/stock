@@ -86,6 +86,7 @@
                     <th>Packing</th>
                     <th>Pack Size</th>
                     <th>UOM</th>
+                    <th>Location</th>
                     <th>Units Dispatched</th>
                     <th>Dispatch Qty</th>
                     <th>MFG Date</th>
@@ -104,6 +105,7 @@
                         <td class="text-center">{{ optional(optional($item->product)->packingType)->name ?? '-' }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
                         <td class="text-center">{{ $item->uom_resolved ?? '-' }}</td>
+                        <td class="text-center">{{ $item->specific_pallet }}</td>
                         <td class="text-end">{{ $item->units_dispatch }}</td>
                         <td class="text-end fw-bold">{{ $item->dispatch_quantity }}</td>
                         <td>{{ optional($item->mfg_date)->format('d.m.Y') ?? '-' }}</td>
@@ -112,7 +114,7 @@
                 @endforeach
 
                 <tr class="fw-bold">
-                    <td colspan="8" class="text-end">TOTAL</td>
+                    <td colspan="9" class="text-end">TOTAL</td>
                     <td class="text-end">{{ $totalQty }}</td>
                     <td colspan="2"></td>
                 </tr>

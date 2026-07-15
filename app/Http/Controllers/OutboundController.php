@@ -823,6 +823,7 @@ class OutboundController extends Controller
             'customer',
             'toWarehouse',
             'transporter',
+            'items.warehouseRow',
         ]);
 
         return view('outbound.print', compact('stockOut'));
@@ -838,6 +839,7 @@ class OutboundController extends Controller
             'items.product',
             'items.product.uom',
             'items.sourceStockInItem',
+            'items.warehouseRow',
         ]);
 
         return view('outbound.quick_view', compact('stockOut'));
@@ -853,6 +855,7 @@ class OutboundController extends Controller
             'items.product',
             'items.sourceStockInItem',
             'items.product.uom',
+            'items.warehouseRow',
         ]);
 //        print_r($stockOut->toArray());
         return view('outbound.invoice', compact('stockOut'));
@@ -869,6 +872,7 @@ class OutboundController extends Controller
             'items.sourceStockInItem',
             'items.product.uom',
             'items.product.packingType',
+            'items.warehouseRow',
         ]);
 
         return view('outbound.dispatch_details', compact('stockOut'));
@@ -884,6 +888,7 @@ class OutboundController extends Controller
             'items.product',
             'items.sourceStockInItem',
             'items.product.uom',
+            'items.warehouseRow',
         ]);
 
         return view('outbound.dc', compact('stockOut'));
