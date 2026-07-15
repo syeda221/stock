@@ -41,7 +41,10 @@
             <tr>
                 <td width="60%">
                     <img src="{{ asset('logo.png') }}" alt="Company Logo" style="max-height: 150px;" class="mb-2"><br>
-                    <strong>Unilever Pakistan Limited</strong>
+                    <h5 class="mb-1 fw-bold" style="color: #333;">SPC WARE HOUSE</h5>
+                    <p class="mb-0" style="font-size: 14px; color: #555;">
+                        KACHA SADIQ ABAD ROAD NEAR ZOO RYK
+                    </p>
                 </td>
                 <td width="40%" class="text-end">
                     <strong>Put Away</strong><br>
