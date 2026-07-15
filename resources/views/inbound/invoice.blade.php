@@ -62,14 +62,14 @@
                 <td>{{ $stockIn->gatepass_no ?? '-' }}</td>
             </tr>
             <tr>
-                <th>Vehicle Out Date & Time</th>
-                <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</td>
+                <th>Vehicle In Date & Time</th>
+                <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</td>
                 <th>Delivery No</th>
                 <td>{{ $stockIn->delivery_no ?? '-' }}</td>
             </tr>
             <tr>
-                <th>Vehicle In Date & Time</th>
-                <td>{{ $stockIn->vehicle_in_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</td>
+                <th>Vehicle Out Date & Time</th>
+                <td>{{ $stockIn->vehicle_out_time ? \Illuminate\Support\Carbon::parse($stockIn->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</td>
                 <th>Remarks</th>
                 <td>{{ $stockIn->remarks ?? '-' }}</td>
             </tr>
