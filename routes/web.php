@@ -135,24 +135,34 @@ Route::middleware('auth')->group(function () {
     Route::get('/opening-stock/{item}/edit', [OpeningStockController::class, 'edit'])->name('opening-stock.edit');
     Route::put('/opening-stock/{item}', [OpeningStockController::class, 'update'])->name('opening-stock.update');
     Route::get('/opening-stock/product/{productId}/batches', [OpeningStockController::class, 'productBatches'])->name('opening-stock.product-batches');
+    Route::post('/opening-stock/preview-pallets', [OpeningStockController::class, 'previewPallets'])->name('opening-stock.preview-pallets');
+    Route::get('/opening-stock/transaction/{stockIn}', [OpeningStockController::class, 'showTransaction'])->name('opening-stock.transaction.show');
+    Route::get('/opening-stock/transaction/{stockIn}/edit', [OpeningStockController::class, 'editTransaction'])->name('opening-stock.transaction.edit');
+    Route::put('/opening-stock/transaction/{stockIn}', [OpeningStockController::class, 'updateTransaction'])->name('opening-stock.transaction.update');
+    Route::delete('/opening-stock/transaction/{stockIn}', [OpeningStockController::class, 'destroyTransaction'])->name('opening-stock.transaction.destroy');
 
     // Inbound Routes
     Route::get('/inbound', [InboundController::class, 'index'])->name('inbound.index');
     Route::get('/inbound/create', [InboundController::class, 'create'])->name('inbound.create');
+    Route::post('/inbound/preview-pallets', [InboundController::class, 'previewPallets'])->name('inbound.preview-pallets');
     Route::post('/inbound', [InboundController::class, 'store'])->name('inbound.store');
     Route::get('/inbound/{stockIn}/invoice', [InboundController::class, 'invoice'])->name('inbound.invoice');
     Route::get('/inbound/{stockIn}/print', [InboundController::class, 'print'])->name('inbound.print');
     Route::get('/inbound/{stockIn}/edit', [InboundController::class, 'edit'])->name('inbound.edit');
     Route::put('/inbound/{stockIn}', [InboundController::class, 'update'])->name('inbound.update');
     Route::get('/inbound/{stockIn}/gate-pass-export', [InboundController::class, 'gatePassExport'])->name('inbound.gate-pass-export');
+    Route::get('/inbound/{stockIn}/items', [InboundController::class, 'getItems'])->name('inbound.items');
     Route::get('/inbound/export/csv', [InboundController::class, 'export'])->name('inbound.export');
     Route::post('/inbound/export/selected', [InboundController::class, 'export'])->name('inbound.exportSelected');
     Route::get('/inbound/import/template', [InboundController::class, 'downloadTemplate'])->name('inbound.import.template');
     Route::get('/inbound/import', [InboundController::class, 'importForm'])->name('inbound.import');
     Route::post('/inbound/import', [InboundController::class, 'importStore'])->name('inbound.import.store');
 
-    // QC Status Update Route
+    // QC Management Routes
+    Route::get('/qc-management', [QcStatusController::class, 'index'])->name('qc.index');
     Route::post('/qc-status/{item}/update', [QcStatusController::class, 'update'])->name('qc.status.update');
+    Route::post('/qc-status/bulk-update', [QcStatusController::class, 'bulkUpdate'])->name('qc.bulk.update');
+    Route::post('/qc-management/auto-reject-expired', [QcStatusController::class, 'autoRejectExpired'])->name('qc.auto.reject');
 
     // Pallet Transfers
     Route::get('/pallet-transfers', [PalletTransferController::class, 'index'])->name('pallet-transfers.index');
@@ -175,10 +185,11 @@ Route::get('/outbound/import/template', [OutboundController::class, 'downloadTem
 Route::get('/outbound/import', [OutboundController::class, 'importForm'])->name('outbound.import');
 Route::post('/outbound/import', [OutboundController::class, 'importStore'])->name('outbound.import.store');
 
-// PRODUCT STOCK AJAX
 Route::get('/outbound/product-stock/{product}',
     [OutboundController::class, 'productStock']
 )->name('outbound.product.stock');
+
+Route::post('/outbound/preview-picks', [OutboundController::class, 'previewPicks'])->name('outbound.preview_picks');
 
 // QUICK VIEW (modal / page)
 Route::get('/outbound/{stockOut}', [OutboundController::class, 'show'])

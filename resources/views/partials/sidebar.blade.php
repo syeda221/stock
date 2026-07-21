@@ -135,6 +135,7 @@
                          ->where('expiry_date', '<=', \Carbon\Carbon::today()->addDays(30));
                   });
             })->count();
+        $qcPendingCount = \App\Models\StockInItem::where('balance_quantity', '>', 0)->where('quality_clearance', 'pending')->count();
     @endphp
     <li class="nav-item mt-1">
         <a href="{{ route('expiry.index') }}"
@@ -143,6 +144,17 @@
             <span>Expiry Management</span>
             @if($expiryCount > 0)
                 <span class="badge rounded-pill ms-auto {{ request()->routeIs('expiry.*') ? 'bg-danger' : 'bg-warning text-dark' }}">{{ $expiryCount }}</span>
+            @endif
+        </a>
+    </li>
+
+    <li class="nav-item mt-1">
+        <a href="{{ route('qc.index') }}"
+           class="nav-link px-3 py-2 sidebar-link d-flex align-items-center {{ request()->routeIs('qc.*') ? 'active' : '' }}">
+            <i class="bi bi-clipboard-check me-2"></i>
+            <span>QC Management</span>
+            @if($qcPendingCount > 0)
+                <span class="badge rounded-pill ms-auto {{ request()->routeIs('qc.*') ? 'bg-warning text-dark' : 'bg-warning text-dark' }}">{{ $qcPendingCount }}</span>
             @endif
         </a>
     </li>

@@ -60,7 +60,8 @@ class OpeningStockController extends Controller
                 DB::raw('SUM(balance_quantity) as total_balance'),
                 DB::raw('SUM(pallets_used) as total_pallets'),
                 DB::raw('COUNT(id) as batch_count'),
-                DB::raw('MAX(created_at) as latest_date')
+                DB::raw('MAX(created_at) as latest_date'),
+                DB::raw('MAX(stock_in_id) as latest_stock_in_id')
             )
             ->groupBy('product_id')
             ->with(['product.category'])
@@ -74,11 +75,15 @@ class OpeningStockController extends Controller
             return $item;
         });
 
-        // Get filter options
         $warehouses = Warehouse::orderBy('name')->get();
         $products = Product::orderBy('name')->get();
 
-        return view('opening_stock.index', compact('items', 'warehouses', 'products'));
+        $transactions = StockIn::where('source_type', 'opening')
+            ->with(['warehouse', 'items.product'])
+            ->latest()
+            ->paginate(15, ['*'], 'transactions_page');
+
+        return view('opening_stock.index', compact('items', 'warehouses', 'products', 'transactions'));
     }
 
     /**
@@ -97,8 +102,41 @@ class OpeningStockController extends Controller
                 'product.uom',
                 'product.packingType',
             ])
-            ->latest()
             ->get();
+
+        $items->transform(function ($item) {
+            $row = $item->warehouseRow;
+            $units = (int)$item->units_received;
+            $pallets = $item->pallets_used ?: ($item->product && $item->product->cartons_per_pallet > 0
+                ? ceil($units / $item->product->cartons_per_pallet) : 0);
+
+            if (!$row || !$item->pallet_start || $pallets <= 0) {
+                $item->pallet_range_display = $row ? $row->row_name : '—';
+            } else {
+                $firstPallet = $item->getPalletName(0);
+                if ($pallets > 1) {
+                    $lastPallet = $item->getPalletName($pallets - 1);
+                    $item->pallet_range_display = $firstPallet . ' to ' . $lastPallet;
+                } else {
+                    $item->pallet_range_display = $firstPallet;
+                }
+            }
+            return $item;
+        });
+
+        // Sort items naturally: Warehouse Name -> Location (pallet_range_display / row_name) -> Pallet Start -> ID
+        $items = $items->sortBy([
+            fn ($a, $b) => strnatcasecmp(
+                $a->stockIn->warehouse->name ?? $a->warehouse->name ?? '',
+                $b->stockIn->warehouse->name ?? $b->warehouse->name ?? ''
+            ),
+            fn ($a, $b) => strnatcasecmp(
+                $a->pallet_range_display ?? $a->warehouseRow->row_name ?? '',
+                $b->pallet_range_display ?? $b->warehouseRow->row_name ?? ''
+            ),
+            fn ($a, $b) => ($a->pallet_start ?? 0) <=> ($b->pallet_start ?? 0),
+            fn ($a, $b) => $a->id <=> $b->id,
+        ])->values();
 
         return response()->json($items);
     }
@@ -125,12 +163,23 @@ class OpeningStockController extends Controller
      */
     public function store(Request $request)
     {
+        if ($request->has('items') && is_array($request->items)) {
+            $filteredItems = collect($request->items)
+                ->filter(function ($item) {
+                    return !empty($item['product_id']);
+                })
+                ->values()
+                ->toArray();
+            $request->merge(['items' => $filteredItems]);
+        }
+
         $request->validate([
-            'warehouse_id' => 'required|exists:warehouses,id',
+            'warehouse_id' => 'required|string',
             'items' => 'required|array|min:1',
 
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.units_received' => 'required|integer|min:1',
+            'items.*.warehouse_id' => 'nullable|string',
 
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
 
@@ -146,28 +195,44 @@ class OpeningStockController extends Controller
         ]);
 
         try {
-            DB::transaction(function () use ($request) {
+            DB::transaction(function () use ($request, &$stockIn) {
 
                 /*
                 |--------------------------------------------------------------------------
                 | 1️⃣ Create Opening Stock Header
                 |--------------------------------------------------------------------------
+                | We'll use the header warehouse_id if it's not "auto". If it is "auto",
+                | we will temporarily set it to the first active warehouse, and then
+                | sync it at the end to the first actual warehouse where items are stored.
                 */
+                $headerWhId = $request->warehouse_id;
+                $activeWarehouses = Warehouse::where('status', 1)->orderBy('name')->get();
+                if ($activeWarehouses->isEmpty()) {
+                    throw new \Exception("No active warehouses found.");
+                }
+
+                $tempWhId = $headerWhId === 'auto' ? $activeWarehouses->first()->id : (int) $headerWhId;
+
                 $stockIn = StockIn::create([
                     'source_type' => 'opening',
-                    'warehouse_id' => $request->warehouse_id,
+                    'warehouse_id' => $tempWhId,
                     'shipment_type' => 'manual',
                     'remarks' => $request->remarks,
                 ]);
 
+                // Track remaining capacities for each warehouse dynamically during processing
+                $remainingFree = [];
+                foreach ($activeWarehouses as $wh) {
+                    $remainingFree[$wh->id] = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                }
+
                 /*
                 |--------------------------------------------------------------------------
-                | 2️⃣ Validate Warehouse Pallet Capacity
+                | 2️⃣ Pre-validate Capacity for all items
                 |--------------------------------------------------------------------------
                 */
-                $warehouse = Warehouse::findOrFail($request->warehouse_id);
-
-                $totalPalletsUsedByNewItems = 0;
+                $warehouseNeededPallets = [];
+                $autoNeededPallets = 0;
 
                 foreach ($request->items as $item) {
                     if (!empty($item['product_id']) && !empty($item['units_received'])) {
@@ -176,14 +241,32 @@ class OpeningStockController extends Controller
                         if ($palletsNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
                             $palletsNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
                         }
-                        $totalPalletsUsedByNewItems += $palletsNeeded;
+
+                        $itemWh = !empty($item['warehouse_id']) ? $item['warehouse_id'] : $headerWhId;
+                        if ($itemWh === 'auto') {
+                            $autoNeededPallets += $palletsNeeded;
+                        } else {
+                            $itemWhId = (int) $itemWh;
+                            $warehouseNeededPallets[$itemWhId] = ($warehouseNeededPallets[$itemWhId] ?? 0) + $palletsNeeded;
+                        }
                     }
                 }
 
-                $freeRowCapacity = WarehouseRowFifo::getFreeRowCapacity($warehouse->id);
+                // Check specific warehouse capacities
+                foreach ($warehouseNeededPallets as $whId => $needed) {
+                    $available = $remainingFree[$whId] ?? 0;
+                    if ($available < $needed) {
+                        $whName = Warehouse::find($whId)?->name ?? "ID $whId";
+                        throw new \Exception("Warehouse '$whName' is full. Needs $needed pallet slots but only $available available.");
+                    }
+                }
 
-                if ($freeRowCapacity < $totalPalletsUsedByNewItems) {
-                    throw new \Exception("Warehouse is full. Cannot add opening stock to {$warehouse->name}. Only {$freeRowCapacity} pallet slots available across all rows, but {$totalPalletsUsedByNewItems} needed.");
+                // Check total capacity for auto-assigned pallets
+                $totalAvailable = array_sum($remainingFree);
+                $totalSpecificNeeded = array_sum($warehouseNeededPallets);
+                $totalAvailableForAuto = $totalAvailable - $totalSpecificNeeded;
+                if ($totalAvailableForAuto < $autoNeededPallets) {
+                    throw new \Exception("Insufficient total warehouse capacity. Needs $autoNeededPallets auto-allocated pallets, but only $totalAvailableForAuto slots available.");
                 }
 
                 // Validate per-item: pallet count must be sufficient for cartons
@@ -208,58 +291,214 @@ class OpeningStockController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | 3️⃣ Create Stock In Items (BATCH LEVEL) — FIFO Row Auto-Assignment
+                | 3️⃣ Create Stock In Items (BATCH LEVEL) — Sequential Multi-Warehouse Fill
                 |--------------------------------------------------------------------------
                 */
                 foreach ($request->items as $item) {
+                    if (empty($item['product_id']) || empty($item['units_received'])) continue;
 
                     $product  = Product::findOrFail($item['product_id']);
                     $units    = (int) $item['units_received'];
                     $packSize = (float) $product->pack_size;
 
-                    // Step 1: Fill partial pallets of the same product first
-                    $partialResult = WarehouseRowFifo::fillPartials(
-                        $warehouse->id,
-                        $product->id,
-                        $units,
-                        $packSize,
-                        (int) $product->cartons_per_pallet
-                    );
+                    $itemWh = !empty($item['warehouse_id']) ? $item['warehouse_id'] : $headerWhId;
 
-                    // Update existing StockInItems for partial fills
-                    foreach ($partialResult['splits'] as $split) {
-                        $existingItem = StockInItem::find($split['stock_in_item_id']);
-                        if ($existingItem) {
-                            $existingItem->increment('units_received', $split['units']);
-                            $existingItem->increment('total_quantity', $split['qty']);
-                            $existingItem->increment('balance_quantity', $split['qty']);
-                            $existingItem->decrement('last_pallet_vacant', $split['units']);
-                        }
+                    if ($itemWh === 'auto') {
+                        $targets = $activeWarehouses;
+                    } else {
+                        $targets = Warehouse::where('id', (int) $itemWh)->get();
                     }
 
-                    $remainingUnits = $partialResult['remaining_units'];
+                    $manualRowId = !empty($item['warehouse_row_id']) ? (int) $item['warehouse_row_id'] : null;
+                    $manualPalletStart = isset($item['pallet_start']) && $item['pallet_start'] !== '' ? (int) $item['pallet_start'] : null;
 
-                    // Step 2: Handle remaining units with new pallet allocations
-                    if ($remainingUnits > 0) {
+                    if ($manualRowId) {
+                        // MANUAL ROW ASSIGNMENT
+                        $row = WarehouseRow::findOrFail($manualRowId);
+                        
                         $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
-
                         if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
-                            $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+                            $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                         }
 
-                        if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
-                            $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
-                            if ($remainingUnits > $maxUnits) {
+                        if ($manualPalletStart === null) {
+                            // Automatically find first free position in this row
+                            $capacity = $row->pallet_capacity;
+                            $occupied = [];
+                            $existingItems = StockInItem::where('warehouse_row_id', $manualRowId)
+                                ->where('balance_quantity', '>', 0)
+                                ->whereNotNull('pallet_start')
+                                ->where('pallets_used', '>', 0)
+                                ->get();
+                            foreach ($existingItems as $existingObj) {
+                                $start = $existingObj->pallet_start;
+                                for ($k = 0; $k < $existingObj->pallets_used; $k++) {
+                                    $occupied[$start + $k] = true;
+                                }
+                            }
+                            $foundStart = null;
+                            for ($p = 1; $p <= $capacity - $palletsNeeded + 1; $p++) {
+                                $fit = true;
+                                for ($k = 0; $k < $palletsNeeded; $k++) {
+                                    if (isset($occupied[$p + $k])) {
+                                        $fit = false;
+                                        break;
+                                    }
+                                }
+                                if ($fit) {
+                                    $foundStart = $p;
+                                    break;
+                                }
+                            }
+                            $manualPalletStart = $foundStart ?? (max(array_keys($occupied) ?: [0]) + 1);
+                        } else {
+                            // User gave pallet_start - validate it fits within row capacity
+                            if ($manualPalletStart + $palletsNeeded - 1 > $row->pallet_capacity) {
                                 throw new \Exception(
-                                    "Product {$product->name}: {$remainingUnits} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet)."
+                                    "Row '{$row->row_name}': Starting pallet {$manualPalletStart} with {$palletsNeeded} pallet(s) exceeds row capacity of {$row->pallet_capacity}."
                                 );
                             }
                         }
 
+                        $splitQty = round($units * $packSize, 4);
+                        $lastVacant = $product->cartons_per_pallet > 0
+                            ? max(0, ($palletsNeeded * $product->cartons_per_pallet) - $units)
+                            : 0;
+
+                        StockInItem::create([
+                            'stock_in_id'        => $stockIn->id,
+                            'product_id'         => $product->id,
+                            'warehouse_id'       => $row->warehouse_id,
+                            'warehouse_row_id'   => $row->id,
+                            'sap_batch'          => $item['sap_batch'] ?? null,
+                            'vendor_batch'       => $item['vendor_batch'] ?? null,
+                            'ibd_no'             => $item['ibd_no'] ?? null,
+                            'po_no'              => $item['po_no'] ?? null,
+                            'mfg_date'           => $item['mfg_date'] ?? null,
+                            'expiry_date'        => $item['expiry_date'] ?? null,
+                            'units_received'     => $units,
+                            'pack_size_snapshot' => $packSize,
+                            'total_quantity'     => $splitQty,
+                            'balance_quantity'   => $splitQty,
+                            'use_pallets'        => $palletsNeeded > 0,
+                            'pallets_used'       => $palletsNeeded > 0 ? $palletsNeeded : null,
+                            'pallet_start'       => $manualPalletStart,
+                            'last_pallet_vacant' => $lastVacant,
+                            'sound_stock'        => !empty($item['sound_stock']),
+                            'block_stock'        => !empty($item['block_stock']),
+                            'hold_stock'         => !empty($item['hold_stock']),
+                            'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+                            'remarks'            => $item['remarks'] ?? null,
+                            'uom_snapshot'       => optional($product->uom)->name,
+                            'packing_snapshot'   => optional($product->packingType)->name,
+                        ]);
+
+                        if (isset($remainingFree[$row->warehouse_id])) {
+                            $remainingFree[$row->warehouse_id] -= $palletsNeeded;
+                        }
+                        
+                        continue;
+                    }
+
+                    // Step 1: Fill partial pallets of the same product in target warehouses
+                    $remainingUnits = $units;
+                    if ($product->cartons_per_pallet > 0) {
+                        foreach ($targets as $wh) {
+                            if ($remainingUnits <= 0) break;
+
+                            $partialResult = WarehouseRowFifo::fillPartials(
+                                $wh->id,
+                                $product->id,
+                                $remainingUnits,
+                                $packSize,
+                                (int) $product->cartons_per_pallet,
+                                $item['sap_batch'] ?? null,
+                                $item['vendor_batch'] ?? null,
+                                $item['expiry_date'] ?? null
+                            );
+
+                            foreach ($partialResult['splits'] as $split) {
+                                $existingItem = StockInItem::find($split['stock_in_item_id']);
+                                if ($existingItem) {
+                                    $existingItem->decrement('last_pallet_vacant', $split['units']);
+                                    $leftoverVacancy = $existingItem->fresh()->last_pallet_vacant;
+                                    
+                                    $sharedPalletStart = null;
+                                    if ($existingItem->pallet_start !== null && $existingItem->pallets_used > 0) {
+                                        $sharedPalletStart = $existingItem->pallet_start + $existingItem->pallets_used - 1;
+                                    }
+
+                                    StockInItem::create([
+                                        'stock_in_id'        => $stockIn->id,
+                                        'product_id'         => $product->id,
+                                        'warehouse_id'       => $wh->id,
+                                        'warehouse_row_id'   => $split['warehouse_row_id'] ?? null,
+                                        'sap_batch'          => $item['sap_batch'] ?? null,
+                                        'vendor_batch'       => $item['vendor_batch'] ?? null,
+                                        'ibd_no'             => $item['ibd_no'] ?? null,
+                                        'po_no'              => $item['po_no'] ?? null,
+                                        'mfg_date'           => $item['mfg_date'] ?? null,
+                                        'expiry_date'        => $item['expiry_date'] ?? null,
+                                        'units_received'     => $split['units'],
+                                        'pack_size_snapshot' => $packSize,
+                                        'total_quantity'     => $split['qty'],
+                                        'balance_quantity'   => $split['qty'],
+                                        'use_pallets'        => $sharedPalletStart !== null ? 1 : 0,
+                                        'pallets_used'       => $sharedPalletStart !== null ? 1 : null,
+                                        'pallet_start'       => $sharedPalletStart,
+                                        'last_pallet_vacant' => $leftoverVacancy,
+                                        'sound_stock'        => !empty($item['sound_stock']),
+                                        'block_stock'        => !empty($item['block_stock']),
+                                        'hold_stock'         => !empty($item['hold_stock']),
+                                        'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
+                                        'remarks'            => $item['remarks'] ?? null,
+                                        'uom_snapshot'       => optional($product->uom)->name,
+                                        'packing_snapshot'   => optional($product->packingType)->name,
+                                    ]);
+                                    $existingItem->update(['last_pallet_vacant' => 0]);
+                                }
+                            }
+
+                            $remainingUnits = $partialResult['remaining_units'];
+                        }
+                    }
+
+                    if ($remainingUnits <= 0) continue;
+
+                    // Step 2: Handle remaining units with new pallet allocations
+                    $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                    if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                        $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+                    }
+
+                    if ($palletsNeeded > 0 && $product->cartons_per_pallet > 0) {
+                        $maxUnits = $palletsNeeded * $product->cartons_per_pallet;
+                        if ($remainingUnits > $maxUnits) {
+                            throw new \Exception(
+                                "Product {$product->name}: {$remainingUnits} cartons cannot fit in {$palletsNeeded} pallet(s) (max {$product->cartons_per_pallet} per pallet)."
+                            );
+                        }
+                    }
+
+                    foreach ($targets as $wh) {
+                        if ($remainingUnits <= 0) break;
+
+                        $available = max(0, $remainingFree[$wh->id]);
+                        if ($available <= 0) continue;
+
+                        $palletsHere = min($palletsNeeded, $available);
+                        if ($palletsHere <= 0) continue;
+
+                        $maxUnitsHere = $product->cartons_per_pallet > 0
+                            ? $palletsHere * $product->cartons_per_pallet
+                            : $remainingUnits;
+                        $unitsHere = min($maxUnitsHere, $remainingUnits);
+                        if ($unitsHere <= 0) continue;
+
                         $splits = WarehouseRowFifo::assign(
-                            $warehouse->id,
-                            $palletsNeeded,
-                            $remainingUnits,
+                            $wh->id,
+                            $palletsHere,
+                            $unitsHere,
                             $packSize,
                             true,
                             (int) $product->cartons_per_pallet
@@ -277,7 +516,7 @@ class OpeningStockController extends Controller
                             StockInItem::create([
                                 'stock_in_id'        => $stockIn->id,
                                 'product_id'         => $product->id,
-                                'warehouse_id'       => $warehouse->id,
+                                'warehouse_id'       => $wh->id,
                                 'warehouse_row_id'   => $split['warehouse_row_id'],
 
                                 'sap_batch'          => $item['sap_batch'] ?? null,
@@ -302,11 +541,22 @@ class OpeningStockController extends Controller
                                 'block_stock'        => ! empty($item['block_stock']),
                                 'hold_stock'         => ! empty($item['hold_stock']),
                                 'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
-
                                 'remarks'            => $item['remarks'] ?? null,
+                                'uom_snapshot'       => optional($product->uom)->name,
+                                'packing_snapshot'   => optional($product->packingType)->name,
                             ]);
                         }
+
+                        $remainingFree[$wh->id] -= $palletsHere;
+                        $palletsNeeded -= $palletsHere;
+                        $remainingUnits -= $unitsHere;
                     }
+                }
+
+                // Sync header warehouse_id to the first actual warehouse where items are stored
+                $actualWhId = $stockIn->items()->orderBy('warehouse_id')->value('warehouse_id');
+                if ($actualWhId && $actualWhId != $stockIn->warehouse_id) {
+                    $stockIn->update(['warehouse_id' => $actualWhId]);
                 }
             });
 
@@ -879,72 +1129,19 @@ class OpeningStockController extends Controller
 
         try {
             DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
-                // Step 1: Pre-process items to identify existing records by Product ID if Record ID is missing
-                // (Auto-matching by product_id has been removed so that users can import multiple batches of the same product without overwriting)
-                // If an update is desired, the user MUST provide the Record ID in the CSV.
-                
-                // Step 2: Aggregate items by Record ID
-                $aggregatedItems = [];
-                $newItems = [];
-                foreach ($items as $item) {
-                    $rid = $item['record_id'];
-                    if (!empty($rid)) {
-                        if (isset($aggregatedItems[$rid])) {
-                            $aggregatedItems[$rid]['units'] += $item['units'];
-                        } else {
-                            $aggregatedItems[$rid] = $item;
-                        }
-                    } else {
-                        $newItems[] = $item;
-                    }
+                // Delete all existing opening stock records first to allow a clean override / replacement
+                $oldItems = StockInItem::whereHas('stockIn', function ($q) {
+                    $q->where('source_type', 'opening');
+                })->get();
+                foreach ($oldItems as $oldItem) {
+                    $oldItem->delete();
                 }
+                StockIn::where('source_type', 'opening')->delete();
                 
-                // Step 3: Update existing items (ONLY Opening Stock records)
-                foreach ($aggregatedItems as $rid => $item) {
-                    $existingItem = StockInItem::find($rid);
-                    if ($existingItem) {
-                        $packSize = (float) $existingItem->pack_size_snapshot;
-                        if (!$packSize && $item['product']) $packSize = (float) $item['product']->pack_size;
-                        if (!$packSize) $packSize = 1;
+                // We treat all imported items as new on this clean slate
+                $newItems = $items;
+                
 
-                        // Only update basic fields, isolated to Opening Stock
-                        $updateData = [
-                            'ibd_no'             => $item['ibd_no'] ?: null,
-                            'po_no'              => $item['po_no'] ?: null,
-                            'sap_batch'          => $item['sap_batch'] ?: null,
-                            'vendor_batch'       => $item['vendor_batch'] ?: null,
-                            'mfg_date'           => $item['mfg_date'] ?: null,
-                            'expiry_date'        => $item['expiry_date'] ?: null,
-                            'sound_stock'        => !$item['blocked'] && !$item['hold'],
-                            'block_stock'        => $item['blocked'],
-                            'hold_stock'         => $item['hold'],
-                            'quality_clearance'  => $item['quality_clearance'],
-                            'remarks'            => $item['remarks'] ?: null,
-                        ];
-                        
-                        if ($existingItem->units_received != $item['units']) {
-                            // If units changed, just update units and total_quantity directly
-                            $updateData['units_received'] = $item['units'];
-                            $newQty = round($item['units'] * $packSize, 4);
-                            $updateData['total_quantity'] = $newQty;
-                            $updateData['balance_quantity'] = $newQty;
-                            
-                            // Recalculate pallets automatically based on units and cartons_per_pallet
-                            $cartonsPerPallet = (int) ($item['product']->cartons_per_pallet ?? 0);
-                            if ($cartonsPerPallet > 0) {
-                                $updateData['pallets_used'] = max(1, (int) ceil($item['units'] / $cartonsPerPallet));
-                            } else {
-                                $updateData['pallets_used'] = 1;
-                            }
-                        }
-
-                        $existingItem->update($updateData);
-                        $imported++;
-                    } else {
-                        $errors[] = "Record ID '{$rid}' not found in database. To import as a new entry, leave the Record ID column blank.";
-                        $skipped++;
-                    }
-                }
 
                 // Step 4: Insert new items
                 foreach ($newItems as $item) {
@@ -976,7 +1173,8 @@ class OpeningStockController extends Controller
                                 $packSize,
                                 $cartonsPerPallet,
                                 $item['sap_batch'] ?? null,
-                                $item['vendor_batch'] ?? null
+                                $item['vendor_batch'] ?? null,
+                                $item['expiry_date'] ?? null
                             );
 
                             if (!empty($partialResult['splits'])) {
@@ -1115,4 +1313,695 @@ class OpeningStockController extends Controller
             return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
     }
+
+    public function previewPallets(Request $request)
+    {
+        $items = $request->input('items', []);
+        $activeRowIndex = $request->input('active_row_index', 0);
+
+        if (empty($items)) {
+            return response()->json(['success' => true, 'allocations' => []]);
+        }
+
+        // We will simulate allocations sequentially for all items in the form
+        $simulatedOccupied = []; // row_id => [pallet_number => true]
+        $activeAllocations = [];
+        $activePalletsUsed = 0;
+        $activeUnits = 0;
+
+        // Preload active warehouses
+        $activeWarehouses = Warehouse::where('status', 1)->orderBy('name')->get();
+        if ($activeWarehouses->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'No active warehouses found.']);
+        }
+
+        foreach ($items as $idx => $itemData) {
+            $productId = $itemData['product_id'] ?? null;
+            $units = (int) ($itemData['units_received'] ?? 0);
+            $warehouseId = $itemData['warehouse_id'] ?? 'auto'; // 'auto' or ID
+            $palletsUsed = isset($itemData['pallets_used']) ? (int) $itemData['pallets_used'] : 0;
+            $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
+            $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
+
+            if (!$productId || $units <= 0) {
+                continue;
+            }
+
+            $product = Product::find($productId);
+            if (!$product) continue;
+
+            $packSize = (float) $product->pack_size;
+            $cartonsPerPallet = (int) ($product->cartons_per_pallet ?? 0);
+
+            if ($palletsUsed === 0 && $cartonsPerPallet > 0) {
+                $palletsUsed = (int) ceil($units / $cartonsPerPallet);
+            }
+
+            if ($warehouseId === 'auto') {
+                $targets = $activeWarehouses;
+            } else {
+                $targets = Warehouse::where('id', (int) $warehouseId)->get();
+            }
+
+            $allocations = [];
+            $remainingUnits = $units;
+            $remainingPallets = $palletsUsed;
+
+            // Helper to get pallet name
+            $getPalletNameLocal = function($row, $palletStart, $offsetIndex) {
+                if (!$row || !$palletStart) return '-';
+                $rowName = $row->row_name;
+                $parts = preg_split('/ to /i', $rowName);
+                $firstPallet = $parts[0];
+                if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                    $prefix = $matches[1];
+                    $startNum = (int)$matches[2];
+                    $actualNum = $startNum + $palletStart - 1 + $offsetIndex;
+                    $digits = strlen($matches[2]);
+                    return $prefix . sprintf("%0{$digits}d", $actualNum);
+                }
+                return $rowName . ' - P' . ($palletStart + $offsetIndex);
+            };
+
+            // Sim helper to check if a pallet is occupied in DB or in-memory
+            $isPalletOccupiedSim = function($rowId, $palletNumber) use (&$simulatedOccupied) {
+                if (isset($simulatedOccupied[$rowId][$palletNumber])) {
+                    return true;
+                }
+                $exists = StockInItem::where('warehouse_row_id', $rowId)
+                    ->where('balance_quantity', '>', 0)
+                    ->where('pallet_start', '<=', $palletNumber)
+                    ->whereRaw('pallet_start + pallets_used - 1 >= ?', [$palletNumber])
+                    ->exists();
+                return $exists;
+            };
+
+            if ($manualRowId) {
+                $row = WarehouseRow::with('warehouse')->find($manualRowId);
+                if ($row) {
+                    $palletStart = $manualPalletStart;
+                    if ($palletStart === null) {
+                        $capacity = $row->pallet_capacity;
+                        $foundStart = null;
+                        for ($p = 1; $p <= $capacity - $palletsUsed + 1; $p++) {
+                            $fit = true;
+                            for ($k = 0; $k < $palletsUsed; $k++) {
+                                if ($isPalletOccupiedSim($row->id, $p + $k)) {
+                                    $fit = false;
+                                    break;
+                                }
+                            }
+                            if ($fit) {
+                                $foundStart = $p;
+                                break;
+                            }
+                        }
+                        // If no fit within capacity, warn but start at end of occupied
+                        if (!$foundStart) {
+                            $maxOccupied = 0;
+                            if (isset($simulatedOccupied[$row->id])) {
+                                $maxOccupied = max(array_keys($simulatedOccupied[$row->id]) ?: [0]);
+                            }
+                            $dbMax = StockInItem::where('warehouse_row_id', $row->id)->max(DB::raw('pallet_start + pallets_used - 1')) ?: 0;
+                            $palletStart = min(max($maxOccupied, $dbMax) + 1, $capacity);
+                        } else {
+                            $palletStart = $foundStart;
+                        }
+                    } else {
+                        // User provided pallet_start - validate it fits within row capacity
+                        if ($palletStart + $palletsUsed - 1 > $row->pallet_capacity) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => "Row '{$row->row_name}': Starting pallet {$palletStart} with {$palletsUsed} pallet(s) exceeds row capacity of {$row->pallet_capacity}."
+                            ]);
+                        }
+                    }
+
+                    $palletNames = [];
+                    for ($i = 0; $i < $palletsUsed; $i++) {
+                        $palletNames[] = $getPalletNameLocal($row, $palletStart, $i);
+                        $simulatedOccupied[$row->id][$palletStart + $i] = true;
+                    }
+
+                    $allocations[] = [
+                        'row_id' => $row->id,
+                        'warehouse_name' => $row->warehouse->name,
+                        'row_name' => $row->row_name,
+                        'pallet_start' => $palletStart,
+                        'pallets_count' => $palletsUsed,
+                        'pallet_names' => $palletNames,
+                        'units' => $units,
+                        'type' => 'manual',
+                    ];
+                }
+            } else {
+                // Auto/FIFO simulation
+                if ($remainingUnits > 0) {
+                    $palletsNeeded = $remainingPallets;
+                    if ($palletsNeeded === 0 && $cartonsPerPallet > 0) {
+                        $palletsNeeded = (int) ceil($remainingUnits / $cartonsPerPallet);
+                    }
+
+                    foreach ($targets as $wh) {
+                        if ($remainingUnits <= 0) break;
+
+                        $rows = WarehouseRow::where('warehouse_id', $wh->id)
+                            ->get()
+                            ->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)
+                            ->values();
+
+                        if ($rows->isEmpty()) continue;
+
+                        foreach ($rows as $row) {
+                            if ($remainingUnits <= 0 || $palletsNeeded <= 0) break;
+
+                            $capacity = (int) $row->pallet_capacity;
+
+                            $start = 1;
+                            $freeBlocks = [];
+                            while ($start <= $capacity) {
+                                if (!$isPalletOccupiedSim($row->id, $start)) {
+                                    $len = 0;
+                                    while (($start + $len) <= $capacity && !$isPalletOccupiedSim($row->id, $start + $len)) {
+                                        $len++;
+                                    }
+                                    $freeBlocks[] = ['start' => $start, 'length' => $len];
+                                    $start += $len;
+                                } else {
+                                    $start++;
+                                }
+                            }
+
+                            foreach ($freeBlocks as $block) {
+                                if ($remainingUnits <= 0 || $palletsNeeded <= 0) break;
+
+                                $palletsHere = min($palletsNeeded, $block['length']);
+                                if ($palletsHere <= 0) continue;
+
+                                if ($palletsHere >= $palletsNeeded) {
+                                    $unitsHere = $remainingUnits;
+                                } elseif ($cartonsPerPallet > 0) {
+                                    $unitsHere = min($remainingUnits, $palletsHere * $cartonsPerPallet);
+                                } else {
+                                    $unitsHere = $remainingUnits;
+                                }
+
+                                $palletNames = [];
+                                for ($i = 0; $i < $palletsHere; $i++) {
+                                    $palletNames[] = $getPalletNameLocal($row, $block['start'], $i);
+                                    $simulatedOccupied[$row->id][$block['start'] + $i] = true;
+                                }
+
+                                $allocations[] = [
+                                    'row_id' => $row->id,
+                                    'warehouse_name' => $wh->name,
+                                    'row_name' => $row->row_name,
+                                    'pallet_start' => $block['start'],
+                                    'pallets_count' => $palletsHere,
+                                    'pallet_names' => $palletNames,
+                                    'units' => $unitsHere,
+                                    'type' => 'new',
+                                ];
+
+                                $palletsNeeded -= $palletsHere;
+                                $remainingUnits -= $unitsHere;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ($idx == $activeRowIndex) {
+                $activeAllocations = $allocations;
+                $activePalletsUsed = $palletsUsed;
+                $activeUnits = $units;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'allocations' => $activeAllocations,
+            'units' => $activeUnits,
+            'pallets_used' => $activePalletsUsed,
+            'remaining_units' => 0,
+        ]);
+    }
+
+    public function showTransaction(StockIn $stockIn)
+    {
+        $stockIn->load([
+            'warehouse',
+            'items.product.category',
+            'items.product.uom',
+            'items.warehouseRow'
+        ]);
+
+        return view('opening_stock.transaction_show', compact('stockIn'));
+    }
+
+    public function editTransaction(StockIn $stockIn)
+    {
+        $stockIn->load(['warehouse', 'items.product', 'items.warehouseRow']);
+
+        // Group items that were split across multiple rows back into single logical entries
+        $groupedItems = $stockIn->items->groupBy(function($item) {
+            return $item->product_id . '_' . $item->sap_batch . '_' . $item->vendor_batch . '_' . $item->po_no . '_' . $item->ibd_no . '_' . $item->mfg_date . '_' . $item->expiry_date;
+        })->map(function($group) {
+            $first = $group->first();
+            $totalUnits = $group->sum('units_received');
+            $totalQty = $group->sum('total_quantity');
+            $balanceQty = $group->sum('balance_quantity');
+            $isDispatched = round($totalQty - $balanceQty, 4) > 0;
+
+            return [
+                'product_id' => $first->product_id,
+                'product_name' => optional($first->product)->name,
+                'item_code' => optional($first->product)->item_code,
+                'pack_size' => $first->pack_size_snapshot,
+                'cartons_per_pallet' => optional($first->product)->cartons_per_pallet,
+                'sap_batch' => $first->sap_batch,
+                'vendor_batch' => $first->vendor_batch,
+                'po_no' => $first->po_no,
+                'ibd_no' => $first->ibd_no,
+                'mfg_date' => $first->mfg_date ? (method_exists($first->mfg_date, 'format') ? $first->mfg_date->format('Y-m-d') : substr($first->mfg_date, 0, 10)) : null,
+                'expiry_date' => $first->expiry_date ? (method_exists($first->expiry_date, 'format') ? $first->expiry_date->format('Y-m-d') : substr($first->expiry_date, 0, 10)) : null,
+                'units_received' => $totalUnits,
+                'total_quantity' => $totalQty,
+                'balance_quantity' => $balanceQty,
+                'is_dispatched' => $isDispatched,
+                'use_pallets' => $first->use_pallets,
+                'pallets_used' => $group->sum('pallets_used'),
+                'sound_stock' => $first->sound_stock,
+                'block_stock' => $first->block_stock,
+                'hold_stock' => $first->hold_stock,
+                'quality_clearance' => $first->quality_clearance,
+                // store the IDs of the splits so we can clean them up if modified
+                'split_ids' => $group->pluck('id')->join(','),
+                'warehouse_row_id' => $first->warehouse_row_id,
+                'pallet_start' => $first->pallet_start,
+            ];
+        })->values();
+
+        $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name')->get();
+        $products = Product::where('status', 1)->orderBy('name')->get();
+
+        return view('opening_stock.transaction_edit', compact('stockIn', 'groupedItems', 'warehouses', 'products'));
+    }
+
+    public function updateTransaction(Request $request, StockIn $stockIn)
+    {
+        if ($request->has('items') && is_array($request->items)) {
+            $filteredItems = collect($request->items)
+                ->filter(function ($item) {
+                    return !empty($item['product_id']);
+                })
+                ->values()
+                ->toArray();
+            $request->merge(['items' => $filteredItems]);
+        }
+
+        $request->validate([
+            'warehouse_id' => 'required|string',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.units_received' => 'required|integer|min:1',
+            'items.*.warehouse_id' => 'nullable|string',
+            'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
+            'items.*.sap_batch' => 'nullable|string|max:100',
+            'items.*.vendor_batch' => 'nullable|string|max:100',
+            'items.*.ibd_no' => 'nullable|string|max:100',
+            'items.*.po_no' => 'nullable|string|max:100',
+            'items.*.mfg_date' => 'nullable|date',
+            'items.*.expiry_date' => 'nullable|date',
+            'items.*.pallets_used' => 'nullable|integer|min:0',
+            'items.*.remarks' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $stockIn) {
+                // Update header
+                $headerWhId = $request->warehouse_id;
+                $activeWarehouses = Warehouse::where('status', 1)->orderBy('name')->get();
+                if ($activeWarehouses->isEmpty()) {
+                    throw new \Exception("No active warehouses found.");
+                }
+                $tempWhId = $headerWhId === 'auto' ? $activeWarehouses->first()->id : (int) $headerWhId;
+
+                $stockIn->update([
+                    'warehouse_id' => $tempWhId,
+                    'remarks' => $request->remarks,
+                ]);
+
+                // Fetch original split IDs BEFORE modifying
+                $allOriginalSplitIds = $stockIn->items()->pluck('id')->toArray();
+                $submittedSplitIds = [];
+
+                // Track remaining capacities
+                $remainingFree = [];
+                foreach ($activeWarehouses as $wh) {
+                    $remainingFree[$wh->id] = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                }
+
+                // Process Items
+                foreach ($request->items as $itemData) {
+                    if (empty($itemData['product_id']) || empty($itemData['units_received'])) continue;
+
+                    $productId = $itemData['product_id'];
+                    $product = Product::findOrFail($productId);
+                    $newUnits = (int) $itemData['units_received'];
+                    $packSize = (float) $product->pack_size;
+                    $newQty = round($newUnits * $packSize, 4);
+
+                    $splitIdsStr = $itemData['split_ids'] ?? '';
+                    $splitIds = array_filter(explode(',', $splitIdsStr));
+
+                    if (!empty($splitIds)) {
+                        $submittedSplitIds = array_merge($submittedSplitIds, $splitIds);
+
+                        $existingSplits = StockInItem::whereIn('id', $splitIds)->get();
+                        $oldTotalQty = round($existingSplits->sum('total_quantity'), 4);
+                        $oldBalanceQty = round($existingSplits->sum('balance_quantity'), 4);
+                        $isDispatched = ($oldTotalQty - $oldBalanceQty) > 0.001;
+
+                        if ($isDispatched) {
+                            // Dispatched - enforce constraints, only update details
+                            $dispatchedQty = $oldTotalQty - $oldBalanceQty;
+                            if ($newQty < $dispatchedQty) {
+                                throw new \Exception("Cannot reduce product '{$product->name}' below dispatched quantity.");
+                            }
+                            foreach ($existingSplits as $split) {
+                                $split->update([
+                                    'sap_batch' => $itemData['sap_batch'] ?? null,
+                                    'vendor_batch' => $itemData['vendor_batch'] ?? null,
+                                    'po_no' => $itemData['po_no'] ?? null,
+                                    'ibd_no' => $itemData['ibd_no'] ?? null,
+                                    'mfg_date' => $itemData['mfg_date'] ?? null,
+                                    'expiry_date' => $itemData['expiry_date'] ?? null,
+                                    'sound_stock' => !empty($itemData['sound_stock']),
+                                    'block_stock' => !empty($itemData['block_stock']),
+                                    'hold_stock' => !empty($itemData['hold_stock']),
+                                    'quality_clearance' => $itemData['quality_clearance'] ?? 'pending',
+                                    'remarks' => $itemData['remarks'] ?? null,
+                                ]);
+                            }
+                        } else {
+                            // Not dispatched - delete old and recreate
+                            StockInItem::whereIn('id', $splitIds)->delete();
+                            $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses);
+                        }
+                    } else {
+                        // New Item
+                        $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses);
+                    }
+                }
+
+                // Delete removed items
+                $splitsToRemove = array_diff($allOriginalSplitIds, $submittedSplitIds);
+                if (!empty($splitsToRemove)) {
+                    $removedSplits = StockInItem::whereIn('id', $splitsToRemove)->get();
+                    foreach ($removedSplits as $removedSplit) {
+                        if (round($removedSplit->total_quantity - $removedSplit->balance_quantity, 4) > 0) {
+                            throw new \Exception("Cannot delete item '{$removedSplit->product->name}' because it has already been dispatched.");
+                        }
+                    }
+                    StockInItem::whereIn('id', $splitsToRemove)->delete();
+                }
+
+                // Sync header warehouse_id if items ended up in a different warehouse
+                $actualWhId = $stockIn->items()->where('balance_quantity', '>', 0)
+                    ->orderBy('warehouse_id')->value('warehouse_id');
+                if ($actualWhId && $actualWhId != $stockIn->warehouse_id) {
+                    $stockIn->update(['warehouse_id' => $actualWhId]);
+                }
+            });
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Opening stock transaction updated successfully.',
+                    'redirect' => route('opening-stock.index')
+                ]);
+            }
+
+            return redirect()->route('opening-stock.index')->with('success', 'Opening stock transaction updated successfully.');
+
+        } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    public function destroyTransaction(StockIn $stockIn)
+    {
+        try {
+            DB::transaction(function () use ($stockIn) {
+                // Check if any items have been dispatched
+                foreach ($stockIn->items as $item) {
+                    if (round($item->total_quantity - $item->balance_quantity, 4) > 0) {
+                        throw new \Exception("Cannot delete opening stock transaction #{$stockIn->id} because item '{$item->product->name}' has already been dispatched.");
+                    }
+                }
+
+                // Delete items
+                $stockIn->items()->delete();
+                // Delete header
+                $stockIn->delete();
+            });
+
+            return redirect()->route('opening-stock.index')->with('success', 'Opening stock transaction deleted successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    private function createTransactionItemSplits($stockIn, $headerWhId, $product, $itemData, &$remainingFree, $activeWarehouses)
+    {
+        $units = (int) $itemData['units_received'];
+        $packSize = (float) $product->pack_size;
+
+        $itemWh = !empty($itemData['warehouse_id']) ? $itemData['warehouse_id'] : $headerWhId;
+        if ($itemWh === 'auto') {
+            $targets = $activeWarehouses;
+        } else {
+            $targets = Warehouse::where('id', (int) $itemWh)->get();
+        }
+
+        $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
+        $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
+
+        if ($manualRowId) {
+            $row = WarehouseRow::findOrFail($manualRowId);
+            $palletsNeeded = (int) ($itemData['pallets_used'] ?? 0);
+            if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
+            }
+
+            if ($manualPalletStart === null) {
+                $capacity = $row->pallet_capacity;
+                $occupied = [];
+                $existingItems = StockInItem::where('warehouse_row_id', $manualRowId)
+                    ->where('balance_quantity', '>', 0)
+                    ->whereNotNull('pallet_start')
+                    ->where('pallets_used', '>', 0)
+                    ->get();
+                foreach ($existingItems as $existingObj) {
+                    $start = $existingObj->pallet_start;
+                    for ($k = 0; $k < $existingObj->pallets_used; $k++) {
+                        $occupied[$start + $k] = true;
+                    }
+                }
+                $foundStart = null;
+                for ($p = 1; $p <= $capacity - $palletsNeeded + 1; $p++) {
+                    $fit = true;
+                    for ($k = 0; $k < $palletsNeeded; $k++) {
+                        if (isset($occupied[$p + $k])) {
+                            $fit = false;
+                            break;
+                        }
+                    }
+                    if ($fit) {
+                        $foundStart = $p;
+                        break;
+                    }
+                }
+                $manualPalletStart = $foundStart ?? (max(array_keys($occupied) ?: [0]) + 1);
+            }
+
+            $splitQty = round($units * $packSize, 4);
+            $lastVacant = $product->cartons_per_pallet > 0
+                ? max(0, ($palletsNeeded * $product->cartons_per_pallet) - $units)
+                : 0;
+
+            StockInItem::create([
+                'stock_in_id'        => $stockIn->id,
+                'product_id'         => $product->id,
+                'warehouse_id'       => $row->warehouse_id,
+                'warehouse_row_id'   => $row->id,
+                'sap_batch'          => $itemData['sap_batch'] ?? null,
+                'vendor_batch'       => $itemData['vendor_batch'] ?? null,
+                'ibd_no'             => $itemData['ibd_no'] ?? null,
+                'po_no'              => $itemData['po_no'] ?? null,
+                'mfg_date'           => $itemData['mfg_date'] ?? null,
+                'expiry_date'        => $itemData['expiry_date'] ?? null,
+                'units_received'     => $units,
+                'pack_size_snapshot' => $packSize,
+                'total_quantity'     => $splitQty,
+                'balance_quantity'   => $splitQty,
+                'use_pallets'        => $palletsNeeded > 0,
+                'pallets_used'       => $palletsNeeded > 0 ? $palletsNeeded : null,
+                'pallet_start'       => $manualPalletStart,
+                'last_pallet_vacant' => $lastVacant,
+                'sound_stock'        => !empty($itemData['sound_stock']),
+                'block_stock'        => !empty($itemData['block_stock']),
+                'hold_stock'         => !empty($itemData['hold_stock']),
+                'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                'remarks'            => $itemData['remarks'] ?? null,
+                'uom_snapshot'       => optional($product->uom)->name,
+                'packing_snapshot'   => optional($product->packingType)->name,
+            ]);
+
+            if (isset($remainingFree[$row->warehouse_id])) {
+                $remainingFree[$row->warehouse_id] -= $palletsNeeded;
+            }
+        } else {
+            // Auto/FIFO fill
+            $remainingUnits = $units;
+            if ($product->cartons_per_pallet > 0) {
+                foreach ($targets as $wh) {
+                    if ($remainingUnits <= 0) break;
+
+                    $partialResult = WarehouseRowFifo::fillPartials(
+                        $wh->id,
+                        $product->id,
+                        $remainingUnits,
+                        $packSize,
+                        (int) $product->cartons_per_pallet,
+                        $itemData['sap_batch'] ?? null,
+                        $itemData['vendor_batch'] ?? null,
+                        $itemData['expiry_date'] ?? null
+                    );
+
+                    foreach ($partialResult['splits'] as $split) {
+                        $existingItem = StockInItem::find($split['stock_in_item_id']);
+                        if ($existingItem) {
+                            $existingItem->decrement('last_pallet_vacant', $split['units']);
+                            $leftoverVacancy = $existingItem->fresh()->last_pallet_vacant;
+                            
+                            $sharedPalletStart = null;
+                            if ($existingItem->pallet_start !== null && $existingItem->pallets_used > 0) {
+                                $sharedPalletStart = $existingItem->pallet_start + $existingItem->pallets_used - 1;
+                            }
+
+                            StockInItem::create([
+                                'stock_in_id'        => $stockIn->id,
+                                'product_id'         => $product->id,
+                                'warehouse_id'       => $wh->id,
+                                'warehouse_row_id'   => $split['warehouse_row_id'] ?? null,
+                                'sap_batch'          => $itemData['sap_batch'] ?? null,
+                                'vendor_batch'       => $itemData['vendor_batch'] ?? null,
+                                'ibd_no'             => $itemData['ibd_no'] ?? null,
+                                'po_no'              => $itemData['po_no'] ?? null,
+                                'mfg_date'           => $itemData['mfg_date'] ?? null,
+                                'expiry_date'        => $itemData['expiry_date'] ?? null,
+                                'units_received'     => $split['units'],
+                                'pack_size_snapshot' => $packSize,
+                                'total_quantity'     => $split['qty'],
+                                'balance_quantity'   => $split['qty'],
+                                'use_pallets'        => $sharedPalletStart !== null ? 1 : 0,
+                                'pallets_used'       => $sharedPalletStart !== null ? 1 : null,
+                                'pallet_start'       => $sharedPalletStart,
+                                'last_pallet_vacant' => $leftoverVacancy,
+                                'sound_stock'        => !empty($itemData['sound_stock']),
+                                'block_stock'        => !empty($itemData['block_stock']),
+                                'hold_stock'         => !empty($itemData['hold_stock']),
+                                'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                                'remarks'            => $itemData['remarks'] ?? null,
+                                'uom_snapshot'       => optional($product->uom)->name,
+                                'packing_snapshot'   => optional($product->packingType)->name,
+                            ]);
+                            $existingItem->update(['last_pallet_vacant' => 0]);
+                        }
+                    }
+                    $remainingUnits = $partialResult['remaining_units'];
+                }
+            }
+
+            if ($remainingUnits <= 0) return;
+
+            $palletsNeeded = (int) ($itemData['pallets_used'] ?? 0);
+            if ($palletsNeeded === 0 && $product->cartons_per_pallet > 0) {
+                $palletsNeeded = (int) ceil($remainingUnits / $product->cartons_per_pallet);
+            }
+
+            foreach ($targets as $wh) {
+                if ($remainingUnits <= 0) break;
+
+                $available = max(0, $remainingFree[$wh->id]);
+                if ($available <= 0) continue;
+
+                $palletsHere = min($palletsNeeded, $available);
+                if ($palletsHere <= 0) continue;
+
+                $maxUnitsHere = $product->cartons_per_pallet > 0
+                    ? $palletsHere * $product->cartons_per_pallet
+                    : $remainingUnits;
+                $unitsHere = min($maxUnitsHere, $remainingUnits);
+                if ($unitsHere <= 0) continue;
+
+                $splits = WarehouseRowFifo::assign(
+                    $wh->id,
+                    $palletsHere,
+                    $unitsHere,
+                    $packSize,
+                    true,
+                    (int) $product->cartons_per_pallet
+                );
+
+                foreach ($splits as $split) {
+                    $splitUnits   = $split['units'];
+                    $splitQty     = round($splitUnits * $packSize, 4);
+                    $splitPallets = $split['pallets'];
+
+                    $lastVacant = $product->cartons_per_pallet > 0
+                        ? max(0, ($splitPallets * $product->cartons_per_pallet) - $splitUnits)
+                        : 0;
+
+                    StockInItem::create([
+                        'stock_in_id'        => $stockIn->id,
+                        'product_id'         => $product->id,
+                        'warehouse_id'       => $wh->id,
+                        'warehouse_row_id'   => $split['warehouse_row_id'],
+                        'sap_batch'          => $itemData['sap_batch'] ?? null,
+                        'vendor_batch'       => $itemData['vendor_batch'] ?? null,
+                        'ibd_no'             => $itemData['ibd_no'] ?? null,
+                        'po_no'              => $itemData['po_no'] ?? null,
+                        'mfg_date'           => $itemData['mfg_date'] ?? null,
+                        'expiry_date'        => $itemData['expiry_date'] ?? null,
+                        'units_received'     => $splitUnits,
+                        'pack_size_snapshot' => $packSize,
+                        'total_quantity'     => $splitQty,
+                        'balance_quantity'   => $splitQty,
+                        'use_pallets'        => $splitPallets > 0,
+                        'pallets_used'       => $splitPallets > 0 ? $splitPallets : null,
+                        'pallet_start'       => $split['pallet_start'] ?? null,
+                        'last_pallet_vacant' => $lastVacant,
+                        'sound_stock'        => !empty($itemData['sound_stock']),
+                        'block_stock'        => !empty($itemData['block_stock']),
+                        'hold_stock'         => !empty($itemData['hold_stock']),
+                        'quality_clearance'  => $itemData['quality_clearance'] ?? 'pending',
+                        'remarks'            => $itemData['remarks'] ?? null,
+                        'uom_snapshot'       => optional($product->uom)->name,
+                        'packing_snapshot'   => optional($product->packingType)->name,
+                    ]);
+                }
+
+                $remainingFree[$wh->id] -= $palletsHere;
+                $palletsNeeded -= $palletsHere;
+                $remainingUnits -= $unitsHere;
+            }
+        }
+    }
 }
+

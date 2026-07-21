@@ -23,8 +23,7 @@ class WarehouseRowFifo
      */
     public static function usedPalletsPerRow(int $warehouseId): array
     {
-        $items = StockInItem::with('product')
-            ->where('warehouse_id', $warehouseId)
+        $items = StockInItem::where('warehouse_id', $warehouseId)
             ->where('balance_quantity', '>', 0)
             ->whereNotNull('warehouse_row_id')
             ->get();
@@ -32,7 +31,7 @@ class WarehouseRowFifo
         $result = [];
         foreach ($items as $item) {
             $rowId = $item->warehouse_row_id;
-            $result[$rowId] = ($result[$rowId] ?? 0) + StockInItem::computeActivePallets($item);
+            $result[$rowId] = ($result[$rowId] ?? 0) + (int) max(1, $item->pallets_used);
         }
         return $result;
     }
@@ -40,6 +39,7 @@ class WarehouseRowFifo
     /**
      * Find partial pallets of the same product and return fill data.
      * Returns ['splits' => [...], 'remaining_units' => int]
+     * Disabled to prevent shared pallets and conflicts.
      */
     public static function fillPartials(
         int    $warehouseId,
@@ -48,54 +48,11 @@ class WarehouseRowFifo
         float  $packSize,
         int    $cartonsPerPallet,
         ?string $sapBatch = null,
-        ?string $vendorBatch = null
+        ?string $vendorBatch = null,
+        ?string $expiryDate = null
     ): array {
-        $splits = [];
-        $remaining = $totalUnits;
-
-        if (!$productId || $cartonsPerPallet <= 0) {
-            return ['splits' => $splits, 'remaining_units' => $remaining];
-        }
-
-        $query = StockInItem::where('warehouse_id', $warehouseId)
-            ->where('product_id', $productId)
-            ->where('balance_quantity', '>', 0)
-            ->where('last_pallet_vacant', '>', 0);
-
-        if ($sapBatch !== null && $sapBatch !== '') {
-            $query->where('sap_batch', $sapBatch);
-        } else {
-            $query->where(function($q) {
-                $q->whereNull('sap_batch')->orWhere('sap_batch', '');
-            });
-        }
-
-        if ($vendorBatch !== null && $vendorBatch !== '') {
-            $query->where('vendor_batch', $vendorBatch);
-        } else {
-            $query->where(function($q) {
-                $q->whereNull('vendor_batch')->orWhere('vendor_batch', '');
-            });
-        }
-
-        $partials = $query->orderBy('id')->get();
-
-        foreach ($partials as $partial) {
-            if ($remaining <= 0) break;
-
-            $fill = min($remaining, $partial->last_pallet_vacant);
-            $remaining -= $fill;
-
-            $splits[] = [
-                'stock_in_item_id' => $partial->id,
-                'warehouse_row_id' => $partial->warehouse_row_id,
-                'pallets'          => 0,
-                'units'            => $fill,
-                'qty'              => round($fill * $packSize, 4),
-            ];
-        }
-
-        return ['splits' => $splits, 'remaining_units' => $remaining];
+        // Disallow partial pallet sharing: 1 pallet spot = 1 dedicated allocation
+        return ['splits' => [], 'remaining_units' => $totalUnits];
     }
 
     /**
@@ -118,11 +75,11 @@ class WarehouseRowFifo
 
     /**
      * Helper to find contiguous free blocks of pallets in a row.
+     * Considers the full pallet_start to pallet_start + pallets_used - 1 range as occupied.
      */
     public static function getFreeBlocksForRow(int $rowId, int $capacity): array
     {
-        $items = StockInItem::with('product')
-            ->where('warehouse_row_id', $rowId)
+        $items = StockInItem::where('warehouse_row_id', $rowId)
             ->where('balance_quantity', '>', 0)
             ->whereNotNull('pallet_start')
             ->where('pallets_used', '>', 0)
@@ -130,10 +87,10 @@ class WarehouseRowFifo
 
         $occupied = [];
         foreach ($items as $item) {
-            $activeBalances = $item->getPalletBalances();
-            $start = $item->pallet_start;
-            foreach ($activeBalances as $offset => $qty) {
-                $occupied[$start + $offset] = true;
+            $start = (int) $item->pallet_start;
+            $count = (int) $item->pallets_used;
+            for ($k = 0; $k < $count; $k++) {
+                $occupied[$start + $k] = true;
             }
         }
 

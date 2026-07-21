@@ -23,14 +23,17 @@
         <small class="text-muted">Manage outward stock movements</small>
     </div>
     <div class="d-flex gap-2">
-        <a href="{{ route('outbound.create') }}" class="btn btn-primary btn-sm">
+        <a href="javascript:void(0)" onclick="exportOutbound()" class="btn btn-sm fw-semibold"
+           style="background:#134e26; color:#4ade80; border:1px solid #166534; border-radius:8px; font-size:11px; padding:6px 14px;">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+        <a href="{{ route('outbound.import') }}" class="btn btn-sm fw-semibold"
+           style="background:#172554; color:#60a5fa; border:1px solid #1e40af; border-radius:8px; font-size:11px; padding:6px 14px;">
+            <i class="bi bi-upload me-1"></i>Import CSV
+        </a>
+        <a href="{{ route('outbound.create') }}" class="btn btn-sm fw-bold"
+           style="background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; border:none; border-radius:8px; font-size:11px; padding:6px 16px;">
             <i class="bi bi-plus-lg me-1"></i>New Outbound
-        </a>
-        <a href="javascript:void(0)" onclick="exportOutbound()" class="btn btn-outline-success btn-sm">
-            <i class="bi bi-download me-1"></i> Export
-        </a>
-        <a href="{{ route('outbound.import') }}" class="btn btn-outline-info btn-sm">
-            <i class="bi bi-upload me-1"></i> Import
         </a>
     </div>
 </div>

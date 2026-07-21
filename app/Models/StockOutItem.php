@@ -90,7 +90,7 @@ class StockOutItem extends Model
 
         $rowName = $row->row_name;
         
-        $parts = explode(' to ', $rowName);
+        $parts = preg_split('/ to /i', $rowName);
         $firstPallet = $parts[0];
 
         if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {

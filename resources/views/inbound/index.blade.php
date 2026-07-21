@@ -1,1036 +1,463 @@
 @extends('layouts.app')
 
-@section('content')
-
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+@push('styles')
 <style>
-.bg-orange {
-    background-color: #fd7e14 !important;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+.ibd-wrap * { font-family: 'Inter', sans-serif; }
+
+/* ── Main Table ── */
+.ibd-table thead th {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: #cbd5e1; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .7px; text-transform: uppercase;
+    border: none; padding: 13px 14px; white-space: nowrap;
 }
-/* select2 bootstrap 5 styling fixes */
-.select2-container--default .select2-selection--multiple {
-    border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
-    min-height: calc(1.5em + 0.5rem + 2px);
+.ibd-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .12s; }
+.ibd-table tbody tr:hover { background: #f8fafc; }
+.ibd-table tbody td { padding: 10px 14px; font-size: 13px; vertical-align: middle; border: none; }
+
+.ibd-details-btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    border: none; color: #fff; font-size: 11px; font-weight: 600;
+    padding: 5px 13px; border-radius: 20px;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: all .2s; letter-spacing: .3px; cursor: pointer;
 }
-.select2-container--default .select2-selection--multiple .select2-selection__choice {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    color: #212529;
+.ibd-details-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,130,246,.4); }
+
+.pill-wh  { background: linear-gradient(135deg,#1e293b,#334155); color: #e2e8f0; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── KPI Strip ── */
+.kpi-strip { display: flex; background: #fff; border-bottom: 1px solid #e9edf2; }
+.kpi-card  { flex: 1; padding: 14px 18px; text-align: center; border-right: 1px solid #f1f5f9; }
+.kpi-card:last-child { border-right: none; }
+.kpi-icon  { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 5px; font-size: 13px; }
+.kpi-val   { font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1; }
+.kpi-lbl   { font-size: 9.5px; font-weight: 600; color: #94a3b8; letter-spacing: .5px; text-transform: uppercase; margin-top: 3px; }
+.kpi-blue   .kpi-icon { background:#dbeafe; color:#2563eb; }
+.kpi-green  .kpi-icon { background:#dcfce7; color:#16a34a; }
+.kpi-purple .kpi-icon { background:#ede9fe; color:#7c3aed; }
+.kpi-orange .kpi-icon { background:#ffedd5; color:#ea580c; }
+
+/* ── Modal batches ── */
+#ibdBatchesModal .modal-content { border: none; border-radius: 16px; overflow: hidden; }
+@media (min-width: 993px) {
+    #ibdBatchesModal { left: 280px !important; width: calc(100% - 280px) !important; }
 }
+.state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:12px; color:#94a3b8; }
 </style>
+@endpush
 
-<!-- <style>
-    .wms-table th, .wms-table td { vertical-align: middle; }
-    .wms-nowrap { white-space: nowrap; }
-    .wms-ellipsis { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .wms-pill { border-radius: 999px; }
+@section('content')
+<div class="ibd-wrap">
 
-@media(max-width: 991.98px) {
-        .wms-table thead { display: none; }
-        .wms-table, .wms-table tbody, .wms-table tr, .wms-table td { display: block; width: 100%; }
-        .wms-table tr { border: 1px solid #e9ecef; border-radius: 10px; margin: 10px 10px; overflow: hidden; }
-        .wms-table td {
-            border: none;
-            border-bottom: 1px solid #f1f3f5;
-            padding: 10px 12px;
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-        }
-        .wms-table td:last-child { border-bottom: none; }
-        .wms-table td::before {
-            content: attr(data-label);
-            font-weight: 600;
-            color: #495057;
-            min-width: 40%;
-        }
-        .wms-ellipsis { max-width: 100%; }
-    }
-</style> -->
+{{-- ══════════ MAIN CARD ══════════ --}}
+<div class="card shadow-sm border-0" style="border-radius:12px; overflow:hidden;">
 
-<div class="d-flex align-items-center justify-content-between mb-3">
+  {{-- Header --}}
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"
+       style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%); border:none; padding:16px 22px;">
     <div>
-        <h5 class="fw-bold mb-0">Inbound Stock</h5>
-        <small class="text-muted">Batch-wise inbound stock management</small>
+      <h6 class="mb-0 fw-bold" style="color:#f1f5f9; font-size:15px; letter-spacing:.3px;">
+        <i class="bi bi-box-arrow-in-down me-2" style="color:#93c5fd;"></i>Inbound Stock Dashboard
+      </h6>
+      <small style="color:#475569; font-size:11px;">Document-wise inbound stock entries</small>
     </div>
     <div class="d-flex gap-2">
-        <a href="{{ route('inbound.create') }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg me-1"></i>Add Inbound
-        </a>
-        <a href="javascript:void(0)" onclick="exportInbound()" class="btn btn-outline-success btn-sm">
-            <i class="bi bi-download me-1"></i> Export
-        </a>
-        <a href="{{ route('inbound.import') }}" class="btn btn-outline-info btn-sm">
-            <i class="bi bi-upload me-1"></i> Import
-        </a>
+      <a href="javascript:void(0)" onclick="exportInbound()" class="btn btn-sm fw-semibold"
+         style="background:#134e26; color:#4ade80; border:1px solid #166534; border-radius:8px; font-size:11px; padding:6px 14px;">
+        <i class="bi bi-download me-1"></i>Export CSV
+      </a>
+      <a href="{{ route('inbound.import') }}" class="btn btn-sm fw-semibold"
+         style="background:#172554; color:#60a5fa; border:1px solid #1e40af; border-radius:8px; font-size:11px; padding:6px 14px;">
+        <i class="bi bi-upload me-1"></i>Import CSV
+      </a>
+      <a href="{{ route('inbound.create') }}" class="btn btn-sm fw-bold"
+         style="background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; border:none; border-radius:8px; font-size:11px; padding:6px 16px;">
+        <i class="bi bi-plus-lg me-1"></i>New Inbound
+      </a>
     </div>
+  </div>
+
+  {{-- KPI Strip --}}
+  <div class="kpi-strip">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon"><i class="bi bi-receipt"></i></div>
+      <div class="kpi-val">{{ $transactions->total() }}</div>
+      <div class="kpi-lbl">Total Entries</div>
+    </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><i class="bi bi-boxes"></i></div>
+      <div class="kpi-val">{{ $transactions->getCollection()->sum(fn($tx) => $tx->items->count()) }}</div>
+      <div class="kpi-lbl">Total Products</div>
+    </div>
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-icon"><i class="bi bi-layers"></i></div>
+      <div class="kpi-val">{{ number_format($transactions->getCollection()->sum(fn($tx) => $tx->items->sum('units_received'))) }}</div>
+      <div class="kpi-lbl">Total Cartons</div>
+    </div>
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-icon"><i class="bi bi-building"></i></div>
+      <div class="kpi-val">{{ $transactions->getCollection()->pluck('warehouse_id')->unique()->count() }}</div>
+      <div class="kpi-lbl">Warehouses</div>
+    </div>
+  </div>
+
+  {{-- Filters --}}
+  <div class="p-3 bg-light border-bottom">
+    <form id="inboundFilterForm">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Search</label>
+          <input type="text" name="search" id="filter_search" class="form-control form-control-sm filter-field" placeholder="Invoice, vehicle, driver, vendor...">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Warehouse</label>
+          <select name="warehouse_id" id="filter_warehouse" class="form-select form-select-sm filter-field">
+            <option value="">All Warehouses</option>
+            @foreach($warehouses as $w)
+              <option value="{{ $w->id }}">{{ $w->name }}</option>
+            @endforeach
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Vendor</label>
+          <select name="vendor_id" id="filter_vendor" class="form-select form-select-sm filter-field">
+            <option value="">All Vendors</option>
+            @foreach($vendors as $v)
+              <option value="{{ $v->id }}">{{ $v->name }}</option>
+            @endforeach
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Date From</label>
+          <input type="date" name="date_from" id="filter_date_from" class="form-control form-control-sm filter-field">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Date To</label>
+          <input type="date" name="date_to" id="filter_date_to" class="form-control form-control-sm filter-field">
+        </div>
+        <div class="col-md-1">
+          <label class="form-label fw-semibold small">&nbsp;</label>
+          <div class="d-flex gap-1">
+            <button type="button" id="applyFilters" class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button>
+            <button type="button" id="resetFilters"  class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {{-- Loading overlay --}}
+  <div id="filterLoadingOverlay" style="display:none;">
+    <div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+      <p class="mt-2 text-muted small">Applying filters...</p>
+    </div>
+  </div>
+
+  {{-- Table --}}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle ibd-table">
+      <thead>
+        <tr>
+          <th width="46">#</th>
+          <th>Invoice No</th>
+          <th>Inbound Date</th>
+          <th>Warehouse</th>
+          <th>Vendor</th>
+          <th>Transporter</th>
+          <th class="text-center">Products</th>
+          <th class="text-end">Total Cartons</th>
+          <th>Vehicle / Driver</th>
+          <th class="text-center" width="160">Action</th>
+        </tr>
+      </thead>
+      <tbody id="inboundTableBody">
+        @forelse($transactions as $tx)
+        <tr>
+          <td class="text-muted" style="font-size:11px;">{{ ($transactions->currentPage()-1)*$transactions->perPage()+$loop->iteration }}</td>
+
+          <td>
+            <span class="fw-bold" style="color:#1d4ed8; font-family:'Courier New',monospace; font-size:12px;">
+              {{ $tx->dispatched_invoice_no ?: ('#IBD-'.$tx->id) }}
+            </span>
+          </td>
+
+          <td style="font-size:11.5px; color:#64748b;">
+            {{ $tx->created_at->format('d.m.Y H:i') }}
+          </td>
+
+          <td>
+            <span class="pill-wh"><i class="bi bi-building"></i> {{ $tx->warehouse->name ?? 'Auto' }}</span>
+          </td>
+
+          <td style="font-size:12px;">{{ $tx->vendor->name ?? '—' }}</td>
+          <td style="font-size:12px;">{{ $tx->transporter->name ?? '—' }}</td>
+
+          <td class="text-center">
+            <span style="background:#f1f5f9;color:#475569;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #e2e8f0;">
+              {{ $tx->items->count() }} items
+            </span>
+          </td>
+
+          <td class="text-end fw-bold" style="color:#0f172a;">
+            {{ number_format($tx->items->sum('units_received')) }}
+          </td>
+
+          <td style="font-size:11px;">
+            <div>{{ $tx->vehicle_no ?: '—' }}</div>
+            <small class="text-muted">{{ $tx->driver_name ?: '' }}</small>
+          </td>
+
+          <td class="text-center">
+            <div class="d-flex gap-1 justify-content-center">
+              <button class="ibd-details-btn view-ibd-batches-btn"
+                      data-stock-in-id="{{ $tx->id }}"
+                      data-invoice="{{ $tx->dispatched_invoice_no ?: '#IBD-'.$tx->id }}">
+                <i class="bi bi-list-columns-reverse"></i> Details
+              </button>
+              <a href="{{ route('inbound.edit', $tx->id) }}"
+                 class="btn btn-sm btn-warning fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
+                 style="font-size:11px; padding:5px 13px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                 title="Edit Entry">
+                <i class="bi bi-pencil"></i> Edit
+              </a>
+            </div>
+          </td>
+        </tr>
+        @empty
+        <tr>
+          <td colspan="10" class="text-center py-5 text-muted">
+            <i class="bi bi-inbox" style="font-size:36px;display:block;opacity:.3;margin-bottom:8px;"></i>
+            No inbound stock entries found
+          </td>
+        </tr>
+        @endforelse
+      </tbody>
+    </table>
+  </div>
+
+  @if($transactions->hasPages())
+  <div class="card-footer bg-light border-top py-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+      <div class="text-muted small">
+        Showing <strong>{{ $transactions->firstItem() }}</strong> to <strong>{{ $transactions->lastItem() }}</strong> of <strong>{{ $transactions->total() }}</strong> entries
+      </div>
+      <div>{{ $transactions->links('pagination::bootstrap-5') }}</div>
+    </div>
+  </div>
+  @endif
+
+</div>
 </div>
 
-<div class="row g-2 mb-3">
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm bg-primary bg-opacity-10">
-            <div class="card-body p-3 d-flex align-items-center gap-3">
-                <div class="bg-primary bg-opacity-25 rounded-3 p-2">
-                    <i class="bi bi-box-seam text-primary fs-5"></i>
-                </div>
-                <div>
-                    <small class="text-muted d-block">Total Batches</small>
-                    <strong class="fs-6">{{ $items->total() }}</strong>
-                </div>
-            </div>
-        </div>
+{{-- ══════════ BATCHES DETAIL MODAL ══════════ --}}
+<div class="modal fade" id="ibdBatchesModal" tabindex="-1">
+<div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1060px;">
+<div class="modal-content" style="border-radius:16px;overflow:hidden;border:none;">
+
+  {{-- Modal Header --}}
+  <div class="modal-header" style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border:none;padding:20px 24px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:40px;height:40px;background:rgba(59,130,246,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <i class="bi bi-box-arrow-in-down" style="color:#93c5fd;font-size:18px;"></i>
+      </div>
+      <div>
+        <h6 class="modal-title mb-0" style="color:#f1f5f9;font-size:14px;font-weight:700;letter-spacing:.3px;">
+          Inbound Entry Details
+        </h6>
+        <small id="ibdModalInvoiceName" style="color:#60a5fa;font-size:11.5px;font-weight:600;"></small>
+      </div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm bg-success bg-opacity-10">
-            <div class="card-body p-3 d-flex align-items-center gap-3">
-                <div class="bg-success bg-opacity-25 rounded-3 p-2">
-                    <i class="bi bi-check-circle text-success fs-5"></i>
-                </div>
-                <div>
-                    <small class="text-muted d-block">QC Approved</small>
-                    <strong class="fs-6">{{ $items->where('quality_clearance', 'approved')->count() }}</strong>
-                </div>
-            </div>
-        </div>
+    <button class="btn-close" data-bs-dismiss="modal" style="filter:invert(1) brightness(2);"></button>
+  </div>
+
+  {{-- KPI Strip --}}
+  <div class="kpi-strip" id="ibdBatchKpiStrip" style="display:none;">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon"><i class="bi bi-archive"></i></div>
+      <div class="kpi-val" id="ibdKpiItems">—</div>
+      <div class="kpi-lbl">Products</div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm bg-warning bg-opacity-10">
-            <div class="card-body p-3 d-flex align-items-center gap-3">
-                <div class="bg-warning bg-opacity-25 rounded-3 p-2">
-                    <i class="bi bi-exclamation-circle text-warning fs-5"></i>
-                </div>
-                <div>
-                    <small class="text-muted d-block">QC Pending</small>
-                    <strong class="fs-6">{{ $items->where('quality_clearance', 'pending')->count() }}</strong>
-                </div>
-            </div>
-        </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><i class="bi bi-box-seam"></i></div>
+      <div class="kpi-val" id="ibdKpiUnits">—</div>
+      <div class="kpi-lbl">Total Cartons</div>
     </div>
-    <div class="col-md-3 col-6">
-        <div class="card border-0 shadow-sm bg-danger bg-opacity-10">
-            <div class="card-body p-3 d-flex align-items-center gap-3">
-                <div class="bg-danger bg-opacity-25 rounded-3 p-2">
-                    <i class="bi bi-x-circle text-danger fs-5"></i>
-                </div>
-                <div>
-                    <small class="text-muted d-block">QC Rejected</small>
-                    <strong class="fs-6">{{ $items->where('quality_clearance', 'rejected')->count() }}</strong>
-                </div>
-            </div>
-        </div>
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-icon"><i class="bi bi-layers"></i></div>
+      <div class="kpi-val" id="ibdKpiPallets">—</div>
+      <div class="kpi-lbl">Total Pallets</div>
     </div>
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-icon"><i class="bi bi-stack"></i></div>
+      <div class="kpi-val" id="ibdKpiQty">—</div>
+      <div class="kpi-lbl">Balance Qty</div>
+    </div>
+  </div>
+
+  {{-- Body --}}
+  <div class="modal-body" style="background:#fff;padding:0;">
+    <div id="ibdBatchLoadingState" class="state-box py-5 text-center" style="display:none;">
+      <div class="spinner-border text-primary" style="width:30px;height:30px;border-width:3px;"></div>
+      <div class="text-muted mt-2 small">Loading details...</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped table-sm mb-0 align-middle small" style="font-size: 12.5px;">
+        <thead class="table-dark">
+          <tr>
+            <th>Product</th>
+            <th>Warehouse</th>
+            <th>Row / Location</th>
+            <th>SAP Batch</th>
+            <th>Expiry Date</th>
+            <th class="text-end">Units (ctn)</th>
+            <th class="text-end">Balance Qty</th>
+            <th class="text-center">Pallets</th>
+            <th class="text-center">QC</th>
+            <th class="text-center">Status</th>
+          </tr>
+        </thead>
+        <tbody id="ibdBatchesTableBody">
+          <!-- Loaded dynamically -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
-
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
-        <h6 class="mb-0 fw-semibold"><i class="bi bi-list-ul me-2"></i>Inbound Batches</h6>
-    </div>
-
-    <div class="card-body p-3">
-        <!-- Filters -->
-        <form id="inboundFilterForm" class="mb-0" onsubmit="return false;">
-            <div class="row g-2">
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-funnel me-1"></i>QC Status</label>
-                    <select name="qc_status" id="filter_qc_status" class="form-select form-select-sm filter-field">
-                        <option value="">All Status</option>
-                        <option value="pending">🟡 Pending</option>
-                        <option value="approved">🟢 Approved</option>
-                        <option value="rejected">🔴 Rejected</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-buildings me-1"></i>Warehouse</label>
-                    <select name="warehouse_id" id="filter_warehouse" class="form-select form-select-sm filter-field">
-                        <option value="">All Warehouses</option>
-                        @foreach($warehouses as $warehouse)
-                            <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-truck me-1"></i>Vendor</label>
-                    <select name="vendor_id" id="filter_vendor" class="form-select form-select-sm filter-field">
-                        <option value="">All Vendors</option>
-                        @foreach($vendors as $vendor)
-                            <option value="{{ $vendor->id }}">{{ $vendor->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-tag me-1"></i>Product Group</label>
-                    <select name="product_group_id" id="filter_product_group" class="form-select form-select-sm filter-field">
-                        <option value="">All Groups</option>
-                        @foreach($productGroups as $group)
-                            <option value="{{ $group->id }}">{{ $group->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-box me-1"></i>Product</label>
-                    <select name="product_id" id="filter_product" class="form-select form-select-sm filter-field">
-                        <option value="">All Products</option>
-                        @foreach($products as $product)
-                            <option value="{{ $product->id }}">{{ $product->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-receipt me-1"></i>Inbound Invoice</label>
-                    <select name="inbound_invoices[]" id="filter_inbound_invoices" class="form-select form-select-sm filter-field" multiple data-placeholder="All Invoices">
-                        @foreach($inboundInvoices as $invoice)
-                            <option value="{{ $invoice }}">{{ $invoice }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date From</label>
-                    <input type="date" name="date_from" id="filter_date_from" class="form-control form-control-sm filter-field">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small"><i class="bi bi-calendar me-1"></i>Date To</label>
-                    <input type="date" name="date_to" id="filter_date_to" class="form-control form-control-sm filter-field">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-semibold small"><i class="bi bi-search me-1"></i>Search</label>
-                    <input type="text" name="search" id="filter_search" class="form-control form-control-sm" placeholder="Transport, Driver, Vehicle, Shipment, PO No, Remarks...">
-                </div>
-            </div>
-            <div class="mt-2 d-flex align-items-center gap-2">
-                <button type="button" id="applyFilters" class="btn btn-sm btn-primary">
-                    <i class="bi bi-search"></i> Apply Filters
-                </button>
-                <button type="button" id="resetFilters" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-arrow-counterclockwise"></i> Reset
-                </button>
-                <span class="ms-auto text-muted small">Total: <strong id="totalCount">{{ $items->count() }}</strong> batches</span>
-            </div>
-        </form>
-    </div>
-
-    <div class="card-body p-0">
-        <div id="filterLoadingOverlay" style="display: none; position: relative;">
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 text-muted">Applying filters...</p>
-            </div>
-        </div>
-
-        @if(session('success'))
-            <div class="alert alert-success m-3">
-                {{ session('success') }}
-            </div>
-        @endif
-
-        <div id="selectionToolbar" class="d-none align-items-center text-white p-2 rounded m-3 shadow-sm" style="background-color: var(--bs-primary) !important;">
-            <div class="me-auto fw-semibold ms-2" id="selectionCount">0 selected</div>
-            <form id="exportSelectedForm" method="POST" action="{{ route('inbound.exportSelected') }}" class="m-0 p-0 d-flex align-items-center">
-                @csrf
-                <div id="hiddenInputsContainer"></div>
-                <button type="submit" class="btn btn-sm btn-outline-light me-2">
-                    <i class="bi bi-file-earmark-arrow-down"></i> Export selected
-                </button>
-            </form>
-            <button type="button" class="btn btn-sm btn-light text-primary fw-semibold me-2" id="clearSelectionBtn">Clear</button>
-        </div>
-
-        <div class="table-responsive rounded-bottom">
-            <table class="table table-hover table-sm mb-0 align-middle">
-                <thead class="table-primary small">
-                    <tr>
-                        <th style="width:30px">
-                            <input type="checkbox" id="selectAllCheckbox" class="form-check-input shadow-none">
-                        </th>
-                        <th style="width:40px">#</th>
-                        <th style="min-width:140px">Product</th>
-                        <th style="width:90px">Group</th>
-                        <th style="width:90px">Warehouse</th>
-                        <th class="text-end" style="width:55px">Units</th>
-                        <th class="text-end" style="width:65px">Balance</th>
-                        <th style="width:80px">Status</th>
-                        <th style="width:100px">QC</th>
-                        <th style="width:120px">QC Remarks</th>
-                        <th style="width:110px">Vehicle/Driver</th>
-                        <th style="width:110px">Inbound Invoice</th>
-                        <th style="width:80px">Days</th>
-                        <th style="width:80px">Date</th>
-                        <th style="width:80px" class="text-center">Actions</th>
-                    </tr>
-                </thead>
-
-                <tbody id="inboundTableBody">
-                    @forelse($items as $item)
-                        @php
-                            $itemRemarks = trim((string) ($item->remarks ?? ''));
-                            $headerRemarks = trim((string) ($item->stockIn->remarks ?? ''));
-                            $remarks = $itemRemarks !== '' ? $itemRemarks : ($headerRemarks !== '' ? $headerRemarks :
-                            '-');
-
-                            $headerData = [
-                            'Warehouse' => $item->stockIn->warehouse->name ?? '-',
-                            'Vendor' => $item->stockIn->vendor->name ?? '-',
-                            'Arrived From' => $item->stockIn->arrivedFrom->name ?? '-',
-                            'Transporter' => $item->stockIn->transporter->name ?? '-',
-
-                            'Shipment No' => $item->stockIn->shipment_no ?? '-',
-                            'Delivery No' => $item->stockIn->delivery_no ?? '-',
-                            'STO No' => $item->stockIn->sto_no ?? '-',
-
-                            'Shipment Type' => strtoupper($item->stockIn->shipment_type ?? 'MANUAL'),
-
-                            'Vehicle No' => $item->stockIn->vehicle_no ?? '-',
-                            'Vehicle Size' => $item->stockIn->vehicle_size ?? '-',
-                            'Vehicle In Time' => $item->stockIn->vehicle_in_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_in_time)->format('d.m.Y H:i')
-                            : '-',
-                            'Vehicle Out Time' => $item->stockIn->vehicle_out_time
-                            ? \Carbon\Carbon::parse($item->stockIn->vehicle_out_time)->format('d.m.Y H:i')
-                            : '-',
-
-                            'Driver Name' => $item->stockIn->driver_name ?? '-',
-                            'Driver Mobile' => $item->stockIn->driver_mobile ?? '-',
-
-                            'Inbound Invoice' => $item->stockIn->dispatched_invoice_no ?? '-',
-                            'Dispatcher Sig' => $item->stockIn->dispatcher_sig ?? '-',
-                            'Picker' => $item->stockIn->picker ?? '-',
-
-                            'Header Remarks' => $item->stockIn->remarks ?? '-',
-                            ];
-
-                            $palletLocationStr = 'Unassigned';
-                            if ($item->warehouse_row_id && $item->pallets_used > 0) {
-                                if ($item->pallet_start !== null) {
-                                    $start = (int) $item->pallet_start;
-                                    $end = $start + $item->pallets_used - 1;
-                                } else {
-                                    $offset = \App\Models\StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
-                                        ->where('id', '<', $item->id)
-                                        ->where('balance_quantity', '>', 0)
-                                        ->sum('pallets_used');
-                                    $start = $offset + 1;
-                                    $end = $offset + $item->pallets_used;
-                                }
-                                if ($start == $end) {
-                                    $palletLocationStr = "Row " . ($item->warehouseRow->row_name ?? '-') . " (Pallet " . $start . ")";
-                                } else {
-                                    $palletLocationStr = "Row " . ($item->warehouseRow->row_name ?? '-') . " (Pallets " . $start . "-" . $end . ")";
-                                }
-                            } elseif ($item->warehouse_row_id) {
-                                $palletLocationStr = "Row " . ($item->warehouseRow->row_name ?? '-');
-                            }
-
-                            $itemData = [
-
-                            'Product' => ($item->product?->item_code ?? '-') . ' - ' . ($item->product?->name ?? '-'),
-                            'Category' => $item->product?->category?->name ?? '-',
-                            'UOM' => $item->product?->uom?->name ?? ($item->uom_snapshot ?? '-'),
-                            'Packing' => $item->product?->packingType?->name ?? ($item->packing_snapshot ?? '-'),
-
-                            'SAP Batch' => $item->sap_batch ?? '-',
-                            'Vendor Batch' => $item->vendor_batch ?? '-',
-                            'IBD No' => $item->ibd_no ?? '-',
-                            'PO No' => $item->po_no ?? '-',
-
-                            'MFG Date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') :
-                            '-',
-                            'Expiry Date' => $item->expiry_date ?
-                            \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
-                            'Days in Warehouse' => $item->created_at ? (int) $item->created_at->diffInDays(now()) : 0,
-
-                            'Units Received' => $item->units_received ?? 0,
-                            'Pack Size' => $item->pack_size_snapshot ?? 0,
-                            'Total Quantity' => $item->total_quantity ?? 0,
-                            'Balance Quantity' => $item->balance_quantity ?? 0,
-
-                            'Pallet Location' => $palletLocationStr,
-                            'Pallets Used' => $item->pallets_used ?? 0,
-
-                            'Sound Stock' => (bool) $item->sound_stock,
-                            'Block Stock' => (bool) $item->block_stock,
-                            'Hold Stock' => (bool) $item->hold_stock,
-                            'QC Status' => $item->quality_clearance ?? '-',
-                            'QC Remarks' => $item->qc_remarks ?? '-',
-                            'Damage Stock' => (bool) ($item->damage_stock ?? false),
-
-                            ];
-
-                            $productText = ($item->product->item_code ?? '-') . ' - ' . ($item->product->name ?? '-');
-                            $statusHtml = '';
-                            if ($item->balance_quantity == 0) {
-                                $statusHtml = '<span class="badge bg-secondary wms-pill">N/A</span>';
-                            } elseif ($item->block_stock) {
-                                $statusHtml = '<span class="badge bg-danger wms-pill">Blocked</span>';
-                            } elseif ($item->hold_stock) {
-                                $statusHtml = '<span class="badge bg-warning text-dark wms-pill">Hold</span>';
-                            } elseif (!$item->sound_stock) {
-                                $statusHtml = '<span class="badge bg-secondary wms-pill">Not Sound</span>';
-                            } else {
-                                $statusHtml = '<span class="badge bg-success wms-pill">Available</span>';
-                            }
-
-
-                            $vehicleText = $item->stockIn->vehicle_no ?? '-';
-                            $driverText = $item->stockIn->driver_name ?? '-';
-                        @endphp
-
-                        <tr>
-                            <td class="text-center align-middle">
-                                <input type="checkbox" class="form-check-input row-checkbox shadow-none" value="{{ $item->id }}">
-                            </td>
-                            <td>{{ ($items->currentPage() - 1) * $items->perPage() + $loop->iteration }}</td>
-
-                            <td>
-                                <div class="fw-semibold">{{ $item->product->item_code ?? '-' }}</div>
-                                <small class="text-muted" style="display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->product->name ?? '-' }}">{{ $item->product->name ?? '-' }}</small>
-                            </td>
-
-                            <td>
-                                @if(optional($item->product)->group)
-                                    <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1" style="font-size: 10px;">
-                                        {{ optional($item->product)->group->name }}
-                                    </span>
-                                @else
-                                    <span class="text-muted" style="font-size: 10px;">—</span>
-                                @endif
-                            </td>
-
-                            <td style="font-size: 11px;">{{ Str::limit($item->stockIn->warehouse->name ?? '-', 12) }}</td>
-
-                            <td class="text-end">{{ $item->units_received ?? 0 }}</td>
-                            <td class="text-end fw-bold">
-                                @php
-                                    $balUnits = $item->pack_size_snapshot > 0 ? $item->balance_quantity / $item->pack_size_snapshot : 0;
-                                @endphp
-                                {{ rtrim(rtrim(number_format($balUnits, 2), '0'), '.') }} U<br>
-                                <small class="text-muted fw-normal">({{ rtrim(rtrim(number_format($item->balance_quantity, 2), '0'), '.') }} Qty)</small>
-                            </td>
-
-                            <td>{!! $statusHtml !!}</td>
-
-                            <td>
-                                <select class="form-select form-select-sm qc-status-select qc-bg-{{ $item->quality_clearance ?? 'pending' }}"
-                                        data-item-id="{{ $item->id }}"
-                                        style="width: 100%; font-size: 10px;">
-                                    <option value="pending" {{ ($item->quality_clearance ?? 'pending') == 'pending' ? 'selected' : '' }}>
-                                        🟡 Pending
-                                    </option>
-                                    <option value="approved" {{ ($item->quality_clearance ?? '') == 'approved' ? 'selected' : '' }}>
-                                        🟢 Approved
-                                    </option>
-                                    <option value="rejected" {{ ($item->quality_clearance ?? '') == 'rejected' ? 'selected' : '' }}>
-                                        🔴 Rejected
-                                    </option>
-                                </select>
-                            </td>
-
-                            <td style="font-size: 11px;">
-                                <div style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $item->qc_remarks ?? '-' }}">
-                                    {{ $item->qc_remarks ?? '-' }}
-                                </div>
-                            </td>
-
-                            <td style="font-size: 10px;">
-                                <div class="fw-semibold" style="max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $vehicleText }}">{{ Str::limit($vehicleText, 12) }}</div>
-                                <small class="text-muted" style="display: block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $driverText }}">{{ Str::limit($driverText, 12) }}</small>
-                            </td>
-
-                            <td class="text-nowrap" style="font-size: 11px;">
-                                <span class="text-muted fw-semibold">{{ $item->stockIn->dispatched_invoice_no ?? '-' }}</span>
-                            </td>
-
-                            <td class="text-center">
-                                @php
-                                    $days = (int) $item->created_at->diffInDays(now());
-                                    if ($days == 0) {
-                                        $daysText = 'Today';
-                                        $badgeClass = 'bg-info';
-                                    } elseif ($days == 1) {
-                                        $daysText = 'Last 1 day';
-                                        $badgeClass = 'bg-info';
-                                    } elseif ($days >= 2 && $days <= 7) {
-                                        $daysText = "Last $days days";
-                                        $badgeClass = 'bg-success';
-                                    } elseif ($days >= 8 && $days <= 30) {
-                                        $daysText = "Last $days days";
-                                        $badgeClass = 'bg-warning text-dark';
-                                    } elseif ($days >= 31 && $days <= 90) {
-                                        $daysText = "Last $days days";
-                                        $badgeClass = 'bg-orange text-white';
-                                    } else {
-                                        $daysText = "Last $days days";
-                                        $badgeClass = 'bg-danger';
-                                    }
-                                @endphp
-                                <span class="badge {{ $badgeClass }} px-2 py-1" style="white-space: nowrap;">{{ $daysText }}</span>
-                            </td>
-
-                            <td class="text-nowrap">
-                                {{ $item->created_at ? $item->created_at->format('d.m.Y H:i') : '-' }}
-                            </td>
-
-                            <td>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <button type="button" class="btn btn-sm btn-outline-primary js-more"
-                                        data-bs-toggle="modal" data-bs-target="#supportiveModal"
-                                        data-title="Inbound Item Details"
-                                        data-header='@json($headerData)'
-                                        data-item='@json($itemData)'
-                                        title="View">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                    <a href="{{ route('inbound.edit', $item->stock_in_id) }}"
-                                       class="btn btn-sm btn-outline-warning"
-                                       title="Edit">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <a href="{{ route('reports.inbound.pdf', $item->stock_in_id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       title="PDF"
-                                       target="_blank">
-                                        <i class="bi bi-file-pdf"></i>
-                                    </a>
-                                    <a href="{{ route('inbound.invoice', $item->stock_in_id) }}"
-                                       class="btn btn-sm btn-outline-secondary"
-                                       title="Receipt">
-                                        <i class="bi bi-receipt"></i>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="12" class="text-center text-muted p-5">
-                                <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
-                                <p class="mb-0">No inbound stock found</p>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-
-            </table>
-        </div>
-        <div class="card-footer bg-white border-top-0 py-2">
-            <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted">Showing {{ $items->firstItem() ?? 0 }} - {{ $items->lastItem() ?? 0 }} of {{ $items->total() }} batches</small>
-                {{ $items->links() }}
-            </div>
-        </div>
-    </div>
 </div>
-
-<div class="modal fade" id="supportiveModal" tabindex="-1" aria-labelledby="supportiveModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h6 class="modal-title" id="supportiveModalLabel">Details</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-
-            <div class="modal-body">
-
-                {{-- Product Information --}}
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-box-seam me-2"></i><strong>Product Information</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="productInfo"></div>
-                    </div>
-                </div>
-
-                {{-- Warehouse & Location --}}
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-building me-2"></i><strong>Warehouse & Location</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="warehouseInfo"></div>
-                    </div>
-                </div>
-
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-upc-scan me-2"></i><strong>Batch & Reference Numbers</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="batchInfo"></div>
-                    </div>
-                </div>
-
-                {{-- Quantities & Dates --}}
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-boxes me-2"></i><strong>Quantities & Dates</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="quantityInfo"></div>
-                    </div>
-                </div>
-
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-truck me-2"></i><strong>Vehicle & Transport Details</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="vehicleInfo"></div>
-                    </div>
-                </div>
-
-                {{-- Stock Status & Quality --}}
-                <div class="card border mb-3">
-                    <div class="card-header bg-light border-bottom">
-                        <i class="bi bi-clipboard-check me-2"></i><strong>Stock Status & Quality</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-2" id="statusInfo"></div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </div>
 </div>
 
 @endsection
 
 @push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const modalTitle = document.getElementById('supportiveModalLabel');
+<script>
+/* ── Click delegation ── */
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.view-ibd-batches-btn');
+    if (!btn) return;
 
-            function formatValue(value) {
-                if (value === null || value === undefined || value === '') {
-                    return '<span class="text-muted">-</span>';
-                }
-                if (typeof value === 'boolean') {
-                    return value ?
-                        '<span class="badge bg-success rounded-pill">Yes</span>' :
-                        '<span class="badge bg-secondary rounded-pill">No</span>';
-                }
-                return `<strong>${String(value)}</strong>`;
-            }
+    var stockInId = btn.dataset.stockInId;
+    var invoice   = btn.dataset.invoice;
 
-            function renderSection(containerId, data) {
-                const container = document.getElementById(containerId);
-                container.innerHTML = '';
-                Object.keys(data || {}).forEach(key => {
-                    container.insertAdjacentHTML('beforeend', `
-                        <div class="col-md-6">
-                            <div class="p-2 border-bottom">
-                                <small class="text-muted d-block">${key}</small>
-                                <div>${formatValue(data[key])}</div>
-                            </div>
-                        </div>
-                    `);
-                });
-            }
+    document.getElementById('ibdModalInvoiceName').innerText = invoice;
+    document.getElementById('ibdBatchLoadingState').style.display = 'block';
+    document.getElementById('ibdBatchKpiStrip').style.display = 'none';
+    var tbody = document.getElementById('ibdBatchesTableBody');
+    tbody.innerHTML = '';
 
-            document.addEventListener('click', function (e) {
-                const btn = e.target.closest('.js-more');
-                if (!btn) return;
+    new bootstrap.Modal(document.getElementById('ibdBatchesModal')).show();
 
-                modalTitle.textContent = btn.getAttribute('data-title') || 'Details';
+    fetch('/inbound/' + stockInId + '/items', {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        document.getElementById('ibdBatchLoadingState').style.display = 'none';
 
-                let headerData = {};
-                let itemData = {};
+        if (!data || !data.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center py-5 text-muted">No items found</td></tr>';
+            return;
+        }
 
-                try {
-                    headerData = JSON.parse(btn.getAttribute('data-header') || '{}');
-                } catch (e) {}
-                try {
-                    itemData = JSON.parse(btn.getAttribute('data-item') || '{}');
-                } catch (e) {}
-
-                // Product Information
-                renderSection('productInfo', {
-                    'Product': itemData['Product'],
-                    'Category': itemData['Category'],
-                    'UOM': itemData['UOM'],
-                    'Packing': itemData['Packing']
-                });
-
-                // Warehouse & Location
-                renderSection('warehouseInfo', {
-                    'Warehouse': headerData['Warehouse'],
-                    'Pallet Location': itemData['Pallet Location'],
-                    'Vendor': headerData['Vendor'],
-                    'Arrived From': headerData['Arrived From'],
-                    'Transporter': headerData['Transporter']
-                });
-
-                // Batch & Reference
-                renderSection('batchInfo', {
-                    'SAP Batch': itemData['SAP Batch'],
-                    'Vendor Batch': itemData['Vendor Batch'],
-                    'PO No': itemData['PO No'],
-                    'IBD No': itemData['IBD No'],
-                    'Shipment No': headerData['Shipment No'],
-                    'Delivery No': headerData['Delivery No'],
-                    'STO No': headerData['STO No']
-                });
-
-                // Quantities & Dates
-                renderSection('quantityInfo', {
-                    'Units Received': itemData['Units Received'],
-                    'Pack Size': itemData['Pack Size'],
-                    'Total Quantity': itemData['Total Quantity'],
-                    'Balance Quantity': itemData['Balance Quantity'],
-                    'MFG Date': itemData['MFG Date'],
-                    'Expiry Date': itemData['Expiry Date'],
-                    'Days in Warehouse': itemData['Days in Warehouse']
-                });
-
-                // Vehicle & Transport
-                renderSection('vehicleInfo', {
-                    'Vehicle No': headerData['Vehicle No'],
-                    'Vehicle Size': headerData['Vehicle Size'],
-                    'Vehicle In Time': headerData['Vehicle In Time'],
-                    'Vehicle Out Time': headerData['Vehicle Out Time'],
-                    'Driver Name': headerData['Driver Name'],
-                    'Driver Mobile': headerData['Driver Mobile'],
-                    'Inbound Invoice': headerData['Inbound Invoice']
-                });
-
-                // Stock Status & Quality
-                renderSection('statusInfo', {
-                    'Sound Stock': itemData['Sound Stock'],
-                    'Block Stock': itemData['Block Stock'],
-                    'Hold Stock': itemData['Hold Stock'],
-                    'QC Status': itemData['QC Status'],
-                    'QC Remarks': itemData['QC Remarks'],
-                    'Damage Stock': itemData['Damage Stock'],
-                    'Pallets Used': itemData['Pallets Used']
-                });
-            });
-            // QC Status Change Handler
-            document.querySelectorAll('.qc-status-select').forEach(select => {
-                select.addEventListener('change', function() {
-                    const itemId = this.getAttribute('data-item-id');
-                    const newStatus = this.value;
-                    const originalValue = this.querySelector('option[selected]')?.value || 'pending';
-
-                    // Disable select while updating
-                    this.disabled = true;
-                    const selectElement = this;
-
-                    // Show loading state
-                    const originalBg = this.style.backgroundColor;
-                    this.style.backgroundColor = '#f0f0f0';
-
-                    fetch(`/qc-status/${itemId}/update`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
-                        },
-                        body: JSON.stringify({
-                            quality_clearance: newStatus
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Update background color class
-                            selectElement.className = selectElement.className.replace(/qc-bg-\w+/g, '').trim();
-                            selectElement.classList.add('qc-bg-' + newStatus);
-
-                            // Show success feedback
-                            selectElement.style.backgroundColor = '#d4edda';
-                            setTimeout(() => {
-                                selectElement.style.backgroundColor = '';
-                            }, 1000);
-
-                            // Update the selected attribute
-                            selectElement.querySelectorAll('option').forEach(opt => {
-                                opt.removeAttribute('selected');
-                            });
-                            selectElement.querySelector(`option[value="${newStatus}"]`).setAttribute('selected', 'selected');
-
-                            // Show toast notification
-                            showToast('QC status updated successfully!', 'success');
-                        } else {
-                            throw new Error(data.message || 'Update failed');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        // Revert to original value
-                        selectElement.value = originalValue;
-                        selectElement.style.backgroundColor = '#f8d7da';
-                        setTimeout(() => {
-                            selectElement.style.backgroundColor = originalBg;
-                        }, 1000);
-                        showToast('Failed to update QC status', 'error');
-                    })
-                    .finally(() => {
-                        selectElement.disabled = false;
-                    });
-                });
-            });
-
-            // Toast notification function
-            function showToast(message, type = 'success') {
-                const toast = document.createElement('div');
-                toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed top-0 end-0 m-3`;
-                toast.style.zIndex = '9999';
-                toast.style.minWidth = '250px';
-                toast.innerHTML = `
-                    <div class="d-flex align-items-center">
-                        <i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
-                        <span>${message}</span>
-                    </div>
-                `;
-                document.body.appendChild(toast);
-
-                setTimeout(() => {
-                    toast.style.transition = 'opacity 0.3s';
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 300);
-                }, 3000);
-            }
+        var totalUnits = 0, totalPallets = 0, totalBalance = 0;
+        data.forEach(function(item) {
+            totalUnits   += parseInt(item.units_received) || 0;
+            totalPallets += parseInt(item.pallets_used) || 0;
+            totalBalance += parseFloat(item.balance_quantity || 0);
         });
 
-    </script>
-@endpush
+        document.getElementById('ibdKpiItems').textContent   = data.length;
+        document.getElementById('ibdKpiUnits').textContent   = totalUnits.toLocaleString();
+        document.getElementById('ibdKpiPallets').textContent = totalPallets;
+        document.getElementById('ibdKpiQty').textContent     = totalBalance.toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+        document.getElementById('ibdBatchKpiStrip').style.display = 'flex';
 
-
-<style>
-    .qc-bg-pending { background-color: #fff3cd !important; }
-    .qc-bg-approved { background-color: #d1e7dd !important; }
-    .qc-bg-rejected { background-color: #f8d7da !important; }
-</style>
-
-<style>
-    /* ===== Minimal Modal ===== */
-    #supportiveModal .modal-content {
-        border-radius: 8px;
-        border: 0;
-        background: #ffffff;
-    }
-
-    #supportiveModal .modal-header {
-        background: #f8f9fa;
-        color: #212529;
-        border-bottom: 1px solid #dee2e6;
-        border-top-left-radius: 8px;
-        border-top-right-radius: 8px;
-    }
-
-    #supportiveModal .modal-title {
-        font-weight: 600;
-        letter-spacing: 0.2px;
-    }
-
-    #supportiveModal .btn-close {
-        filter: none;
-    }
-
-    #supportiveModal .modal-body {
-        background: #fdfdfd;
-    }
-
-    #supportiveModal .card {
-        border-radius: 8px;
-        border: 1px solid #e9ecef !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-    }
-
-    #supportiveModal .card-header {
-        background: #f8f9fa !important;
-        color: #495057 !important;
-        font-weight: 600;
-        border-bottom: 1px solid #e9ecef !important;
-    }
-    #supportiveModal table td {
-        padding: 10px 12px;
-        vertical-align: middle;
-        font-size: 13px;
-    }
-
-    #supportiveModal table tr:nth-child(even) {
-        background: #f8fafc;
-    }
-
-    /* Label column */
-    #supportiveModal table td:first-child {
-        font-weight: 600;
-        color: #1e293b;
-        background: #eef2ff;
-        width: 40%;
-    }
-
-    /* Value column */
-    #supportiveModal table td:last-child {
-        color: #334155;
-    }
-
-</style>
-
-@push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script>
-$(document).ready(function() {
-    $('#filter_inbound_invoices').select2({
-        placeholder: "All Invoices",
-        allowClear: true,
-        width: '100%'
-    });
-
-    // Apply filters with AJAX
-    $('#applyFilters').on('click', function() {
-        applyFilters();
-    });
-
-    // Reset filters
-    $('#resetFilters').on('click', function() {
-        $('#inboundFilterForm')[0].reset();
-        applyFilters();
-    });
-
-    // Auto-apply on filter change (optional)
-    $('.filter-field').on('change', function() {
-        applyFilters();
-    });
-
-    function applyFilters() {
-        const formData = {
-            qc_status: $('#filter_qc_status').val(),
-            warehouse_id: $('#filter_warehouse').val(),
-            vendor_id: $('#filter_vendor').val(),
-            product_group_id: $('#filter_product_group').val(),
-            product_id: $('#filter_product').val(),
-            inbound_invoices: $('#filter_inbound_invoices').val(),
-            date_from: $('#filter_date_from').val(),
-            date_to: $('#filter_date_to').val(),
-            search: $('#filter_search').val()
+        var fmtDate = function(str) {
+            if (!str) return '—';
+            var d = new Date(str);
+            return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
         };
 
-        // Show loading
-        $('#filterLoadingOverlay').show();
+        data.forEach(function(item) {
+            var qc = item.quality_clearance || 'pending';
+            var qcHtml = '<span style="background:#fef3c7;color:#92400e;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Pending</span>';
+            if (qc === 'approved') qcHtml = '<span style="background:#d1fae5;color:#065f46;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Approved</span>';
+            if (qc === 'rejected') qcHtml = '<span style="background:#fee2e2;color:#991b1b;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Rejected</span>';
 
-        $.ajax({
-            url: '{{ route("inbound.index") }}',
-            type: 'GET',
-            data: formData,
-            success: function(response) {
-                // Parse the response HTML
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(response, 'text/html');
+            var sHtml = '<span style="background:#dcfce7;color:#15803d;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Available</span>';
+            if (item.block_stock) sHtml = '<span style="background:#fee2e2;color:#b91c1c;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Blocked</span>';
+            else if (item.hold_stock) sHtml = '<span style="background:#fef9c3;color:#92400e;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Hold</span>';
 
-                // Extract table body
-                const newTableBody = doc.querySelector('#inboundTableBody');
-                if (newTableBody) {
-                    $('#inboundTableBody').html(newTableBody.innerHTML);
-                }
+            var wh      = (item.stock_in && item.stock_in.warehouse) ? item.stock_in.warehouse.name : '—';
+            var rowName = (item.warehouse_row) ? item.warehouse_row.row_name : '—';
+            var loc     = item.pallet_range_display || rowName;
 
-                // Update count
-                const totalCount = $(newTableBody).find('tr').length;
-                $('#totalCount').text(totalCount);
-
-                // Hide loading
-                $('#filterLoadingOverlay').hide();
-
-                // Clear selection on filter
-                if (document.getElementById('selectAllCheckbox')) {
-                    document.getElementById('selectAllCheckbox').checked = false;
-                    document.getElementById('selectAllCheckbox').indeterminate = false;
-                }
-                $('#selectionToolbar').removeClass('d-flex').addClass('d-none');
-                $('#hiddenInputsContainer').empty();
-            },
-            error: function(xhr, status, error) {
-                console.error('Filter error:', error);
-                alert('An error occurred while filtering. Please try again.');
-                $('#filterLoadingOverlay').hide();
-            }
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="fw-bold">' + ((item.product ? item.product.item_code + ' - ' + item.product.name : '—')) + '</td>' +
+                '<td>' + wh + '</td>' +
+                '<td class="fw-bold text-dark">' + loc + '</td>' +
+                '<td>' + (item.sap_batch || '—') + '</td>' +
+                '<td class="fw-bold">' + fmtDate(item.expiry_date) + '</td>' +
+                '<td class="text-end font-monospace">' + (parseInt(item.units_received)||0).toLocaleString() + '</td>' +
+                '<td class="text-end font-monospace fw-bold text-success">' + parseFloat(item.balance_quantity||0).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+                '<td class="text-center"><span class="badge bg-secondary">' + (item.pallets_used||0) + '</span></td>' +
+                '<td class="text-center">' + qcHtml + '</td>' +
+                '<td class="text-center">' + sHtml + '</td>';
+            tbody.appendChild(tr);
         });
-    }
+    })
+    .catch(function(err) {
+        console.error(err);
+        document.getElementById('ibdBatchLoadingState').style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-5">Failed to load details</td></tr>';
+    });
 });
 
 function exportInbound() {
     const params = new URLSearchParams({
-        qc_status: $('#filter_qc_status').val(),
-        warehouse_id: $('#filter_warehouse').val(),
-        vendor_id: $('#filter_vendor').val(),
-        product_group_id: $('#filter_product_group').val(),
-        product_id: $('#filter_product').val(),
-        date_from: $('#filter_date_from').val(),
-        date_to: $('#filter_date_to').val(),
-        search: $('#filter_search').val()
+        search: $('#filter_search').val() || '',
+        warehouse_id: $('#filter_warehouse').val() || '',
+        vendor_id: $('#filter_vendor').val() || '',
+        date_from: $('#filter_date_from').val() || '',
+        date_to: $('#filter_date_to').val() || ''
     });
-
-    const invoices = $('#filter_inbound_invoices').val();
-    if (invoices && invoices.length > 0) {
-        invoices.forEach(inv => params.append('inbound_invoices[]', inv));
-    }
-
     window.location.href = '{{ route("inbound.export") }}?' + params.toString();
 }
-document.addEventListener('DOMContentLoaded', function() {
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-    const selectionToolbar = document.getElementById('selectionToolbar');
-    const selectionCount = document.getElementById('selectionCount');
-    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
-    const hiddenInputsContainer = document.getElementById('hiddenInputsContainer');
 
-    function updateToolbar() {
-        const rowCheckboxes = document.querySelectorAll('.row-checkbox');
-        const selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
-        const count = selectedCheckboxes.length;
-        
-        if (count > 0) {
-            selectionToolbar.classList.remove('d-none');
-            selectionToolbar.classList.add('d-flex');
-            selectionCount.textContent = count + ' selected';
-            
-            if(selectAllCheckbox) {
-                selectAllCheckbox.checked = count === rowCheckboxes.length;
-                selectAllCheckbox.indeterminate = count > 0 && count < rowCheckboxes.length;
-            }
-            
-            hiddenInputsContainer.innerHTML = '';
-            selectedCheckboxes.forEach(cb => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'selected_ids[]';
-                input.value = cb.value;
-                hiddenInputsContainer.appendChild(input);
-            });
-        } else {
-            selectionToolbar.classList.add('d-none');
-            selectionToolbar.classList.remove('d-flex');
-            if(selectAllCheckbox) {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = false;
-            }
-            hiddenInputsContainer.innerHTML = '';
-        }
-    }
-
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function() {
-            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
-            rowCheckboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
-            updateToolbar();
-        });
-    }
-
-    // Use event delegation for row checkboxes because they are recreated by AJAX filters
-    $(document).on('change', '.row-checkbox', function() {
-        updateToolbar();
+/* ── Filter functionality ── */
+$(document).ready(function() {
+    $('#applyFilters').on('click', function() { applyFilters(); });
+    $('#resetFilters').on('click', function() { $('#inboundFilterForm')[0].reset(); applyFilters(); });
+    $('.filter-field').on('change keyup', function() {
+        clearTimeout(window.filterTimeout);
+        window.filterTimeout = setTimeout(applyFilters, 500);
     });
 
-    if (clearSelectionBtn) {
-        clearSelectionBtn.addEventListener('click', function() {
-            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
-            rowCheckboxes.forEach(cb => cb.checked = false);
-            updateToolbar();
+    function applyFilters() {
+        $('#filterLoadingOverlay').show();
+        $.ajax({
+            url: '{{ route("inbound.index") }}',
+            type: 'GET',
+            data: {
+                search:       $('#filter_search').val(),
+                warehouse_id: $('#filter_warehouse').val(),
+                vendor_id:    $('#filter_vendor').val(),
+                date_from:    $('#filter_date_from').val(),
+                date_to:      $('#filter_date_to').val(),
+            },
+            success: function(response) {
+                var doc = new DOMParser().parseFromString(response, 'text/html');
+                var newBody = doc.querySelector('#inboundTableBody');
+                if (newBody) $('#inboundTableBody').html(newBody.innerHTML);
+                $('#filterLoadingOverlay').hide();
+            },
+            error: function() { $('#filterLoadingOverlay').hide(); }
         });
     }
 });
 </script>
 @endpush
-

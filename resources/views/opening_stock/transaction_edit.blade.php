@@ -1,7 +1,6 @@
 @extends('layouts.app')
 
 @section('content')
-
 <style>
     .product-autocomplete-wrapper .autocomplete-results {
         position: absolute;
@@ -27,27 +26,35 @@
     }
 </style>
 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="{{ route('opening-stock.index') }}#transactions-pane" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to List
+    </a>
+    <h5 class="mb-0 fw-bold">Edit Opening Stock Entry #OS-{{ $stockIn->id }}</h5>
+</div>
+
 <form method="POST"
-      action="{{ route('opening-stock.store') }}"
+      action="{{ route('opening-stock.transaction.update', $stockIn) }}"
       id="openingStockForm">
 @csrf
+@method('PUT')
 
 {{-- ================= HEADER ================= --}}
 <div class="card shadow-sm mb-3">
-    <div class="card-header">
-        <h6 class="mb-0">Opening Stock Entry</h6>
+    <div class="card-header bg-light">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-file-earmark-text"></i> Document Header</h6>
     </div>
     <div class="card-body">
         <div class="row">
             <div class="col-md-4 mb-3">
-                <label class="form-label">Default Warehouse</label>
+                <label class="form-label fw-bold">Default Warehouse</label>
                 <select name="warehouse_id"
                         id="global_warehouse_id"
                         class="form-control form-control-sm"
                         required>
-                    <option value="auto">Auto Assign (Automatic)</option>
+                    <option value="auto" {{ $stockIn->warehouse_id === 'auto' ? 'selected' : '' }}>Auto Assign (Automatic)</option>
                     @foreach($warehouses as $warehouse)
-                        <option value="{{ $warehouse->id }}">
+                        <option value="{{ $warehouse->id }}" {{ $stockIn->warehouse_id == $warehouse->id ? 'selected' : '' }}>
                             {{ $warehouse->name }}
                         </option>
                     @endforeach
@@ -55,9 +62,10 @@
             </div>
 
             <div class="col-md-8 mb-3">
-                <label class="form-label">Remarks</label>
+                <label class="form-label fw-bold">Remarks</label>
                 <input type="text"
                        name="remarks"
+                       value="{{ $stockIn->remarks }}"
                        class="form-control form-control-sm">
             </div>
         </div>
@@ -66,8 +74,8 @@
 
 {{-- ================= ITEMS ================= --}}
 <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between">
-        <h6 class="mb-0">Products</h6>
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-box-seam"></i> Products &amp; Batches</h6>
         <button type="button"
                 id="addRowBtn"
                 class="btn btn-sm btn-success">
@@ -76,180 +84,162 @@
     </div>
 
     <div class="card-body p-0">
-        <div class="table-responsive" style="max-height: 270px; overflow-y: auto;">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-bordered table-sm mb-0" id="itemsTable">
                 <thead>
-                <tr>
+                <tr class="table-dark">
                     <th width="240">Product</th>
                     <th width="160">Warehouse</th>
-                    <th width="130">Product Code</th>
-                    <th width="80">Units</th>
-                    <th width="70">Pack</th>
-                    <th width="80">Total</th>
-                    <th width="120">Pallets</th>
-                    <th width="90">QC Clearance</th>
-                    <th width="120">Status</th>
+                    <th width="120">Product Code</th>
+                    <th width="90">Units (ctn)</th>
+                    <th width="80">Pack Size</th>
+                    <th width="90">Total Qty</th>
+                    <th width="130">Pallets</th>
+                    <th width="100">QC Clearance</th>
+                    <th width="140">Status</th>
                     <th width="40"></th>
                 </tr>
                 </thead>
-                <tbody></tbody>
+                <tbody>
+                    {{-- Rows will be injected here on load --}}
+                </tbody>
             </table>
         </div>
     </div>
+    <div class="card-footer bg-light py-3 text-end">
+        <button type="submit" class="btn btn-primary btn-sm px-4 fw-bold">
+            Update Opening Stock Entry
+        </button>
+    </div>
 </div>
 
-<div class="mt-3">
-    <button class="btn btn-primary">Save Opening Stock</button>
-    <a href="{{ route('opening-stock.index') }}"
-       class="btn btn-secondary">Back</a>
-</div>
 </form>
 
-{{-- ================= PRODUCT DATALIST ================= --}}
-<datalist id="products_list">
-@foreach($products as $p)
-    <option value="{{ $p->name }} ({{ $p->item_code }})"
-            data-id="{{ $p->id }}"
-            data-pack="{{ $p->pack_size }}"
-            data-cartons="{{ $p->cartons_per_pallet ?? '' }}"
-            data-code="{{ $p->item_code }}">
-@endforeach
-</datalist>
-
-{{-- ================= BATCH MODAL ================= --}}
-<div class="modal fade" id="batchModal" tabindex="-1">
-<div class="modal-dialog modal-lg modal-dialog-centered">
-<div class="modal-content">
-
-<div class="modal-header">
-    <h6 class="modal-title">Batch Details</h6>
-    <button class="btn-close" data-bs-dismiss="modal"></button>
-</div>
-
-<div class="modal-body row g-2">
-    <div class="col-md-4">
-        <label>SAP</label>
-        <input class="form-control form-control-sm modal-sap">
-    </div>
-    <div class="col-md-4">
-        <label>Vendor</label>
-        <input class="form-control form-control-sm modal-vendor">
-    </div>
-    <div class="col-md-4">
-        <label>IBD</label>
-        <input class="form-control form-control-sm modal-ibd">
-    </div>
-
-    <div class="col-md-4">
-        <label>PO</label>
-        <input class="form-control form-control-sm modal-po">
-    </div>
-    <div class="col-md-4">
-        <label>MFG</label>
-        <input type="date"
-               class="form-control form-control-sm modal-mfg">
-    </div>
-    <div class="col-md-4">
-        <label>Expiry</label>
-        <input type="date"
-               class="form-control form-control-sm modal-expiry">
-    </div>
-</div>
-
-<div class="modal-footer">
-    <button type="button"
-            class="btn btn-primary btn-sm"
-            id="saveBatchBtn">
-        OK
-    </button>
-</div>
-
-</div>
-</div>
-</div>
-
-{{-- ================= UNIFIED PALLET ALLOCATION & PREVIEW MODAL ================= --}}
-<div class="modal fade" id="palletManualModal" tabindex="-1">
-<div class="modal-dialog modal-xl modal-dialog-centered">
-<div class="modal-content">
-<div class="modal-header bg-light">
-    <h6 class="modal-title fw-bold text-dark"><i class="bi bi-box-seam"></i> Pallet Allocation Details & Assignment</h6>
-    <button class="btn-close" data-bs-dismiss="modal"></button>
-</div>
-<div class="modal-body">
-    <div class="row g-3">
-        <!-- Left Side: Live Preview & Summary -->
-        <div class="col-md-5 border-end">
-            <div class="p-3 bg-light rounded border mb-3">
-                <h6 class="fw-bold mb-2 text-primary">Live Allocation Preview</h6>
-                <div id="pallet-preview-summary" class="small" style="max-height: 280px; overflow-y: auto;">
-                    <p class="text-muted">Loading live allocation preview...</p>
-                </div>
+{{-- ================= BATCH BUBBLE MODAL ================= --}}
+<div class="modal fade" id="batchModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h6 class="modal-title">Enter Batch &amp; Expiry Details</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            
-            <div class="mb-3">
-                <label class="form-label fw-bold">Allocation Mode</label>
-                <div class="d-flex gap-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="allocation_mode" id="mode_auto" value="auto" checked>
-                        <label class="form-check-label" for="mode_auto">Auto (FIFO)</label>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">SAP Batch</label>
+                        <input type="text" class="form-control form-control-sm modal-sap" placeholder="Enter SAP batch">
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="allocation_mode" id="mode_manual" value="manual">
-                        <label class="form-check-label" for="mode_manual">Manual Override</label>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">Vendor Batch</label>
+                        <input type="text" class="form-control form-control-sm modal-vendor" placeholder="Enter vendor batch">
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">IBD No</label>
+                        <input type="text" class="form-control form-control-sm modal-ibd" placeholder="Enter inbound delivery no">
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">PO No</label>
+                        <input type="text" class="form-control form-control-sm modal-po" placeholder="Enter purchase order no">
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">MFG Date</label>
+                        <input type="date" class="form-control form-control-sm modal-mfg">
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label fw-bold">Expiry Date</label>
+                        <input type="date" class="form-control form-control-sm modal-expiry">
                     </div>
                 </div>
             </div>
-
-            <div class="manual-controls-section d-none">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Select Warehouse</label>
-                    <select class="form-select form-select-sm modal-manual-warehouse">
-                        <option value="">-- Select Warehouse --</option>
-                        @foreach($warehouses as $w)
-                            <option value="{{ $w->id }}">{{ $w->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Select Row</label>
-                    <select class="form-select form-select-sm modal-manual-row">
-                        <option value="">-- Select Row --</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Starting Pallet Number</label>
-                    <input type="number" min="1" class="form-control form-control-sm modal-manual-pallet-start" placeholder="e.g. 1 (Optional - auto find free)">
-                </div>
-                <div class="manual-range-info p-2 mb-2 border rounded small d-none">
-                    <!-- Range info injected here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Side: Pallet Layout / Grid -->
-        <div class="col-md-7">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="form-label fw-bold mb-0">Pallet Layout / Grid</h6>
-                <div class="d-flex gap-2">
-                    <span class="badge bg-success-subtle text-success border border-success">[ ] Empty</span>
-                    <span class="badge bg-danger-subtle text-danger border border-danger">[ ] Occupied</span>
-                    <span class="badge bg-primary-subtle text-primary border border-primary">[ ] Proposed</span>
-                </div>
-            </div>
-            <div id="modal-pallet-grid" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light" style="max-height: 400px; overflow-y: auto; align-content: flex-start;">
-                <div class="text-muted small p-4 text-center w-100">Select manual mode and a row above to view the layout grid.</div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" id="saveBatchBtn">Save Batch Info</button>
             </div>
         </div>
     </div>
 </div>
-<div class="modal-footer bg-light">
-    <button type="button" class="btn btn-secondary btn-sm" id="clearManualPalletBtn">Reset to Auto</button>
-    <button type="button" class="btn btn-primary btn-sm" id="saveManualPalletBtn">Apply</button>
+
+{{-- ================= MANUAL PALLET ALLOCATION MODAL ================= --}}
+<div class="modal fade" id="palletManualModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h6 class="modal-title">Pallet Slots Allocation &amp; Visual Grid</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="row">
+                    <!-- Left Side: Allocations Summary -->
+                    <div class="col-md-5 border-end">
+                        <h6 class="fw-bold text-secondary mb-2">Live Allocation Preview</h6>
+                        <div id="pallet-preview-summary" class="mb-3">
+                            <!-- Populated via AJAX -->
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Allocation Mode</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="allocation_mode" id="mode_auto" value="auto" checked>
+                                    <label class="form-check-label" for="mode_auto">Auto (FIFO)</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="allocation_mode" id="mode_manual" value="manual">
+                                    <label class="form-check-label" for="mode_manual">Manual Override</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="manual-controls-section d-none">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Select Warehouse</label>
+                                <select class="form-select form-select-sm modal-manual-warehouse">
+                                    <option value="">-- Select Warehouse --</option>
+                                    @foreach($warehouses as $w)
+                                        <option value="{{ $w->id }}">{{ $w->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Select Row</label>
+                                <select class="form-select form-select-sm modal-manual-row">
+                                    <option value="">-- Select Row --</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Starting Pallet Number</label>
+                                <input type="number" min="1" class="form-control form-control-sm modal-manual-pallet-start" placeholder="e.g. 1 (Optional - auto find free)">
+                            </div>
+                            <div class="manual-range-info p-2 mb-2 border rounded small d-none">
+                                <!-- Range info injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Side: Pallet Layout / Grid -->
+                    <div class="col-md-7">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="form-label fw-bold mb-0">Pallet Layout / Grid</h6>
+                            <div class="d-flex gap-2">
+                                <span class="badge bg-success-subtle text-success border border-success">[ ] Empty</span>
+                                <span class="badge bg-danger-subtle text-danger border border-danger">[ ] Occupied</span>
+                                <span class="badge bg-primary-subtle text-primary border border-primary">[ ] Proposed</span>
+                            </div>
+                        </div>
+                        <div id="modal-pallet-grid" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light" style="max-height: 400px; overflow-y: auto; align-content: flex-start;">
+                            <div class="text-muted small p-4 text-center w-100">Select manual mode and a row above to view the layout grid.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" id="clearManualPalletBtn">Reset to Auto</button>
+                <button type="button" class="btn btn-primary btn-sm" id="saveManualPalletBtn">Apply</button>
+            </div>
+        </div>
+    </div>
 </div>
-</div>
-</div>
-</div>
+
 <div id="global-product-autocomplete" class="dropdown-menu shadow" style="max-height: 200px; overflow-y: auto; display: none; position: fixed; z-index: 2050; box-shadow: 0 4px 12px rgba(0,0,0,0.15); background-color: #ffffff; border: 1px solid #ced4da;"></div>
 @endsection
 
@@ -262,12 +252,12 @@ let activeRow = null;
 let currentProposedPalletNames = [];
 const warehouses = @json($warehouses);
 const products = @json($products);
+const groupedItems = @json($groupedItems);
 
-/* ================= FORM SUBMISSION & DISABLE ENTER (Excel Style) ================= */
+/* ================= FORM SUBMISSION & DISABLE ENTER ================= */
 document.getElementById('openingStockForm').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
         e.preventDefault();
-        
         const target = e.target;
         if (target.closest('#itemsTable')) {
             const currentCell = target.closest('td');
@@ -276,7 +266,6 @@ document.getElementById('openingStockForm').addEventListener('keydown', function
             
             const nextRow = currentRow.nextElementSibling;
             if (nextRow) {
-                // Focus the corresponding input in the next row
                 const nextCell = nextRow.children[columnIndex];
                 const input = nextCell ? nextCell.querySelector('input, select') : null;
                 if (input) {
@@ -286,7 +275,6 @@ document.getElementById('openingStockForm').addEventListener('keydown', function
                     if (fallback) fallback.focus();
                 }
             } else {
-                // Last row, add a new row
                 document.getElementById('addRowBtn').click();
                 setTimeout(() => {
                     const rows = document.querySelectorAll('#itemsTable tbody tr');
@@ -302,7 +290,7 @@ document.getElementById('openingStockForm').addEventListener('keydown', function
 document.getElementById('openingStockForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    let submitBtn = this.querySelector('button[type="submit"]') || this.querySelector('button.btn-primary');
+    let submitBtn = this.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
@@ -322,7 +310,7 @@ document.getElementById('openingStockForm').addEventListener('submit', function(
     .then(res => {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Save Opening Stock';
+            submitBtn.innerHTML = 'Update Opening Stock Entry';
         }
 
         if (res.status === 422) {
@@ -331,145 +319,136 @@ document.getElementById('openingStockForm').addEventListener('submit', function(
             if(!errorMsg && res.body.message) {
                 errorMsg = res.body.message;
             }
-            
-            Swal.fire({
-                icon: 'error',
-                title: 'Validation Error',
-                html: errorMsg,
-            });
+            Swal.fire({ icon: 'error', title: 'Validation Error', html: errorMsg });
         } else if (res.status >= 400) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: res.body.message || 'Something went wrong!',
-            });
+            Swal.fire({ icon: 'error', title: 'Error', text: res.body.message || 'Something went wrong!' });
         } else if (res.status === 200 || res.status === 201) {
             Swal.fire({
                 icon: 'success',
                 title: 'Success',
-                text: res.body.message || 'Saved successfully!',
+                text: res.body.message || 'Updated successfully!',
                 timer: 2000,
                 showConfirmButton: false
             }).then(() => {
-                if (res.body.redirect) {
-                    window.location.href = res.body.redirect;
-                } else {
-                    window.location.reload();
-                }
+                window.location.href = "{{ route('opening-stock.index') }}#transactions-pane";
             });
         }
     })
     .catch(error => {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Save Opening Stock';
+            submitBtn.innerHTML = 'Update Opening Stock Entry';
         }
-        Swal.fire({
-            icon: 'error',
-            title: 'Network Error',
-            text: 'An error occurred while communicating with the server.',
-        });
+        Swal.fire({ icon: 'error', title: 'Network Error', text: 'An error occurred while communicating with the server.' });
     });
 });
 
 /* ================= ADD ROW ================= */
-document.getElementById('addRowBtn').addEventListener('click', function () {
+function addRow(prefilled = null) {
     const globalWarehouseVal = document.getElementById('global_warehouse_id').value;
 
-    document.querySelector('#itemsTable tbody')
-    .insertAdjacentHTML('beforeend', `
-<tr>
+    const rowHtml = `
+<tr data-index="${rowIndex}">
 <td>
 <div class="product-autocomplete-wrapper">
     <input type="text"
            class="form-control form-control-sm product-input"
+           value="${prefilled ? prefilled.product_name + ' (' + prefilled.item_code + ')' : ''}"
            placeholder="Search product"
            autocomplete="off">
 </div>
 <input type="hidden"
        name="items[${rowIndex}][product_id]"
+       value="${prefilled ? prefilled.product_id : ''}"
        class="product-id">
+<input type="hidden"
+       name="items[${rowIndex}][split_ids]"
+       value="${prefilled ? prefilled.split_ids : ''}">
 </td>
 
 <td>
 <select name="items[${rowIndex}][warehouse_id]" class="form-select form-select-sm warehouse-select">
     <option value="auto">Auto</option>
     @foreach($warehouses as $w)
-        <option value="{{ $w->id }}">{{ $w->name }}</option>
+        <option value="{{ $w->id }}" ${prefilled && prefilled.warehouse_id == {{ $w->id }} ? 'selected' : ''}>{{ $w->name }}</option>
     @endforeach
 </select>
 </td>
 
 <td>
-<input class="form-control form-control-sm product-code" readonly>
+<input class="form-control form-control-sm product-code" value="${prefilled ? prefilled.item_code : ''}" readonly>
 </td>
 
 <td>
 <input type="number" min="1"
        name="items[${rowIndex}][units_received]"
-       class="form-control form-control-sm units">
+       value="${prefilled ? prefilled.units_received : ''}"
+       class="form-control form-control-sm units"
+       ${prefilled && prefilled.is_dispatched ? 'readonly' : ''}>
 </td>
 
 <td>
-<input class="form-control form-control-sm pack-size" readonly>
+<input class="form-control form-control-sm pack-size" value="${prefilled ? prefilled.pack_size : ''}" readonly>
 </td>
 
 <td>
-<input class="form-control form-control-sm total-qty" readonly>
+<input class="form-control form-control-sm total-qty" value="${prefilled ? prefilled.total_quantity : ''}" readonly>
 </td>
 
 <td>
 <div class="input-group input-group-sm">
     <input type="number" min="0"
            name="items[${rowIndex}][pallets_used]"
+           value="${prefilled ? prefilled.pallets_used : ''}"
            class="form-control form-control-sm pallets-used"
            placeholder="Auto"
-           title="Click eye button to view details or assign manually">
+           ${prefilled && prefilled.is_dispatched ? 'readonly' : ''}>
     <button type="button" class="btn btn-outline-secondary btn-sm preview-pallets-btn" title="View Pallet Allocation Preview">
         👁
     </button>
 </div>
 <input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
-<input type="hidden" class="pallets-per-packing" value="">
-<div class="manual-pallet-info mt-1 small text-primary" style="font-size:10px; font-weight:600; line-height: 1.1;"></div>
+<input type="hidden" class="pallets-per-packing" value="${prefilled ? prefilled.cartons_per_pallet : ''}">
+<div class="manual-pallet-info mt-1 small text-primary" style="font-size:10px; font-weight:600; line-height: 1.1;">
+    ${prefilled && prefilled.warehouse_row_id ? 'Row: ' + prefilled.warehouse_row_id + ', Start: ' + (prefilled.pallet_start || 'Auto') : ''}
+</div>
 </td>
 
 <td>
 <select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm">
-    <option value="pending">Pending</option>
-    <option value="approved">Approved</option>
-    <option value="rejected">Rejected</option>
+    <option value="pending" ${prefilled && prefilled.quality_clearance === 'pending' ? 'selected' : ''}>Pending</option>
+    <option value="approved" ${prefilled && prefilled.quality_clearance === 'approved' ? 'selected' : ''}>Approved</option>
+    <option value="rejected" ${prefilled && prefilled.quality_clearance === 'rejected' ? 'selected' : ''}>Rejected</option>
 </select>
 </td>
 
 <td>
-<label><input type="checkbox"
-       name="items[${rowIndex}][sound_stock]"
-       checked> S</label>
-<label><input type="checkbox"
-       name="items[${rowIndex}][block_stock]"> B</label>
-<label><input type="checkbox"
-       name="items[${rowIndex}][hold_stock]"> H</label>
+<label class="me-1"><input type="checkbox" name="items[${rowIndex}][sound_stock]" ${prefilled && prefilled.sound_stock ? 'checked' : (!prefilled ? 'checked' : '')}> S</label>
+<label class="me-1"><input type="checkbox" name="items[${rowIndex}][block_stock]" ${prefilled && prefilled.block_stock ? 'checked' : ''}> B</label>
+<label class="me-1"><input type="checkbox" name="items[${rowIndex}][hold_stock]" ${prefilled && prefilled.hold_stock ? 'checked' : ''}> H</label>
 </td>
 
 <td>
 <button type="button"
-        class="btn btn-sm btn-danger removeRow">×</button>
+        class="btn btn-sm btn-danger removeRow"
+        ${prefilled && prefilled.is_dispatched ? 'disabled' : ''}>×</button>
 </td>
 
-<input type="hidden" name="items[${rowIndex}][sap_batch]">
-<input type="hidden" name="items[${rowIndex}][vendor_batch]">
-<input type="hidden" name="items[${rowIndex}][ibd_no]">
-<input type="hidden" name="items[${rowIndex}][po_no]">
-<input type="hidden" name="items[${rowIndex}][mfg_date]">
-<input type="hidden" name="items[${rowIndex}][expiry_date]">
-<input type="hidden" name="items[${rowIndex}][warehouse_row_id]" class="manual-row-id">
-<input type="hidden" name="items[${rowIndex}][pallet_start]" class="manual-pallet-start">
+<input type="hidden" name="items[${rowIndex}][sap_batch]" value="${prefilled ? prefilled.sap_batch : ''}">
+<input type="hidden" name="items[${rowIndex}][vendor_batch]" value="${prefilled ? prefilled.vendor_batch : ''}">
+<input type="hidden" name="items[${rowIndex}][ibd_no]" value="${prefilled ? prefilled.ibd_no : ''}">
+<input type="hidden" name="items[${rowIndex}][po_no]" value="${prefilled ? prefilled.po_no : ''}">
+<input type="hidden" name="items[${rowIndex}][mfg_date]" value="${prefilled ? prefilled.mfg_date : ''}">
+<input type="hidden" name="items[${rowIndex}][expiry_date]" value="${prefilled ? prefilled.expiry_date : ''}">
+<input type="hidden" name="items[${rowIndex}][warehouse_row_id]" class="manual-row-id" value="${prefilled ? prefilled.warehouse_row_id : ''}">
+<input type="hidden" name="items[${rowIndex}][pallet_start]" class="manual-pallet-start" value="${prefilled ? prefilled.pallet_start : ''}">
 </tr>
-`);
+`;
 
-    const newRow = document.querySelector('#itemsTable tbody tr:last-child');
-    if (newRow) {
+    document.querySelector('#itemsTable tbody').insertAdjacentHTML('beforeend', rowHtml);
+
+    const newRow = document.querySelector(`#itemsTable tbody tr[data-index="${rowIndex}"]`);
+    if (newRow && !prefilled) {
         const select = newRow.querySelector('.warehouse-select');
         if (select) {
             select.value = globalWarehouseVal;
@@ -477,9 +456,13 @@ document.getElementById('addRowBtn').addEventListener('click', function () {
     }
 
     rowIndex++;
+}
+
+document.getElementById('addRowBtn').addEventListener('click', function () {
+    addRow();
 });
 
-// Sync global warehouse changes to all row warehouse dropdowns
+// Sync global warehouse changes
 document.getElementById('global_warehouse_id').addEventListener('change', function () {
     const val = this.value;
     document.querySelectorAll('.warehouse-select').forEach(select => {
@@ -487,7 +470,7 @@ document.getElementById('global_warehouse_id').addEventListener('change', functi
     });
 });
 
-/* ================= CUSTOM PRODUCT AUTOCOMPLETE (Excel style) ================= */
+/* ================= CUSTOM PRODUCT AUTOCOMPLETE ================= */
 let activeAutocompleteInput = null;
 
 function renderAutocomplete(input) {
@@ -495,14 +478,13 @@ function renderAutocomplete(input) {
     const globalDropdown = document.getElementById('global-product-autocomplete');
     const query = input.value.trim().toLowerCase();
 
-    // Position the global dropdown directly below the input using fixed viewport positions
     const rect = input.getBoundingClientRect();
     globalDropdown.style.top = rect.bottom + 'px';
     globalDropdown.style.left = rect.left + 'px';
     globalDropdown.style.width = rect.width + 'px';
 
     const matches = products.filter(p => {
-        if (!query) return true; // Show all products when query is empty
+        if (!query) return true;
         const nameMatch = p.name && p.name.toLowerCase().includes(query);
         const codeMatch = p.item_code && p.item_code.toLowerCase().includes(query);
         return nameMatch || codeMatch;
@@ -548,7 +530,6 @@ document.addEventListener('click', function (e) {
     }
 });
 
-// Click handler to select autocomplete item
 document.addEventListener('click', function (e) {
     const item = e.target.closest('.select-autocomplete-product');
     if (item && activeAutocompleteInput) {
@@ -593,7 +574,6 @@ document.addEventListener('click', function (e) {
         return;
     }
 
-    // Hide dropdown when clicking outside
     if (!e.target.closest('.product-input') && !e.target.closest('#global-product-autocomplete')) {
         const globalDropdown = document.getElementById('global-product-autocomplete');
         if (globalDropdown) {
@@ -602,87 +582,31 @@ document.addEventListener('click', function (e) {
     }
 });
 
-// Hide dropdown on scrolling container
-document.addEventListener('scroll', function (e) {
-    const globalDropdown = document.getElementById('global-product-autocomplete');
-    if (globalDropdown) {
-        globalDropdown.style.display = 'none';
-    }
-}, true);
-
-/* ================= PRODUCT CODE CLICK → EDIT ================= */
-document.addEventListener('click', function (e) {
-
-    if (!e.target.classList.contains('product-code')) return;
-
-    const row = e.target.closest('tr');
-    if (!row) return;
-
-    activeRow = row;
-
-    document.querySelector('.modal-sap').value =
-        row.querySelector('input[name$="[sap_batch]"]').value || '';
-
-    document.querySelector('.modal-vendor').value =
-        row.querySelector('input[name$="[vendor_batch]"]').value || '';
-
-    document.querySelector('.modal-ibd').value =
-        row.querySelector('input[name$="[ibd_no]"]').value || '';
-
-    document.querySelector('.modal-po').value =
-        row.querySelector('input[name$="[po_no]"]').value || '';
-
-    document.querySelector('.modal-mfg').value =
-        row.querySelector('input[name$="[mfg_date]"]').value || '';
-
-    document.querySelector('.modal-expiry').value =
-        row.querySelector('input[name$="[expiry_date]"]').value || '';
-
-    new bootstrap.Modal(document.getElementById('batchModal')).show();
-});
-
-/* ================= SAVE MODAL ================= */
+/* ================= BATCH BUBBLE SAVE ================= */
 document.getElementById('saveBatchBtn').addEventListener('click', function () {
-
     if (!activeRow) return;
 
-    activeRow.querySelector('input[name$="[sap_batch]"]').value =
-        document.querySelector('.modal-sap').value;
+    activeRow.querySelector('input[name$="[sap_batch]"]').value = document.querySelector('.modal-sap').value;
+    activeRow.querySelector('input[name$="[vendor_batch]"]').value = document.querySelector('.modal-vendor').value;
+    activeRow.querySelector('input[name$="[ibd_no]"]').value = document.querySelector('.modal-ibd').value;
+    activeRow.querySelector('input[name$="[po_no]"]').value = document.querySelector('.modal-po').value;
+    activeRow.querySelector('input[name$="[mfg_date]"]').value = document.querySelector('.modal-mfg').value;
+    activeRow.querySelector('input[name$="[expiry_date]"]').value = document.querySelector('.modal-expiry').value;
 
-    activeRow.querySelector('input[name$="[vendor_batch]"]').value =
-        document.querySelector('.modal-vendor').value;
-
-    activeRow.querySelector('input[name$="[ibd_no]"]').value =
-        document.querySelector('.modal-ibd').value;
-
-    activeRow.querySelector('input[name$="[po_no]"]').value =
-        document.querySelector('.modal-po').value;
-
-    activeRow.querySelector('input[name$="[mfg_date]"]').value =
-        document.querySelector('.modal-mfg').value;
-
-    activeRow.querySelector('input[name$="[expiry_date]"]').value =
-        document.querySelector('.modal-expiry').value;
-
-    bootstrap.Modal.getInstance(
-        document.getElementById('batchModal')
-    ).hide();
-
+    bootstrap.Modal.getInstance(document.getElementById('batchModal')).hide();
     activeRow.querySelector('.units')?.focus();
 });
 
 /* ================= REAL-TIME UNITS → TOTAL + PALLETS ================= */
 document.addEventListener('input', function (e) {
-
     if (!e.target.classList.contains('units')) return;
 
-    const row   = e.target.closest('tr');
+    const row = e.target.closest('tr');
     const units = Number(e.target.value || 0);
-    const pack  = Number(row.querySelector('.pack-size').value || 0);
+    const pack = Number(row.querySelector('.pack-size').value || 0);
 
     row.querySelector('.total-qty').value = units * pack;
 
-    // Auto-calculate pallets needed: ceil(units / cartons_per_pallet)
     const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing').value || 0);
     const palletsInput = row.querySelector('.pallets-used');
     if (cartonsPerPallet > 0 && units > 0) {
@@ -692,15 +616,17 @@ document.addEventListener('input', function (e) {
 
 /* ================= SHOW UNIFIED PALLET MODAL ================= */
 function openUnifiedPalletModal(row) {
-    const rowWhId = row.querySelector('.warehouse-select')?.value;
-    const globalWhId = document.getElementById('global_warehouse_id')?.value;
-    const whId = rowWhId || globalWhId;
+    const productId = row.querySelector('.product-id').value;
+    if (!productId) {
+        Swal.fire('Info', 'Please select a product first.', 'info');
+        return;
+    }
+
+    const whId = row.querySelector('.warehouse-select').value;
     activeRow = row;
 
-    // Reset modal state
     document.getElementById('pallet-preview-summary').innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary"></div> Calculating allocation...</div>';
     
-    // Set radio buttons
     const manualRowId = row.querySelector('.manual-row-id').value;
     const manualPalletStart = row.querySelector('.manual-pallet-start').value;
     
@@ -712,16 +638,14 @@ function openUnifiedPalletModal(row) {
         document.querySelector('.manual-controls-section').classList.add('d-none');
     }
 
-    // Set warehouse dropdown in modal
     const modalWh = document.querySelector('.modal-manual-warehouse');
-    const selectedWhId = (whId && whId !== 'auto') ? whId : (warehouses[0]?.id || '');
-    modalWh.value = selectedWhId;
+    modalWh.value = whId === 'auto' ? '' : whId;
 
-    // Populate rows dropdown based on warehouse rows
     const rowSelect = document.querySelector('.modal-manual-row');
     rowSelect.innerHTML = '<option value="">-- Select Row --</option>';
-    if (selectedWhId) {
-        const wh = warehouses.find(w => w.id == selectedWhId);
+    const activeWhId = modalWh.value;
+    if (activeWhId) {
+        const wh = warehouses.find(w => w.id == activeWhId);
         if (wh && wh.rows) {
             wh.rows.forEach(r => {
                 rowSelect.innerHTML += `<option value="${r.id}">Row ${r.row_name} (Capacity: ${r.pallet_capacity})</option>`;
@@ -732,31 +656,22 @@ function openUnifiedPalletModal(row) {
     rowSelect.value = manualRowId || '';
     document.querySelector('.modal-manual-pallet-start').value = manualPalletStart || '';
 
-    // Show the modal
     const modalEl = document.getElementById('palletManualModal');
     const modalObj = new bootstrap.Modal(modalEl);
     modalObj.show();
 
-    // Load preview details
     fetchPreviewAndRender();
 }
 
-// Fetch preview from server and display it
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.preview-pallets-btn');
+    if (btn) {
+        openUnifiedPalletModal(btn.closest('tr'));
+    }
+});
+
 function fetchPreviewAndRender() {
     if (!activeRow) return;
-
-    const rowWhVal = activeRow.querySelector('.warehouse-select')?.value;
-    const globalWhVal = document.getElementById('global_warehouse_id')?.value;
-    const activeWhVal = rowWhVal || globalWhVal;
-
-    const isManual = document.getElementById('mode_manual').checked;
-    const manualWhId = document.querySelector('.modal-manual-warehouse').value;
-    const manualRowId = document.querySelector('.modal-manual-row').value;
-    const manualPalletStart = document.querySelector('.modal-manual-pallet-start').value;
-
-    let targetWhId = isManual && manualWhId ? manualWhId : ((activeWhVal && activeWhVal !== 'auto') ? activeWhVal : (warehouses[0]?.id || ''));
-    let whObj = warehouses.find(w => w.id == targetWhId) || warehouses[0];
-    let defaultRowId = (whObj && whObj.rows && whObj.rows.length > 0) ? whObj.rows[0].id : null;
 
     const tableRows = document.querySelectorAll('#itemsTable tbody tr');
     const items = [];
@@ -769,7 +684,7 @@ function fetchPreviewAndRender() {
 
         const pId = row.querySelector('.product-id').value;
         const uVal = row.querySelector('.units').value || 0;
-        const wVal = row.querySelector('.warehouse-select')?.value || activeWhVal;
+        const wVal = row.querySelector('.warehouse-select').value;
         const pUsed = row.querySelector('.pallets-used').value || 0;
         const mRowId = row.querySelector('.manual-row-id').value;
         const mPalletStart = row.querySelector('.manual-pallet-start').value;
@@ -784,6 +699,11 @@ function fetchPreviewAndRender() {
         });
     });
 
+    const isManual = document.getElementById('mode_manual').checked;
+    const manualWhId = document.querySelector('.modal-manual-warehouse').value;
+    const manualRowId = document.querySelector('.modal-manual-row').value;
+    const manualPalletStart = document.querySelector('.modal-manual-pallet-start').value;
+
     if (isManual) {
         items[activeRowIndex].warehouse_id = manualWhId;
         items[activeRowIndex].warehouse_row_id = manualRowId;
@@ -795,31 +715,15 @@ function fetchPreviewAndRender() {
     rangeInfoDiv.innerHTML = '';
 
     const activeItem = items[activeRowIndex];
-
-    if (!activeItem.product_id || Number(activeItem.units_received) <= 0) {
-        let infoText = !activeItem.product_id 
-            ? `Select a product & enter cartons for live allocation. Currently viewing <strong>${whObj ? whObj.name : 'Warehouse'}</strong> layout.`
-            : `Enter units (cartons) for live allocation preview. Currently viewing <strong>${whObj ? whObj.name : 'Warehouse'}</strong> layout.`;
-
-        document.getElementById('pallet-preview-summary').innerHTML = `<div class="alert alert-info py-2 mb-0"><i class="bi bi-info-circle me-1"></i> ${infoText}</div>`;
-
-        const gridRowId = (isManual && manualRowId) ? manualRowId : defaultRowId;
-        if (gridRowId) {
-            loadPalletGridWithProposed(gridRowId, []);
-        } else {
-            document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3 text-center w-100">No rows found for this warehouse.</div>';
-        }
+    if (!activeItem.product_id) {
+        document.getElementById('pallet-preview-summary').innerHTML = '<div class="alert alert-info py-2 mb-0">Please select a product first.</div>';
+        document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3 text-center w-100">Select a product first.</div>';
         return;
     }
 
-    // If manual and warehouse is not selected, warn the user
     if (isManual && !activeItem.warehouse_id) {
         document.getElementById('pallet-preview-summary').innerHTML = '<div class="alert alert-warning py-2 mb-0">Please select a specific warehouse to use manual override.</div>';
-        if (defaultRowId) {
-            loadPalletGridWithProposed(defaultRowId, []);
-        } else {
-            document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3">Please select a specific warehouse.</div>';
-        }
+        document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3">Please select a specific warehouse.</div>';
         return;
     }
 
@@ -843,7 +747,6 @@ function fetchPreviewAndRender() {
             response.allocations.forEach(function(alloc) {
                 const badgeColor = alloc.type === 'manual' ? 'bg-primary' : (alloc.type === 'partial' ? 'bg-warning text-dark' : 'bg-success');
                 
-                // Let's determine if we have a range or individual names
                 let pNamesStr = '';
                 if (alloc.pallet_names && alloc.pallet_names.length > 0) {
                     currentProposedPalletNames = currentProposedPalletNames.concat(alloc.pallet_names);
@@ -871,12 +774,19 @@ function fetchPreviewAndRender() {
                     </div>
                 `;
 
-                if (!firstAssignedRowId && alloc.row_id) {
-                    firstAssignedRowId = alloc.row_id;
+                if (!firstAssignedRowId && alloc.type !== 'partial') {
+                    if (isManual) {
+                        firstAssignedRowId = manualRowId;
+                    } else {
+                        const whObj = warehouses.find(w => w.name === alloc.warehouse_name);
+                        if (whObj && whObj.rows) {
+                            const rowObj = whObj.rows.find(r => r.row_name === alloc.row_name);
+                            if (rowObj) firstAssignedRowId = rowObj.id;
+                        }
+                    }
                 }
             });
 
-            // Update Manual Override range information if manual mode is active
             if (isManual) {
                 const alloc = response.allocations[0];
                 rangeInfoDiv.classList.remove('d-none');
@@ -904,11 +814,9 @@ function fetchPreviewAndRender() {
 
         document.getElementById('pallet-preview-summary').innerHTML = summaryHtml;
 
-        // Render the grid for the active row if any
-        const gridRowId = isManual && manualRowId ? manualRowId : firstAssignedRowId;
+        const gridRowId = isManual ? manualRowId : firstAssignedRowId;
         if (gridRowId) {
             loadPalletGridWithProposed(gridRowId, currentProposedPalletNames);
-            // Highlight the active card
             setTimeout(() => {
                 const activeCard = document.querySelector(`.allocation-item-card[data-row-id="${gridRowId}"]`);
                 if (activeCard) {
@@ -925,7 +833,6 @@ function fetchPreviewAndRender() {
     });
 }
 
-// Custom Grid Loader that highlights the proposed pallets as well
 function loadPalletGridWithProposed(rowId, proposedNames) {
     const gridContainer = document.getElementById('modal-pallet-grid');
     gridContainer.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Loading pallet grid...</div>';
@@ -964,7 +871,6 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                 ? prefix + String(currentNum).padStart(padLength, '0')
                 : 'Pallet ' + pallet.pallet_number;
 
-            // Check if this pallet displayName is in the proposed list
             const isProposed = proposedNames.some(name => {
                 const cleanName = name.split(' (')[0];
                 return cleanName === displayName;
@@ -1004,70 +910,43 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                 box.style.borderColor = '#f5c2c7';
                 box.innerHTML = `
                     <div class="fw-bold text-danger" style="font-size:11px;">${displayName}</div>
-                    <div class="text-truncate text-muted fw-semibold" style="font-size:9px; margin-top: 2px;" title="${pallet.product_name || ''}">${pallet.product_name || 'Occupied'}</div>
-                    <div class="text-muted" style="font-size:9px;">Qty: ${pallet.carton_qty || 0}</div>
+                    <div class="text-muted" style="font-size:10px; margin-top: 4px;">[ Occupied ]</div>
                 `;
             }
-
-            box.addEventListener('click', function() {
-                if (!pallet.is_empty) return;
-                if (!document.getElementById('mode_manual').checked) {
-                    Swal.fire('Info', 'Switch to "Manual Override" allocation mode to manually assign pallets.', 'info');
-                    return;
-                }
-                document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
-                fetchPreviewAndRender();
-            });
 
             gridContainer.appendChild(box);
         });
 
-        // Update warning if there are occupied pallets in the range
-        const warningsDiv = document.querySelector('.manual-warnings');
-        if (warningsDiv) {
+        const warningDiv = document.querySelector('.manual-warnings');
+        if (warningDiv) {
             if (occupiedProposed.length > 0) {
-                warningsDiv.innerHTML = `❌ Conflict: Pallet(s) ${occupiedProposed.join(', ')} are already OCCUPIED! One pallet can only hold one product.`;
-                const rangeInfoDiv = document.querySelector('.manual-range-info');
-                rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-danger-subtle text-danger border-danger';
+                warningDiv.innerHTML = `⚠️ Conflict: Pallet(s) ${occupiedProposed.join(', ')} already occupied! Please select another start position.`;
             } else {
-                warningsDiv.innerHTML = '';
+                warningDiv.innerHTML = '';
             }
         }
     });
 }
 
-/* ================= BIND EVENT LISTENERS TO PALLET PREVIEW ================= */
-document.addEventListener('click', function (e) {
-    if (e.target.closest('.preview-pallets-btn') || e.target.classList.contains('pallets-used')) {
-        const row = e.target.closest('tr');
-        if (row) {
-            openUnifiedPalletModal(row);
-        }
-    }
-
-    // Handle clicking on the preview allocation cards to switch the grid layout
-    const card = e.target.closest('.allocation-item-card');
-    if (card) {
-        const rowId = card.dataset.rowId;
-        if (rowId) {
-            document.querySelectorAll('.allocation-item-card').forEach(c => {
-                c.classList.add('bg-white');
-                c.classList.remove('border-primary', 'bg-primary-subtle');
-            });
-            card.classList.remove('bg-white');
-            card.classList.add('border-primary', 'bg-primary-subtle');
-            loadPalletGridWithProposed(rowId, currentProposedPalletNames);
-        }
-    }
-});
-
+/* ================= MANUAL PALLET ALLOCATION MODAL EVENTS ================= */
 document.querySelectorAll('input[name="allocation_mode"]').forEach(radio => {
-    radio.addEventListener('change', function() {
+    radio.addEventListener('change', function () {
+        const manualWh = document.querySelector('.modal-manual-warehouse');
+        const manualRow = document.querySelector('.modal-manual-row');
+        const startPallet = document.querySelector('.modal-manual-pallet-start');
+
         if (this.value === 'manual') {
             document.querySelector('.manual-controls-section').classList.remove('d-none');
-            fetchPreviewAndRender();
+            if (activeRow) {
+                const whVal = activeRow.querySelector('.warehouse-select').value;
+                manualWh.value = whVal === 'auto' ? '' : whVal;
+                manualWh.dispatchEvent(new Event('change'));
+            }
         } else {
             document.querySelector('.manual-controls-section').classList.add('d-none');
+            manualWh.value = '';
+            manualRow.innerHTML = '<option value="">-- Select Row --</option>';
+            startPallet.value = '';
             fetchPreviewAndRender();
         }
     });
@@ -1092,7 +971,6 @@ document.querySelector('.modal-manual-warehouse').addEventListener('change', fun
 });
 
 document.querySelector('.modal-manual-row').addEventListener('change', function () {
-    // Reset pallet start when row changes so user starts fresh
     document.querySelector('.modal-manual-pallet-start').value = '';
     fetchPreviewAndRender();
 });
@@ -1111,7 +989,6 @@ document.getElementById('saveManualPalletBtn').addEventListener('click', functio
     const palletStart = document.querySelector('.modal-manual-pallet-start').value;
 
     if (isManual && manualWhId && rowId) {
-        // Sync warehouse selection to table row dropdown
         activeRow.querySelector('.warehouse-select').value = manualWhId;
 
         const rowText = document.querySelector('.modal-manual-row option:checked').text;
@@ -1145,17 +1022,26 @@ document.getElementById('clearManualPalletBtn').addEventListener('click', functi
     bootstrap.Modal.getInstance(document.getElementById('palletManualModal')).hide();
 });
 
-    // Add 5 rows by default (Excel style)
-    for (let i = 0; i < 5; i++) {
-        document.getElementById('addRowBtn').click();
+/* ================= REMOVE ROW ================= */
+document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('removeRow')) {
+        const row = e.target.closest('tr');
+        row.remove();
     }
+});
 
-    /* ================= REMOVE ================= */
-    document.addEventListener('click', function (e) {
-        if (e.target.classList.contains('removeRow')) {
-            e.target.closest('tr').remove();
-        }
+// Load original grouped items
+if (groupedItems && groupedItems.length > 0) {
+    groupedItems.forEach(item => {
+        addRow(item);
     });
+} else {
+    // If empty, add 3 default rows
+    for (let i = 0; i < 3; i++) {
+        addRow();
+    }
+}
+
 });
 </script>
 @endpush

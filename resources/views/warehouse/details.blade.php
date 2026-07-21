@@ -203,11 +203,13 @@ $(document).ready(function() {
             let prefix = 'Pallet ';
             let padLength = 0;
             let usePrefixLogic = false;
+            let startNum = 1;
             
             const match = rowName.match(/^(.+?)(\d+)\s+to\s+/i);
             if (match) {
                 prefix = match[1];
                 padLength = match[2].length;
+                startNum = parseInt(match[2], 10);
                 usePrefixLogic = true;
             }
 
@@ -228,8 +230,9 @@ $(document).ready(function() {
                     ? ' <span class="badge bg-danger" title="Exceeds max cartons per pallet">Over</span>'
                     : '';
 
+                const currentNum = usePrefixLogic ? (startNum + pallet.pallet_number - 1) : pallet.pallet_number;
                 const displayName = usePrefixLogic 
-                    ? prefix + String(pallet.pallet_number).padStart(padLength, '0')
+                    ? prefix + String(currentNum).padStart(padLength, '0')
                     : 'Pallet ' + pallet.pallet_number;
 
                 html += `

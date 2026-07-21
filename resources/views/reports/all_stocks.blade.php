@@ -1,5 +1,16 @@
 @extends('layouts.app')
 
+@push('styles')
+<style>
+@media (min-width: 993px) {
+    #stockDetailsModal {
+        left: 280px !important;
+        width: calc(100% - 280px) !important;
+    }
+}
+</style>
+@endpush
+
 @section('content')
 
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
@@ -333,39 +344,21 @@
                         {{-- Opening Stock Tab --}}
                         <div class="tab-pane fade show active" id="opening-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0" style="font-size:0.8rem;">
-                                    <thead class="table-light">
+                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                    <thead class="table-dark">
                                         <tr>
-                                            <th>#</th>
-                                            <th>Warehouse</th>
-                                            <th>Row</th>
-                                            <th>Vendor</th>
-                                            <th>Transporter</th>
-                                            <th>Vehicle No</th>
-                                            <th>Driver Name</th>
-                                            <th>SAP Batch</th>
-                                            <th>Vendor Batch</th>
-                                            <th>IBD</th>
-                                            <th>PO</th>
-                                            <th class="text-end">Units Recv</th>
-                                            <th class="text-end">Qty</th>
-                                            <th class="text-end">Balance</th>
-                                            <th>MFG</th>
-                                            <th>Expiry</th>
-                                            <th class="text-end">Pallets</th>
-                                            <th>QC</th>
-                                            <th class="text-center">Sound</th>
-                                            <th class="text-center">Block</th>
-                                            <th class="text-center">Hold</th>
-                                            <th>Inv No</th>
-                                            <th>Stock Duration</th>
-                                            <th>Date</th>
-                                            <th>Remarks</th>
-                                            <th>Action</th>
+                                            <th style="width: 40px;">#</th>
+                                            <th>Location</th>
+                                            <th>Batch Details</th>
+                                            <th>Dates &amp; Duration</th>
+                                            <th>Quantities</th>
+                                            <th>Logistics &amp; References</th>
+                                            <th>QC &amp; Status</th>
+                                            <th style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="openingTableBody">
-                                        <tr><td colspan="26" class="text-center text-muted">No data</td></tr>
+                                        <tr><td colspan="8" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -374,39 +367,21 @@
                         {{-- Inbound Tab --}}
                         <div class="tab-pane fade" id="inbound-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0" style="font-size:0.8rem;">
-                                    <thead class="table-light">
+                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                    <thead class="table-dark">
                                         <tr>
-                                            <th>#</th>
-                                            <th>Warehouse</th>
-                                            <th>Row</th>
-                                            <th>Vendor</th>
-                                            <th>Transporter</th>
-                                            <th>Vehicle No</th>
-                                            <th>Driver Name</th>
-                                            <th>SAP Batch</th>
-                                            <th>Vendor Batch</th>
-                                            <th>IBD</th>
-                                            <th>PO</th>
-                                            <th class="text-end">Units Recv</th>
-                                            <th class="text-end">Qty</th>
-                                            <th class="text-end">Balance</th>
-                                            <th>MFG</th>
-                                            <th>Expiry</th>
-                                            <th class="text-end">Pallets</th>
-                                            <th>QC</th>
-                                            <th class="text-center">Sound</th>
-                                            <th class="text-center">Block</th>
-                                            <th class="text-center">Hold</th>
-                                            <th>Inv No</th>
-                                            <th>Stock Duration</th>
-                                            <th>Date</th>
-                                            <th>Remarks</th>
-                                            <th>Action</th>
+                                            <th style="width: 40px;">#</th>
+                                            <th>Location</th>
+                                            <th>Batch Details</th>
+                                            <th>Dates &amp; Duration</th>
+                                            <th>Quantities</th>
+                                            <th>Logistics &amp; References</th>
+                                            <th>QC &amp; Status</th>
+                                            <th style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inboundTableBody">
-                                        <tr><td colspan="26" class="text-center text-muted">No data</td></tr>
+                                        <tr><td colspan="8" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -415,31 +390,20 @@
                         {{-- Outbound Tab --}}
                         <div class="tab-pane fade" id="outbound-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0" style="font-size:0.8rem;">
-                                    <thead class="table-light">
+                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                    <thead class="table-dark">
                                         <tr>
-                                            <th>#</th>
-                                            <th>Warehouse</th>
-                                            <th>Row</th>
-                                            <th>Customer</th>
-                                            <th>Transporter</th>
-                                            <th>Vehicle No</th>
-                                            <th>Driver Name</th>
-                                            <th>Type</th>
-                                            <th>SAP Batch</th>
-                                            <th>Vendor Batch</th>
-                                            <th>PO</th>
-                                            <th>IBD</th>
-                                            <th class="text-end">Dispatch</th>
-                                            <th class="text-end">Units</th>
-                                            <th>Pallet Pos</th>
-                                            <th>Stock Duration</th>
-                                            <th>Date</th>
-                                            <th>Action</th>
+                                            <th style="width: 40px;">#</th>
+                                            <th>Location</th>
+                                            <th>Batch Details</th>
+                                            <th>Date &amp; Duration</th>
+                                            <th>Quantities</th>
+                                            <th>Customer &amp; Logistics</th>
+                                            <th style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="outboundTableBody">
-                                        <tr><td colspan="18" class="text-center text-muted">No data</td></tr>
+                                        <tr><td colspan="7" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -568,6 +532,10 @@ $(document).ready(function() {
                     if (data.opening_batches.length > 0) {
                         data.opening_batches.forEach((item, index) => {
                             const qcBadge = getQcBadge(item.quality_clearance);
+                            let packSize = parseFloat(item.pack_size_snapshot) || parseFloat(data.product.pack_size) || 1;
+                            let balanceQty = parseFloat(item.balance_quantity ?? item.total_quantity ?? 0);
+                            let remainingUnits = packSize > 0 ? Math.ceil(balanceQty / packSize) : 0;
+
                             let rowDisplay = item.row_name || '-';
                             let originalPallets = item.pallets_used || 0;
                             if (data.product && data.product.cartons_per_pallet > 0 && item.units_received > 0) {
@@ -596,37 +564,52 @@ $(document).ready(function() {
                                     }
                                 }
                             }
+
+                            let statusPill = '<span class="badge bg-success">Available</span>';
+                            if (item.block_stock) statusPill = '<span class="badge bg-danger">Blocked</span>';
+                            else if (item.hold_stock) statusPill = '<span class="badge bg-warning text-dark">Hold</span>';
+                            else if (!item.sound_stock) statusPill = '<span class="badge bg-secondary">Unsound</span>';
+
                             openingHtml += `<tr>
-                                <td>${index + 1}</td>
-                                <td>${item.warehouse_name}</td>
-                                <td>${rowDisplay}</td>
-                                <td>${item.vendor_name || '-'}</td>
-                                <td>${item.transporter_name || '-'}</td>
-                                <td>${item.vehicle_no || '-'}</td>
-                                <td>${item.driver_name || '-'}</td>
-                                <td>${item.sap_batch || '-'}</td>
-                                <td>${item.vendor_batch || '-'}</td>
-                                <td>${item.ibd_no || '-'}</td>
-                                <td>${item.po_no || '-'}</td>
-                                <td class="text-end">${item.units_received || 0}</td>
-                                <td class="text-end">${parseFloat(item.total_quantity).toFixed(2)}</td>
-                                <td class="text-end fw-bold">${parseFloat(item.total_quantity).toFixed(2)}</td>
-                                <td>${item.mfg_date ? formatDate(item.mfg_date) : '-'}</td>
-                                <td>${item.expiry_date ? formatDate(item.expiry_date) : '-'}</td>
-                                <td class="text-end">${originalPallets || 0}</td>
-                                <td>${qcBadge}</td>
-                                <td class="text-center">${item.sound_stock ? 'Yes' : 'No'}</td>
-                                <td class="text-center">${item.block_stock ? 'Yes' : 'No'}</td>
-                                <td class="text-center">${item.hold_stock ? 'Yes' : 'No'}</td>
-                                <td>${item.inbound_invoice_no || '-'}</td>
-                                <td>${getStockDurationBadge(item.created_at)}</td>
-                                <td>${formatDate(item.created_at)}</td>
-                                <td>${item.remarks || '-'}</td>
-                                <td><a class="btn btn-sm btn-outline-primary" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf">PDF</a></td>
+                                <td class="text-muted fw-bold">${index + 1}</td>
+                                <td>
+                                    <div class="fw-bold text-dark">${item.warehouse_name}</div>
+                                    <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${rowDisplay}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
+                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>MFG:</strong> ${item.mfg_date ? formatDate(item.mfg_date) : '—'}</div>
+                                    <div class="small"><strong>EXP:</strong> <span class="fw-bold">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
+                                    <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Units:</strong> <span class="font-monospace fw-bold text-dark">${remainingUnits}</span> <span class="text-muted small">/ ${item.units_received || 0}</span></div>
+                                    <div class="small"><strong>Qty:</strong> <span class="font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</span></div>
+                                    <div class="small"><strong>Balance:</strong> <span class="font-monospace fw-bold text-success">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</span></div>
+                                    <div class="small"><strong>Pallets:</strong> <span class="badge bg-secondary">${originalPallets || 0}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Vendor:</strong> ${item.vendor_name || '—'}</div>
+                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
+                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'}</div>
+                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
+                                </td>
+                                <td>
+                                    <div class="mb-1">${qcBadge}</div>
+                                    <div>${statusPill}</div>
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
+                                        <i class="bi bi-file-pdf"></i> PDF
+                                    </a>
+                                </td>
                             </tr>`;
                         });
                     } else {
-                        openingHtml = '<tr><td colspan="26" class="text-center text-muted">No opening stock</td></tr>';
+                        openingHtml = '<tr><td colspan="8" class="text-center text-muted py-4">No opening stock</td></tr>';
                     }
                     $('#openingTableBody').html(openingHtml);
 
@@ -636,6 +619,10 @@ $(document).ready(function() {
                     if (data.inbound_batches.length > 0) {
                         data.inbound_batches.forEach((item, index) => {
                             const qcBadge = getQcBadge(item.quality_clearance);
+                            let packSize = parseFloat(item.pack_size_snapshot) || parseFloat(data.product.pack_size) || 1;
+                            let balanceQty = parseFloat(item.balance_quantity ?? item.total_quantity ?? 0);
+                            let remainingUnits = packSize > 0 ? Math.ceil(balanceQty / packSize) : 0;
+
                             let rowDisplay = item.row_name || '-';
                             let originalPallets = item.pallets_used || 0;
                             if (data.product && data.product.cartons_per_pallet > 0 && item.units_received > 0) {
@@ -664,37 +651,52 @@ $(document).ready(function() {
                                     }
                                 }
                             }
+
+                            let statusPill = '<span class="badge bg-success">Available</span>';
+                            if (item.block_stock) statusPill = '<span class="badge bg-danger">Blocked</span>';
+                            else if (item.hold_stock) statusPill = '<span class="badge bg-warning text-dark">Hold</span>';
+                            else if (!item.sound_stock) statusPill = '<span class="badge bg-secondary">Unsound</span>';
+
                             inboundHtml += `<tr>
-                                <td>${index + 1}</td>
-                                <td>${item.warehouse_name}</td>
-                                <td>${rowDisplay}</td>
-                                <td>${item.vendor_name || '-'}</td>
-                                <td>${item.transporter_name || '-'}</td>
-                                <td>${item.vehicle_no || '-'}</td>
-                                <td>${item.driver_name || '-'}</td>
-                                <td>${item.sap_batch || '-'}</td>
-                                <td>${item.vendor_batch || '-'}</td>
-                                <td>${item.ibd_no || '-'}</td>
-                                <td>${item.po_no || '-'}</td>
-                                <td class="text-end">${item.units_received || 0}</td>
-                                <td class="text-end">${parseFloat(item.total_quantity).toFixed(2)}</td>
-                                <td class="text-end fw-bold">${parseFloat(item.balance_quantity).toFixed(2)}</td>
-                                <td>${item.mfg_date ? formatDate(item.mfg_date) : '-'}</td>
-                                <td>${item.expiry_date ? formatDate(item.expiry_date) : '-'}</td>
-                                <td class="text-end">${item.pallets_used || 0}</td>
-                                <td>${qcBadge}</td>
-                                <td class="text-center">${item.sound_stock ? 'Yes' : 'No'}</td>
-                                <td class="text-center">${item.block_stock ? 'Yes' : 'No'}</td>
-                                <td class="text-center">${item.hold_stock ? 'Yes' : 'No'}</td>
-                                <td>${item.inbound_invoice_no || '-'}</td>
-                                <td>${getStockDurationBadge(item.created_at)}</td>
-                                <td>${formatDate(item.created_at)}</td>
-                                <td>${item.remarks || '-'}</td>
-                                <td><a class="btn btn-sm btn-outline-primary" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf">PDF</a></td>
+                                <td class="text-muted fw-bold">${index + 1}</td>
+                                <td>
+                                    <div class="fw-bold text-dark">${item.warehouse_name}</div>
+                                    <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${rowDisplay}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
+                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>MFG:</strong> ${item.mfg_date ? formatDate(item.mfg_date) : '—'}</div>
+                                    <div class="small"><strong>EXP:</strong> <span class="fw-bold">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
+                                    <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Units:</strong> <span class="font-monospace fw-bold text-dark">${remainingUnits}</span> <span class="text-muted small">/ ${item.units_received || 0}</span></div>
+                                    <div class="small"><strong>Qty:</strong> <span class="font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</span></div>
+                                    <div class="small"><strong>Balance:</strong> <span class="font-monospace fw-bold text-success">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</span></div>
+                                    <div class="small"><strong>Pallets:</strong> <span class="badge bg-secondary">${originalPallets || 0}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Vendor:</strong> ${item.vendor_name || '—'}</div>
+                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
+                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'}</div>
+                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
+                                </td>
+                                <td>
+                                    <div class="mb-1">${qcBadge}</div>
+                                    <div>${statusPill}</div>
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
+                                        <i class="bi bi-file-pdf"></i> PDF
+                                    </a>
+                                </td>
                             </tr>`;
                         });
                     } else {
-                        inboundHtml = '<tr><td colspan="26" class="text-center text-muted">No inbound records</td></tr>';
+                        inboundHtml = '<tr><td colspan="8" class="text-center text-muted py-4">No inbound records</td></tr>';
                     }
                     $('#inboundTableBody').html(inboundHtml);
 
@@ -719,28 +721,38 @@ $(document).ready(function() {
                             }
 
                             outboundHtml += `<tr>
-                                <td>${index + 1}</td>
-                                <td>${item.warehouse_name}</td>
-                                <td>${palletPosDisplay !== '-' ? palletPosDisplay : (item.row_name || '-')}</td>
-                                <td>${item.customer_name || 'Transfer'}</td>
-                                <td>${item.transporter_name || '-'}</td>
-                                <td>${item.vehicle_no || '-'}</td>
-                                <td>${item.driver_name || '-'}</td>
-                                <td><span class="badge bg-secondary">${item.source_type}</span></td>
-                                <td>${item.sap_batch || '-'}</td>
-                                <td>${item.vendor_batch || '-'}</td>
-                                <td>${item.po_no || '-'}</td>
-                                <td>${item.ibd_no || '-'}</td>
-                                <td class="text-end">${parseFloat(item.dispatch_quantity).toFixed(2)}</td>
-                                <td class="text-end">${item.units_dispatch || 0}</td>
-                                <td>${palletPosDisplay}</td>
-                                <td>${getStockDurationBadge(item.created_at)}</td>
-                                <td>${formatDate(item.created_at)}</td>
-                                <td><a class="btn btn-sm btn-outline-primary" target="_blank" href="${reportsBase}/outbound/${item.stock_out_id}/pdf">PDF</a></td>
+                                <td class="text-muted fw-bold">${index + 1}</td>
+                                <td>
+                                    <div class="fw-bold text-dark">${item.warehouse_name}</div>
+                                    <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${palletPosDisplay !== '-' ? palletPosDisplay : (item.row_name || '-')}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
+                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Date:</strong> ${formatDate(item.created_at)}</div>
+                                    <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Dispatch:</strong> <span class="font-monospace fw-bold text-danger">${parseFloat(item.dispatch_quantity).toFixed(2)}</span></div>
+                                    <div class="small"><strong>Units:</strong> <span class="font-monospace">${item.units_dispatch || 0}</span></div>
+                                </td>
+                                <td>
+                                    <div class="small"><strong>Customer:</strong> ${item.customer_name || 'Transfer'}</div>
+                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
+                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'} (Driver: ${item.driver_name || '—'})</div>
+                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/outbound/${item.stock_out_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
+                                        <i class="bi bi-file-pdf"></i> PDF
+                                    </a>
+                                </td>
                             </tr>`;
                         });
                     } else {
-                        outboundHtml = '<tr><td colspan="18" class="text-center text-muted">No outbound records</td></tr>';
+                        outboundHtml = '<tr><td colspan="7" class="text-center text-muted py-4">No outbound records</td></tr>';
                     }
                     $('#outboundTableBody').html(outboundHtml);
 

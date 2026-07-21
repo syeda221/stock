@@ -55,6 +55,60 @@ class OutboundController extends Controller
         return $candidate;
     }
 
+    private function sortOutboundBatches($batches)
+    {
+        return $batches->sort(function ($a, $b) {
+            // 1. Expiry Date (FEFO) - Near expiry date comes first
+            $aExp = $a->expiry_date ? (is_object($a->expiry_date) ? $a->expiry_date->format('Y-m-d') : (string)$a->expiry_date) : '9999-12-31';
+            $bExp = $b->expiry_date ? (is_object($b->expiry_date) ? $b->expiry_date->format('Y-m-d') : (string)$b->expiry_date) : '9999-12-31';
+            if ($aExp !== $bExp) {
+                return strcmp($aExp, $bExp);
+            }
+
+            // 2. Partial Pallet Consolidation - Smaller remaining quantity comes first when expiry is equal
+            $aCpp  = (int) ($a->product?->cartons_per_pallet ?? 0);
+            $aPack = (float) ($a->pack_size_snapshot > 0 ? $a->pack_size_snapshot : 1);
+            $aCartons = (float) ($a->balance_quantity / $aPack);
+            $aIsPartial = false;
+            if ($aCpp > 0 && $a->pallets_used > 0) {
+                if ($aCartons < ($a->pallets_used * $aCpp)) {
+                    $aIsPartial = true;
+                }
+            }
+
+            $bCpp  = (int) ($b->product?->cartons_per_pallet ?? 0);
+            $bPack = (float) ($b->pack_size_snapshot > 0 ? $b->pack_size_snapshot : 1);
+            $bCartons = (float) ($b->balance_quantity / $bPack);
+            $bIsPartial = false;
+            if ($bCpp > 0 && $b->pallets_used > 0) {
+                if ($bCartons < ($b->pallets_used * $bCpp)) {
+                    $bIsPartial = true;
+                }
+            }
+
+            if ($aIsPartial && !$bIsPartial) {
+                return -1;
+            }
+            if (!$aIsPartial && $bIsPartial) {
+                return 1;
+            }
+
+            // If both are partial or both are full, sort by remaining cartons ascending so smaller partials are emptied to 0 first!
+            if (abs($aCartons - $bCartons) > 0.0001) {
+                return $aCartons < $bCartons ? -1 : 1;
+            }
+
+            // 3. Fallback: FIFO order (Created At -> Row ID -> Pallet Start)
+            if ($a->created_at != $b->created_at) {
+                return $a->created_at < $b->created_at ? -1 : 1;
+            }
+            if ($a->warehouse_row_id != $b->warehouse_row_id) {
+                return $a->warehouse_row_id < $b->warehouse_row_id ? -1 : 1;
+            }
+            return ($a->pallet_start ?: 0) < ($b->pallet_start ?: 0) ? -1 : 1;
+        });
+    }
+
     /* ================= LIST ================= */
     public function index(Request $request)
     {
@@ -192,7 +246,7 @@ class OutboundController extends Controller
             ->where('product_id', $productId)
             ->where('balance_quantity', '>', 0.001);
 
-        if ($warehouseId) {
+        if ($warehouseId && $warehouseId !== 'auto') {
             $query->where('warehouse_id', $warehouseId);
         }
 
@@ -204,7 +258,7 @@ class OutboundController extends Controller
                   ->where('quality_clearance', '!=', 'rejected')
                   ->where(function ($q2) {
                       $q2->whereNull('expiry_date')
-                         ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
+                         ->orWhere('expiry_date', '>=', now()->toDateString());
                   });
             });
         }
@@ -217,15 +271,23 @@ class OutboundController extends Controller
 
         $data = $items->groupBy('warehouse_id')
             ->map(function ($group) use ($palletsPerPacking) {
+                $firstItem = $group->first();
+                $packSize = $firstItem ? (float) $firstItem->pack_size_snapshot : 1;
+                if ($packSize <= 0) $packSize = 1;
+                
+                $totalPieces = $group->sum('balance_quantity');
+                $totalCartons = floor($totalPieces / $packSize);
+
                 return [
-                    'warehouse_id'       => $group->first()->warehouse_id,
-                    'warehouse'          => $group->first()->warehouse->name,
-                    'total_stock'        => $group->sum('balance_quantity'),
+                    'warehouse_id'       => $firstItem->warehouse_id,
+                    'warehouse'          => $firstItem->warehouse->name,
+                    'total_stock'        => $totalCartons,
                     'cartons_per_pallet' => $palletsPerPacking,
                     'batches'            => $group->map(function ($b) {
                         return [
                             'id'        => $b->id,
-                            'row'       => optional($b->warehouseRow)->name,
+                            'row_id'    => $b->warehouse_row_id,
+                            'row_name'  => optional($b->warehouseRow)->row_name ?? optional($b->warehouseRow)->name ?? 'Row ' . $b->warehouse_row_id,
                             'batch'     => $b->sap_batch ?? $b->vendor_batch ?? 'NO-BATCH',
                             'available' => $b->balance_quantity,
                             'pack'      => $b->pack_size_snapshot,
@@ -244,6 +306,16 @@ class OutboundController extends Controller
     /* ================= STORE ================= */
     public function store(Request $request)
     {
+        if ($request->has('items') && is_array($request->items)) {
+            $filteredItems = collect($request->items)
+                ->filter(function ($item) {
+                    return !empty($item['product_id']);
+                })
+                ->values()
+                ->toArray();
+            $request->merge(['items' => $filteredItems]);
+        }
+
         $request->validate([
             'outbound_type'               => 'required|in:warehouse,customer',
             'customer_id'                 => 'required_if:outbound_type,customer',
@@ -252,7 +324,7 @@ class OutboundController extends Controller
             'dispatched_invoice_no'        => 'nullable|string|max:80',
             'items'                       => 'required|array|min:1',
             'items.*.product_id'          => 'required|exists:products,id',
-            'items.*.warehouse_id'        => 'required|exists:warehouses,id',
+            'items.*.warehouse_id'        => 'nullable',
             'items.*.units_dispatch'      => 'required|integer|min:1',
         ]);
 
@@ -292,9 +364,13 @@ class OutboundController extends Controller
                 $invoiceNo = $request->dispatched_invoice_no ?: $this->generateDispatchedInvoiceNo();
 
                 /* ========= OUTBOUND HEADER ========= */
+                $headerWarehouseId = $firstItem['warehouse_id'] && $firstItem['warehouse_id'] !== 'auto' 
+                    ? $firstItem['warehouse_id'] 
+                    : Warehouse::where('status', 1)->value('id');
+
                 $stockOut = StockOut::create([
                     'source_type'          => $request->outbound_type === 'customer' ? 'sale' : 'transfer',
-                    'warehouse_id'         => $firstItem['warehouse_id'], // Representative WH
+                    'warehouse_id'         => $headerWarehouseId, // Representative WH
                     'to_warehouse_id'      => $request->to_warehouse_id,
                     'customer_id'          => $request->customer_id,
                     'transporter_id'       => $request->transporter_id,
@@ -324,10 +400,13 @@ class OutboundController extends Controller
                     $userIbd = $it['ibd_no'] ?? null;
                     $stoNo = $it['sto_no'] ?? null;
 
-                    // Find batches for this product in SPECIFIED warehouse for this item
+                    // Find batches for this product
                     $batchQuery = StockInItem::where('product_id', $productId)
-                        ->where('warehouse_id', $itWarehouseId)
                         ->where('balance_quantity', '>', 0);
+
+                    if ($itWarehouseId && $itWarehouseId !== 'auto') {
+                        $batchQuery->where('warehouse_id', $itWarehouseId);
+                    }
 
                     // For customer sales, exclude blocked, rejected, expired, and near-expiry stock
                     // unless allow_expired_sale is set on the batch
@@ -337,17 +416,22 @@ class OutboundController extends Controller
                               ->where('quality_clearance', '!=', 'rejected')
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
-                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
+                                     ->orWhere('expiry_date', '>=', now()->toDateString());
                               })
                               ->orWhere('allow_expired_sale', true);
                         });
                     }
 
-                    $batches = $batchQuery->orderBy('created_at', 'asc')
-                        ->orderBy('warehouse_row_id', 'asc')
-                        ->orderBy('pallet_start', 'asc')
-                        ->lockForUpdate()
-                        ->get();
+                    $batches = $batchQuery->lockForUpdate()->get();
+                    $batches = $this->sortOutboundBatches($batches);
+
+                    // If manual override is selected (warehouse_row_id hint)
+                    $manualRowId = !empty($it['warehouse_row_id']) ? (int) $it['warehouse_row_id'] : null;
+                    if ($manualRowId) {
+                        $batches = $batches->sortBy(function($b) use ($manualRowId) {
+                            return $b->warehouse_row_id == $manualRowId ? 0 : 1;
+                        });
+                    }
 
                     if ($batches->isEmpty()) {
                         $productName = Product::find($productId)->name ?? $productId;
@@ -594,6 +678,16 @@ class OutboundController extends Controller
     /* ================= UPDATE ================= */
     public function update(Request $request, StockOut $stockOut)
     {
+        if ($request->has('items') && is_array($request->items)) {
+            $filteredItems = collect($request->items)
+                ->filter(function ($item) {
+                    return !empty($item['product_id']);
+                })
+                ->values()
+                ->toArray();
+            $request->merge(['items' => $filteredItems]);
+        }
+
         $request->validate([
             'outbound_type'               => 'required|in:warehouse,customer',
             'customer_id'                 => 'required_if:outbound_type,customer',
@@ -602,7 +696,7 @@ class OutboundController extends Controller
             'dispatched_invoice_no'        => 'nullable|string|max:80',
             'items'                       => 'required|array|min:1',
             'items.*.product_id'          => 'required|exists:products,id',
-            'items.*.warehouse_id'        => 'required|exists:warehouses,id',
+            'items.*.warehouse_id'        => 'nullable',
             'items.*.units_dispatch'      => 'required|integer|min:1',
         ]);
 
@@ -634,8 +728,12 @@ class OutboundController extends Controller
                 $stockOut->items()->delete();
 
                 // 2. Update Header
+                $headerWarehouseId = $firstItem['warehouse_id'] && $firstItem['warehouse_id'] !== 'auto' 
+                    ? $firstItem['warehouse_id'] 
+                    : Warehouse::where('status', 1)->value('id');
+
                 $stockOut->update([
-                    'warehouse_id'         => $firstItem['warehouse_id'],
+                    'warehouse_id'         => $headerWarehouseId,
                     'customer_id'          => $request->customer_id,
                     'transporter_id'       => $request->transporter_id,
                     'shipment_type'        => $request->shipment_type,
@@ -663,8 +761,11 @@ class OutboundController extends Controller
                     $stoNo = $it['sto_no'] ?? null;
 
                     $batchQuery = StockInItem::where('product_id', $productId)
-                        ->where('warehouse_id', $itWarehouseId)
                         ->where('balance_quantity', '>', 0);
+
+                    if ($itWarehouseId && $itWarehouseId !== 'auto') {
+                        $batchQuery->where('warehouse_id', $itWarehouseId);
+                    }
 
                     if ($request->outbound_type === 'customer') {
                         $batchQuery->where(function ($q) {
@@ -672,17 +773,22 @@ class OutboundController extends Controller
                               ->where('quality_clearance', '!=', 'rejected')
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
-                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
+                                     ->orWhere('expiry_date', '>=', now()->toDateString());
                               })
                               ->orWhere('allow_expired_sale', true);
                         });
                     }
 
-                    $batches = $batchQuery->orderBy('created_at', 'asc')
-                        ->orderBy('warehouse_row_id', 'asc')
-                        ->orderBy('pallet_start', 'asc')
-                        ->lockForUpdate()
-                        ->get();
+                    $batches = $batchQuery->lockForUpdate()->get();
+                    $batches = $this->sortOutboundBatches($batches);
+
+                    // If manual override is selected (warehouse_row_id hint)
+                    $manualRowId = !empty($it['warehouse_row_id']) ? (int) $it['warehouse_row_id'] : null;
+                    if ($manualRowId) {
+                        $batches = $batches->sortBy(function($b) use ($manualRowId) {
+                            return $b->warehouse_row_id == $manualRowId ? 0 : 1;
+                        });
+                    }
 
                     if ($batches->isEmpty()) {
                         $productName = Product::find($productId)->name ?? $productId;
@@ -1288,7 +1394,7 @@ class OutboundController extends Controller
                               ->where('quality_clearance', '!=', 'rejected')
                               ->where(function ($q2) {
                                   $q2->whereNull('expiry_date')
-                                     ->orWhere('expiry_date', '>=', now()->addMonths(3)->toDateString());
+                                     ->orWhere('expiry_date', '>=', now()->toDateString());
                               })
                               ->orWhere('allow_expired_sale', true);
                         });
@@ -1299,11 +1405,8 @@ class OutboundController extends Controller
                         $batchQuery->where('warehouse_id', $whId);
                     }
 
-                    $batches = $batchQuery->orderBy('created_at', 'asc')
-                        ->orderBy('warehouse_row_id', 'asc')
-                        ->orderBy('pallet_start', 'asc')
-                        ->lockForUpdate()
-                        ->get();
+                    $batches = $batchQuery->lockForUpdate()->get();
+                    $batches = $this->sortOutboundBatches($batches);
 
                     if ($batches->isEmpty()) {
                         $errors[] = "No available stock for '{$product->name}'";
@@ -1428,5 +1531,161 @@ class OutboundController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
+    }
+
+    public function previewPicks(Request $request)
+    {
+        $items = $request->input('items', []);
+        $activeRowIndex = $request->input('active_row_index', 0);
+        $outboundType = $request->input('outbound_type', 'customer');
+
+        if (empty($items)) {
+            return response()->json(['success' => true, 'allocations' => []]);
+        }
+
+        // Keep track of remaining balance for each batch dynamically across all items in the form
+        $simulatedBalances = []; // stock_in_item_id => remaining_quantity
+
+        $activeAllocations = [];
+        $activeUnits = 0;
+
+        foreach ($items as $idx => $itemData) {
+            $productId = $itemData['product_id'] ?? null;
+            $warehouseId = $itemData['warehouse_id'] ?? null;
+            $units = (int) ($itemData['units_dispatch'] ?? 0);
+
+            // Manual override fields for the active row
+            $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
+
+            if (!$productId || $units <= 0) {
+                continue;
+            }
+
+            $product = Product::find($productId);
+            if (!$product) continue;
+
+            // Fetch available batches
+            $batchQuery = StockInItem::where('product_id', $productId)
+                ->where('balance_quantity', '>', 0);
+
+            if ($warehouseId && $warehouseId !== 'auto') {
+                $batchQuery->where('warehouse_id', $warehouseId);
+            }
+
+            if ($outboundType === 'customer') {
+                $batchQuery->where(function ($q) {
+                    $q->where('block_stock', false)
+                      ->where('quality_clearance', '!=', 'rejected')
+                      ->where(function ($q2) {
+                          $q2->whereNull('expiry_date')
+                             ->orWhere('expiry_date', '>=', now()->toDateString());
+                      })
+                      ->orWhere('allow_expired_sale', true);
+                });
+            }
+
+            $batches = $batchQuery->get();
+            if ($batches->isEmpty()) continue;
+
+            // Sort batches using optimized helper
+            $batches = $this->sortOutboundBatches($batches);
+
+            // If manual override is set, prioritize batches in that row
+            if ($idx == $activeRowIndex && $manualRowId) {
+                $batches = $batches->sortBy(function($b) use ($manualRowId) {
+                    return $b->warehouse_row_id == $manualRowId ? 0 : 1;
+                });
+            }
+
+            $unitsRemaining = $units;
+            $allocations = [];
+
+            // Helper to get pallet name
+            $getPalletNameLocal = function($row, $palletStart, $offsetIndex) {
+                if (!$row || !$palletStart) return '-';
+                $rowName = $row->row_name;
+                $parts = preg_split('/ to /i', $rowName);
+                $firstPallet = $parts[0];
+                if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                    $prefix = $matches[1];
+                    $startNum = (int)$matches[2];
+                    $actualNum = $startNum + $palletStart - 1 + $offsetIndex;
+                    $digits = strlen($matches[2]);
+                    return $prefix . sprintf("%0{$digits}d", $actualNum);
+                }
+                return $rowName . ' - P' . ($palletStart + $offsetIndex);
+            };
+
+            foreach ($batches as $batch) {
+                if ($unitsRemaining <= 0) break;
+
+                $pack = (float) $batch->pack_size_snapshot;
+                if ($pack <= 0) continue;
+
+                // Initialize or read simulated remaining quantity
+                if (!isset($simulatedBalances[$batch->id])) {
+                    $simulatedBalances[$batch->id] = (float) $batch->balance_quantity;
+                }
+
+                $availableUnits = floor($simulatedBalances[$batch->id] / $pack);
+                if ($availableUnits <= 0) continue;
+
+                $unitsToTake = min($unitsRemaining, $availableUnits);
+                $qtyToTake = $unitsToTake * $pack;
+
+                // Update simulated balance
+                $simulatedBalances[$batch->id] -= $qtyToTake;
+
+                // Determine pallets affected
+                $maxPerPallet = $batch->product?->cartons_per_pallet ?? null;
+                $palletNames = [];
+
+                if ($maxPerPallet && $maxPerPallet > 0 && $batch->pallets_used > 0) {
+                    // Reconstruct pallet balances
+                    $preDecrementBalance = $simulatedBalances[$batch->id] + $qtyToTake;
+                    $originalBalance = $batch->balance_quantity;
+                    $batch->balance_quantity = $preDecrementBalance;
+                    $currentPallets = $batch->getPalletBalances();
+                    $batch->balance_quantity = $originalBalance;
+
+                    $remTake = $qtyToTake;
+                    foreach ($currentPallets as $pIdx => $pQty) {
+                        if ($remTake <= 0) break;
+                        if ($pQty <= 0) continue;
+
+                        $takeHere = min($remTake, $pQty);
+                        $remTake -= $takeHere;
+
+                        $palletNames[] = $getPalletNameLocal($batch->warehouseRow, $batch->pallet_start, $pIdx);
+                    }
+                } else {
+                    $palletNames[] = 'General Pallet';
+                }
+
+                $allocations[] = [
+                    'row_id' => $batch->warehouse_row_id,
+                    'warehouse_name' => optional($batch->warehouse)->name ?? 'Unassigned',
+                    'row_name' => optional($batch->warehouseRow)->row_name ?? 'Unassigned',
+                    'pallet_start' => $batch->pallet_start,
+                    'pallets_count' => count($palletNames),
+                    'pallet_names' => $palletNames,
+                    'units' => $unitsToTake,
+                    'type' => ($idx == $activeRowIndex && $manualRowId && $batch->warehouse_row_id == $manualRowId) ? 'manual' : 'new',
+                ];
+
+                $unitsRemaining -= $unitsToTake;
+            }
+
+            if ($idx == $activeRowIndex) {
+                $activeAllocations = $allocations;
+                $activeUnits = $units;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'allocations' => $activeAllocations,
+            'units' => $activeUnits,
+        ]);
     }
 }

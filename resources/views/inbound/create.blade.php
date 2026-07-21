@@ -1,622 +1,1198 @@
 @extends('layouts.app')
 
 @section('content')
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 
-    <style>
-        .form-label { font-size: 12px; margin-bottom: 2px }
-        .form-control, .form-select { font-size: 13px; height: 32px }
-        .table-wrapper { width: 100%; overflow-x: auto }
-        .table-wrapper table { min-width: 1500px }
-        .product-search-wrap { position: relative }
-        .product-search-item { padding: 6px 10px; cursor: pointer; font-size: 13px }
-        .product-search-item:hover { background: #0d6efd; color: #fff }
-        .product-search-dropdown {
-            position: fixed; z-index: 1070; background: #fff;
-            border: 1px solid #ddd; border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,.15);
-            max-height: 220px; overflow-y: auto; min-width: 280px;
-        }
-        .qc-select-pending option[value="pending"] { background: #fff3cd; }
-        .qc-select-approved option[value="approved"] { background: #d1e7dd; }
-        .qc-select-rejected option[value="rejected"] { background: #f8d7da; }
-        .qc-select-pending { background: #fff3cd !important; }
-        .qc-select-approved { background: #d1e7dd !important; }
-        .qc-select-rejected { background: #f8d7da !important; }
-        .auto-mode-wh { pointer-events: none; background-color: #e9ecef !important; opacity: 1; }
-    </style>
+<style>
+    .product-autocomplete-wrapper .autocomplete-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 1060;
+        background-color: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .product-autocomplete-wrapper .dropdown-item {
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: none;
+        padding: 0.375rem 0.75rem;
+        cursor: pointer;
+    }
+    .product-autocomplete-wrapper .dropdown-item:hover {
+        background-color: #f8f9fa;
+        color: #1e2125;
+    }
+</style>
 
-    <form method="POST" action="{{ route('inbound.store') }}" id="inboundForm" autocomplete="off">
-        @csrf
+<form method="POST"
+      action="{{ route('inbound.store') }}"
+      id="inboundForm"
+      autocomplete="off">
+@csrf
 
-        {{-- ================= HEADER ================= --}}
-        <div class="card shadow-sm mb-3">
-            <div class="card-header">
-                <h6 class="mb-0">Inbound Entry</h6>
-            </div>
-            <div class="card-body">
-                <div class="row">
-
-                    <div class="col-md-3 mb-2">
-                        <label class="form-label">Warehouse</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <select id="warehouseSelect" name="warehouse_id" class="form-control form-control-sm" required>
-                                <option value="">Select</option>
-                                @foreach ($warehouseData as $wd)
-                                    @php $w = $warehouses->firstWhere('id', $wd['id']) @endphp
-                                    <option value="{{ $wd['id'] }}"
-                                        data-free="{{ $wd['free_pallets'] }}"
-                                        {{ $wd['id'] == $autoSelectWarehouseId ? 'selected' : '' }}
-                                        {{ !$wd['has_space'] ? 'disabled' : '' }}>
-                                        {{ $wd['name'] }}
-                                        @if($w->total_capacity > 0)
-                                            ({{ $wd['free_pallets'] }} free / {{ $w->total_capacity }} total)
-                                        @else
-                                            (unlimited)
-                                        @endif
-                                    </option>
-                                @endforeach
-                            </select>
-                            <div class="form-check form-switch mb-0 flex-shrink-0" style="white-space:nowrap;">
-                                <input class="form-check-input" type="checkbox" id="manualToggle" style="cursor:pointer;">
-                                <label class="form-check-label small" for="manualToggle" style="cursor:pointer;">Manual</label>
-                            </div>
-                        </div>
-                        <input type="hidden" name="manual_selection" id="manualSelectionInput" value="0">
-                        @if($autoSelectWarehouseId)
-                            <small class="text-muted" id="warehouseHint">
-                                <i class="bi bi-info-circle"></i> Auto-selected warehouse with most free space
-                            </small>
-                        @endif
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Vendor</label>
-                        <select name="vendor_id" class="form-control form-control-sm">
-                            <option value="">Select</option>
-                            @foreach ($vendors as $v)
-                                <option value="{{ $v->id }}">{{ $v->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Arrived From</label>
-                        <select name="arrived_from_id" class="form-control form-control-sm">
-                            <option value="">Select</option>
-                            @foreach ($arrivedFroms as $a)
-                                <option value="{{ $a->id }}">{{ $a->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Transporter</label>
-                        <select name="transporter_id" class="form-control form-control-sm">
-                            <option value="">Select</option>
-                            @foreach ($transporters as $t)
-                                <option value="{{ $t->id }}">{{ $t->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Shipment Type</label>
-
-                        <select name="shipment_type" class="form-select form-select-sm">
-                            <option value="manual">Manual</option>
-                            <option value="auto">Auto</option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Inbound Invoice No</label>
-                        <input name="dispatched_invoice_no" value="{{ $nextDispatchedInvoiceNo ?? '' }}" class="form-control form-control-sm" readonly>
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Inbound Signature </label>
-                        <input name="dispatcher_sig" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Gate Pass</label>
-                        <input name="gatepass_no" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Picker</label>
-                        <input name="picker" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Vehicle No</label>
-                        <input name="vehicle_no" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Vehicle Size</label>
-                        <input name="vehicle_size" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Driver Name</label>
-                        <input name="driver_name" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Driver Mobile</label>
-                        <input name="driver_mobile" class="form-control form-control-sm">
-                    </div>
-
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Vehicle In Time</label>
-                        <input type="datetime-local" name="vehicle_in_time" class="form-control form-control-sm">
-                    </div>
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Vehicle Out Time</label>
-                        <input type="datetime-local" name="vehicle_out_time" class="form-control form-control-sm">
-                    </div>
-
-
-                    <div class="col-md-2 mb-2">
-                        <label class="form-label">Remarks</label>
-                        <input name="remarks" class="form-control form-control-sm">
-                    </div>
-
-                </div>
-            </div>
+{{-- ================= HEADER ================= --}}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-box-arrow-in-down me-1"></i> Inbound Stock Entry</h6>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-white text-primary border font-monospace fs-6 px-2 py-1 shadow-sm">
+                <i class="bi bi-receipt me-1"></i> Invoice No: {{ $nextDispatchedInvoiceNo ?? 'SPC-IBD-000' }}
+            </span>
+            <input type="hidden" name="dispatched_invoice_no" value="{{ $nextDispatchedInvoiceNo ?? '' }}">
         </div>
-
-        {{-- ================= ITEMS ================= --}}
-        <div class="card shadow-sm">
-            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
-                <h6 class="card-title mb-0 fw-bold">Inbound Products</h6>
-                <button type="button" id="addRowBtn" class="btn btn-sm btn-success"><i class="bi bi-plus-lg"></i> Add Row</button>
+    </div>
+    <div class="card-body py-2">
+        <div class="row g-2">
+            <!-- Row 1 -->
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Vendor</label>
+                <select name="vendor_id" class="form-select form-select-sm">
+                    <option value="">Select Vendor</option>
+                    @foreach ($vendors as $v)
+                        <option value="{{ $v->id }}">{{ $v->name }}</option>
+                    @endforeach
+                </select>
             </div>
 
-            <div class="card-body p-0">
-                <div class="table-responsive" style="overflow-x: auto;">
-                    <table class="table table-bordered table-hover align-middle mb-0" id="itemsTable" style="min-width: 1000px;">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 320px;">Product</th>
-                                <th style="width: 90px;">Units</th>
-                                <th style="width: 90px;">Pack</th>
-                                <th style="width: 100px;">Total</th>
-                                <th style="width: 90px;">Pallets</th>
-                                <th style="width: 120px;" class="text-center">Status</th>
-                                <th style="width: 130px;">QC</th>
-                                <th style="width: 150px;">QC Remarks</th>
-                                <th style="width: 90px;" class="text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Arrived From</label>
+                <select name="arrived_from_id" class="form-select form-select-sm">
+                    <option value="">Select Arrived From</option>
+                    @foreach ($arrivedFroms as $a)
+                        <option value="{{ $a->id }}">{{ $a->name }}</option>
+                    @endforeach
+                </select>
             </div>
-        </div>
 
-        <div class="mt-3">
-            <button class="btn btn-primary">Save Inbound</button>
-            <a href="{{ route('inbound.index') }}" class="btn btn-secondary">Back</a>
-        </div>
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Transporter</label>
+                <select name="transporter_id" class="form-select form-select-sm">
+                    <option value="">Select Transporter</option>
+                    @foreach ($transporters as $t)
+                        <option value="{{ $t->id }}">{{ $t->name }}</option>
+                    @endforeach
+                </select>
+            </div>
 
-    </form>
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Shipment Type</label>
+                <select name="shipment_type" class="form-select form-select-sm">
+                    <option value="manual">Manual</option>
+                    <option value="auto">Auto</option>
+                </select>
+            </div>
 
-    @php
-        // warehouseRows variable no longer needed for UI
-    @endphp
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Gate Pass</label>
+                <input name="gatepass_no" class="form-control form-control-sm" placeholder="Gate Pass No">
+            </div>
 
-    {{-- ================= BATCH MODAL ================= --}}
-    <div class="modal fade" id="batchModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h6 class="modal-title">Batch Details</h6>
-                    <button class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Picker</label>
+                <input name="picker" class="form-control form-control-sm" placeholder="Picker Name">
+            </div>
 
-                <div class="modal-body row g-2">
-                    <div class="col-md-4"><label>SAP</label><input class="form-control form-control-sm modal-sap"></div>
-                    <div class="col-md-4"><label>Vendor Batch</label><input class="form-control form-control-sm modal-vendor"></div>
-                    <div class="col-md-4"><label>PO</label><input class="form-control form-control-sm modal-po"></div>
-                    <div class="col-md-4"><label>IBD</label><input class="form-control form-control-sm modal-ibd"></div>
-                    <div class="col-md-4"><label>MFG</label><input type="date" class="form-control form-control-sm modal-mfg"></div>
-                    <div class="col-md-4"><label>EXP</label><input type="date" class="form-control form-control-sm modal-expiry"></div>
-                </div>
+            <!-- Row 2 -->
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Vehicle No</label>
+                <input name="vehicle_no" class="form-control form-control-sm" placeholder="Vehicle No">
+            </div>
 
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary btn-sm" id="saveBatchBtn">OK</button>
-                </div>
+            <div class="col-md-1 mb-1">
+                <label class="form-label fw-semibold small mb-1">Size</label>
+                <input name="vehicle_size" class="form-control form-control-sm" placeholder="Size">
+            </div>
+
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Driver Name</label>
+                <input name="driver_name" class="form-control form-control-sm" placeholder="Driver Name">
+            </div>
+
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Driver Mobile</label>
+                <input name="driver_mobile" class="form-control form-control-sm" placeholder="Mobile No">
+            </div>
+
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Vehicle In</label>
+                <input type="datetime-local" name="vehicle_in_time" class="form-control form-control-sm">
+            </div>
+
+            <div class="col-md-2 mb-1">
+                <label class="form-label fw-semibold small mb-1">Vehicle Out</label>
+                <input type="datetime-local" name="vehicle_out_time" class="form-control form-control-sm">
+            </div>
+
+            <div class="col-md-1 mb-1">
+                <label class="form-label fw-semibold small mb-1">Remarks</label>
+                <input name="remarks" class="form-control form-control-sm" placeholder="Remarks">
             </div>
         </div>
     </div>
+</div>
+
+{{-- ================= ITEMS ================= --}}
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center bg-white py-2">
+        <h6 class="mb-0 fw-bold text-dark">Inbound Products</h6>
+        <button type="button"
+                id="addRowBtn"
+                class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg"></i> Add Row
+        </button>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+            <table class="table table-bordered table-sm mb-0 align-middle" id="itemsTable">
+                <thead class="table-light">
+                <tr>
+                    <th width="240">Product</th>
+                    <th width="160">Warehouse</th>
+                    <th width="130">Product Code</th>
+                    <th width="80">Units</th>
+                    <th width="70">Pack</th>
+                    <th width="80">Total</th>
+                    <th width="120">Pallets</th>
+                    <th width="110">QC Clearance</th>
+                    <th width="110">Status</th>
+                    <th width="40"></th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button class="btn btn-primary">Save Inbound</button>
+    <a href="{{ route('inbound.index') }}"
+       class="btn btn-secondary">Back</a>
+</div>
+</form>
+
+{{-- ================= BATCH MODAL ================= --}}
+<div class="modal fade" id="batchModal" tabindex="-1">
+<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-content">
+
+<div class="modal-header">
+    <h6 class="modal-title fw-bold">Batch Details</h6>
+    <button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body row g-2">
+    <div class="col-md-4">
+        <label class="form-label small">SAP Batch</label>
+        <input class="form-control form-control-sm modal-sap">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label small">Vendor Batch</label>
+        <input class="form-control form-control-sm modal-vendor">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label small">IBD No</label>
+        <input class="form-control form-control-sm modal-ibd">
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label small">PO No</label>
+        <input class="form-control form-control-sm modal-po">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label small">MFG Date</label>
+        <input type="date"
+               class="form-control form-control-sm modal-mfg">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label small">Expiry Date</label>
+        <input type="date"
+               class="form-control form-control-sm modal-expiry">
+    </div>
+</div>
+
+<div class="modal-footer">
+    <button type="button"
+            class="btn btn-primary btn-sm"
+            id="saveBatchBtn">
+        OK
+    </button>
+</div>
+
+</div>
+</div>
+</div>
+
+{{-- ================= UNIFIED PALLET ALLOCATION & PREVIEW MODAL ================= --}}
+<div class="modal fade" id="palletManualModal" tabindex="-1">
+<div class="modal-dialog modal-xl modal-dialog-centered">
+<div class="modal-content">
+<div class="modal-header bg-light">
+    <h6 class="modal-title fw-bold text-dark"><i class="bi bi-box-seam"></i> Pallet Allocation Details & Assignment</h6>
+    <button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+    <div class="row g-3">
+        <!-- Left Side: Live Preview & Summary -->
+        <div class="col-md-5 border-end">
+            <div class="p-3 bg-light rounded border mb-3">
+                <h6 class="fw-bold mb-2 text-primary">Live Allocation Preview</h6>
+                <div id="pallet-preview-summary" class="small" style="max-height: 280px; overflow-y: auto;">
+                    <p class="text-muted">Loading live allocation preview...</p>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label fw-bold">Allocation Mode</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="allocation_mode" id="mode_auto" value="auto" checked>
+                        <label class="form-check-label" for="mode_auto">Auto (FIFO)</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="allocation_mode" id="mode_manual" value="manual">
+                        <label class="form-check-label" for="mode_manual">Manual Override</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="manual-controls-section d-none">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Select Warehouse</label>
+                    <select class="form-select form-select-sm modal-manual-warehouse">
+                        <option value="">-- Select Warehouse --</option>
+                        @foreach($warehouses as $w)
+                            <option value="{{ $w->id }}">{{ $w->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Select Row</label>
+                    <select class="form-select form-select-sm modal-manual-row">
+                        <option value="">-- Select Row --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Starting Pallet Number</label>
+                    <input type="number" min="1" class="form-control form-control-sm modal-manual-pallet-start" placeholder="e.g. 1 (Optional - auto find free)">
+                </div>
+                <div class="manual-range-info p-2 mb-2 border rounded small d-none">
+                    <!-- Range info injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Pallet Layout / Grid -->
+        <div class="col-md-7">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="form-label fw-bold mb-0">Pallet Layout / Grid</h6>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-success-subtle text-success border border-success">[ ] Empty</span>
+                    <span class="badge bg-danger-subtle text-danger border border-danger">[ ] Occupied</span>
+                    <span class="badge bg-primary-subtle text-primary border border-primary">[ ] Proposed</span>
+                </div>
+            </div>
+            <div id="modal-pallet-grid" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light" style="max-height: 400px; overflow-y: auto; align-content: flex-start;">
+                <div class="text-muted small p-4 text-center w-100">Select manual mode and a row above to view the layout grid.</div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-footer bg-light">
+    <button type="button" class="btn btn-secondary btn-sm" id="clearManualPalletBtn">Reset to Auto</button>
+    <button type="button" class="btn btn-primary btn-sm" id="saveManualPalletBtn">Apply</button>
+</div>
+</div>
+</div>
+</div>
+<div id="global-product-autocomplete" class="dropdown-menu shadow" style="max-height: 200px; overflow-y: auto; display: none; position: fixed; z-index: 2050; box-shadow: 0 4px 12px rgba(0,0,0,0.15); background-color: #ffffff; border: 1px solid #ced4da;"></div>
 @endsection
 
 @push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            let rowIndex = 0,
-                activeRow = null;
-            const products = @json($products);
-            const warehouseData = @json($warehouseData);
-            const batchModal = new bootstrap.Modal(document.getElementById('batchModal'));
+<script>
+document.addEventListener('DOMContentLoaded', function () {
 
-            /* Manual warehouse toggle */
-            const manualToggle = document.getElementById('manualToggle');
-            const manualInput = document.getElementById('manualSelectionInput');
+let rowIndex = 0;
+let activeRow = null;
+let currentProposedPalletNames = [];
+const warehouses = @json($warehouses);
+const products = @json($products);
 
-            function setWarehouseMode(manual) {
-                warehouseSelect.classList.toggle('auto-mode-wh', !manual);
-                if (manual) {
-                    warehouseSelect.querySelectorAll('option').forEach(opt => {
-                        if (opt.value && Number(opt.dataset.free) <= 0) opt.disabled = true;
-                    });
+/* ================= FORM SUBMISSION & DISABLE ENTER (Excel Style) ================= */
+document.getElementById('inboundForm').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        
+        const target = e.target;
+        if (target.closest('#itemsTable')) {
+            const currentCell = target.closest('td');
+            const currentRow = target.closest('tr');
+            const columnIndex = Array.from(currentRow.children).indexOf(currentCell);
+            
+            const nextRow = currentRow.nextElementSibling;
+            if (nextRow) {
+                // Focus the corresponding input in the next row
+                const nextCell = nextRow.children[columnIndex];
+                const input = nextCell ? nextCell.querySelector('input, select') : null;
+                if (input) {
+                    input.focus();
+                } else {
+                    const fallback = nextRow.querySelector('input, select');
+                    if (fallback) fallback.focus();
                 }
-                manualInput.value = manual ? '1' : '0';
+            } else {
+                // Last row, add a new row
+                document.getElementById('addRowBtn').click();
+                setTimeout(() => {
+                    const rows = document.querySelectorAll('#itemsTable tbody tr');
+                    const lastRow = rows[rows.length - 1];
+                    const input = lastRow.querySelector('.product-input');
+                    if (input) input.focus();
+                }, 50);
             }
+        }
+    }
+});
 
-            manualToggle.addEventListener('change', function() {
-                setWarehouseMode(this.checked);
+document.getElementById('inboundForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    let submitBtn = this.querySelector('button[type="submit"]') || this.querySelector('button.btn-primary');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+    }
+
+    let formData = new FormData(this);
+
+    fetch(this.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json().then(data => ({ status: response.status, body: data })))
+    .then(res => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Save Inbound';
+        }
+
+        if (res.status === 422) {
+            let errors = res.body.errors || res.body;
+            let errorMsg = Object.values(errors).flat().join('<br>');
+            if(!errorMsg && res.body.message) {
+                errorMsg = res.body.message;
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Validation Error',
+                html: errorMsg,
             });
-
-            /* Show warehouse free space hint on change */
-            warehouseSelect.addEventListener('change', function() {
-                const opt = this.options[this.selectedIndex];
-                const free = opt ? opt.dataset.free : null;
-                const hint = document.getElementById('warehouseHint');
-                if (hint && free !== undefined) {
-                    hint.innerHTML = `<i class="bi bi-info-circle"></i> ${free} pallet slots free`;
+        } else if (res.status >= 400) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: res.body.message || 'Something went wrong!',
+            });
+        } else if (res.status === 200 || res.status === 201) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: res.body.message || 'Inbound saved successfully!',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                if (res.body.redirect) {
+                    window.location.href = res.body.redirect;
+                } else {
+                    window.location.reload();
                 }
             });
+        }
+    })
+    .catch(error => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Save Inbound';
+        }
+        Swal.fire({
+            icon: 'error',
+            title: 'Network Error',
+            text: 'An error occurred while communicating with the server.',
+        });
+    });
+});
 
-            setWarehouseMode(false);
+/* ================= ADD ROW ================= */
+document.getElementById('addRowBtn').addEventListener('click', function () {
+    const globalWarehouseVal = document.getElementById('global_warehouse_id')?.value || 'auto';
 
-            /* ADD ROW FUNCTION */
-            function addRow() {
-                itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
+    document.querySelector('#itemsTable tbody')
+    .insertAdjacentHTML('beforeend', `
 <tr>
 <td>
-<div class="input-group input-group-sm">
-<input class="form-control product-input" placeholder="Search product" autocomplete="off">
-<button type="button" class="btn btn-outline-primary open-batch-btn" title="Batch Details"><i class="bi bi-tags"></i> Batch</button>
+<div class="product-autocomplete-wrapper">
+    <input type="text"
+           class="form-control form-control-sm product-input"
+           placeholder="Search product"
+           autocomplete="off">
 </div>
-<div class="product-search-wrap">
-<input type="hidden" name="items[${rowIndex}][product_id]" class="product-id">
-</div>
-</td>
-
-<td><input name="items[${rowIndex}][units_received]" class="form-control form-control-sm units"></td>
-<td><input class="form-control form-control-sm pack-size bg-light" readonly></td>
-<td><input class="form-control form-control-sm total-qty bg-light fw-bold" readonly></td>
-
-<td>
-<input name="items[${rowIndex}][pallets_used]" class="form-control form-control-sm pallets-used" placeholder="Auto">
-<input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
-<input type="hidden" class="pallets-per-packing" value="">
-</td>
-
-<td class="text-center">
-<div class="btn-group" role="group">
-  <input type="checkbox" class="btn-check" name="items[${rowIndex}][sound_stock]" id="ss_${rowIndex}" checked>
-  <label class="btn btn-outline-success btn-sm px-2 py-1" for="ss_${rowIndex}" title="Sound Stock" style="font-size: 11px; font-weight: 600;">S</label>
-
-  <input type="checkbox" class="btn-check" name="items[${rowIndex}][block_stock]" id="bs_${rowIndex}">
-  <label class="btn btn-outline-danger btn-sm px-2 py-1" for="bs_${rowIndex}" title="Block Stock" style="font-size: 11px; font-weight: 600;">B</label>
-
-  <input type="checkbox" class="btn-check" name="items[${rowIndex}][hold_stock]" id="hs_${rowIndex}">
-  <label class="btn btn-outline-warning btn-sm px-2 py-1" for="hs_${rowIndex}" title="Hold Stock" style="font-size: 11px; font-weight: 600;">H</label>
-</div>
+<input type="hidden"
+       name="items[${rowIndex}][product_id]"
+       class="product-id">
 </td>
 
 <td>
-<select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm qc-select qc-select-pending" onchange="this.className='form-select form-select-sm qc-select qc-select-'+this.value">
-<option value="pending">🟡 Pending</option>
-<option value="approved">🟢 Approved</option>
-<option value="rejected">🔴 Rejected</option>
+<select name="items[${rowIndex}][warehouse_id]" class="form-select form-select-sm warehouse-select">
+    <option value="auto">Auto</option>
+    @foreach($warehouses as $w)
+        <option value="{{ $w->id }}">{{ $w->name }}</option>
+    @endforeach
 </select>
 </td>
 
 <td>
-<input name="items[${rowIndex}][qc_remarks]" class="form-control form-control-sm" placeholder="QC Remarks">
+<input class="form-control form-control-sm product-code bg-light" readonly style="cursor: pointer;" title="Click to view/edit batch details">
 </td>
 
 <td>
-<div class="d-flex gap-1 justify-content-center">
-<button type="button" class="btn btn-sm btn-outline-danger removeRow" title="Remove"><i class="bi bi-trash"></i></button>
-<button type="button" class="btn btn-sm btn-info text-white duplicateRow shadow-sm" title="Duplicate Row"><i class="bi bi-files"></i></button>
+<input type="number" min="1"
+       name="items[${rowIndex}][units_received]"
+       class="form-control form-control-sm units">
+</td>
+
+<td>
+<input class="form-control form-control-sm pack-size bg-light" readonly>
+</td>
+
+<td>
+<input class="form-control form-control-sm total-qty bg-light fw-bold" readonly>
+</td>
+
+<td>
+<div class="input-group input-group-sm">
+    <input type="number" min="0"
+           name="items[${rowIndex}][pallets_used]"
+           class="form-control form-control-sm pallets-used"
+           placeholder="Auto"
+           title="Click eye button to view details or assign manually">
+    <button type="button" class="btn btn-outline-secondary btn-sm preview-pallets-btn" title="View Pallet Allocation Preview">
+        👁
+    </button>
 </div>
+<input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
+<input type="hidden" class="pallets-per-packing" value="">
+<div class="manual-pallet-info mt-1 small text-primary" style="font-size:10px; font-weight:600; line-height: 1.1;"></div>
+</td>
+
+<td>
+<select name="items[${rowIndex}][quality_clearance]" class="form-select form-select-sm">
+    <option value="pending">🟡 Pending</option>
+    <option value="approved">🟢 Approved</option>
+    <option value="rejected">🔴 Rejected</option>
+</select>
+</td>
+
+<td>
+<div class="btn-group btn-group-sm" role="group">
+    <input type="checkbox" class="btn-check" name="items[${rowIndex}][sound_stock]" id="ss_${rowIndex}" checked>
+    <label class="btn btn-outline-success px-1 py-0" for="ss_${rowIndex}" title="Sound Stock" style="font-size: 10px; font-weight: 600;">S</label>
+
+    <input type="checkbox" class="btn-check" name="items[${rowIndex}][block_stock]" id="bs_${rowIndex}">
+    <label class="btn btn-outline-danger px-1 py-0" for="bs_${rowIndex}" title="Block Stock" style="font-size: 10px; font-weight: 600;">B</label>
+
+    <input type="checkbox" class="btn-check" name="items[${rowIndex}][hold_stock]" id="hs_${rowIndex}">
+    <label class="btn btn-outline-warning px-1 py-0" for="hs_${rowIndex}" title="Hold Stock" style="font-size: 10px; font-weight: 600;">H</label>
+</div>
+</td>
+
+<td>
+<button type="button"
+        class="btn btn-sm btn-outline-danger removeRow" title="Remove Row">×</button>
+</td>
+
 <input type="hidden" name="items[${rowIndex}][sap_batch]">
 <input type="hidden" name="items[${rowIndex}][vendor_batch]">
 <input type="hidden" name="items[${rowIndex}][ibd_no]">
 <input type="hidden" name="items[${rowIndex}][po_no]">
 <input type="hidden" name="items[${rowIndex}][mfg_date]">
 <input type="hidden" name="items[${rowIndex}][expiry_date]">
-</td>
-</tr>`);
+<input type="hidden" name="items[${rowIndex}][warehouse_row_id]" class="manual-row-id">
+<input type="hidden" name="items[${rowIndex}][pallet_start]" class="manual-pallet-start">
+</tr>
+`);
 
-                rowIndex++;
-            }
+    const newRow = document.querySelector('#itemsTable tbody tr:last-child');
+    if (newRow) {
+        const select = newRow.querySelector('.warehouse-select');
+        if (select) {
+            select.value = globalWarehouseVal;
+        }
+    }
 
-            /* ADD ROW BUTTON */
-            addRowBtn.onclick = () => {
-                addRow();
-            };
+    rowIndex++;
+});
 
-            /* Enter key adds new row */
-            document.addEventListener('keydown', e => {
-                if (e.key === 'Enter' && e.target.closest('#itemsTable')) {
-                    e.preventDefault();
-                    addRow();
-                }
-            });
+// Default 5 rows (Excel style)
+for (let i = 0; i < 5; i++) {
+    document.getElementById('addRowBtn').click();
+}
 
-            /* Default first row */
-            addRow();
-
-            let productDropdown = null;
-            let activeInput = null;
-
-            function showProductDropdown(input) {
-                hideProductDropdown();
-                activeInput = input;
-                const rect = input.getBoundingClientRect();
-                const dropdown = document.createElement('div');
-                dropdown.className = 'product-search-dropdown';
-                dropdown.style.top = (rect.bottom + 4) + 'px';
-                dropdown.style.left = Math.max(10, rect.left) + 'px';
-                dropdown.style.width = Math.max(280, rect.width) + 'px';
-                document.body.appendChild(dropdown);
-                productDropdown = dropdown;
-                renderProductItems(dropdown, '');
-            }
-
-            function hideProductDropdown() {
-                if (productDropdown) {
-                    productDropdown.remove();
-                    productDropdown = null;
-                }
-                activeInput = null;
-            }
-
-            function renderProductItems(dropdown, filter) {
-                const val = filter.toLowerCase();
-                const filtered = filter
-                    ? products.filter(p => p.name.toLowerCase().includes(val) || p.item_code.toLowerCase().includes(val))
-                    : products;
-                dropdown.innerHTML = filtered.map(p =>
-                    `<div class="product-search-item" data-id="${p.id}" data-pack="${p.pack_size}" data-cartons="${p.cartons_per_pallet || ''}">${p.item_code} - ${p.name}</div>`
-                ).join('');
-            }
-
-            /* SHOW DROPDOWN ON FOCUS */
-            document.addEventListener('focusin', e => {
-                if (!e.target.classList.contains('product-input')) return;
-                showProductDropdown(e.target);
-            });
-
-            /* FILTER ON INPUT */
-            document.addEventListener('input', e => {
-                if (!e.target.classList.contains('product-input')) return;
-                if (!productDropdown) return;
-                renderProductItems(productDropdown, e.target.value);
-            });
-
-            /* SELECT PRODUCT */
-            document.addEventListener('mousedown', e => {
-                if (e.target.classList.contains('product-search-item')) {
-                    e.preventDefault();
-                    activeRow = e.target.closest('tr') || (activeInput ? activeInput.closest('tr') : null);
-                    if (!activeRow) return;
-                    activeRow.querySelector('.product-id').value = e.target.dataset.id;
-                    activeRow.querySelector('.pack-size').value = e.target.dataset.pack;
-                    activeRow.querySelector('.product-input').value = e.target.textContent;
-                    hideProductDropdown();
-
-                    const cartonsPerPallet = e.target.dataset.cartons || '';
-                    activeRow.querySelector('.pallets-per-packing').value = cartonsPerPallet;
-                    const palletsInput = activeRow.querySelector('.pallets-used');
-                    if (cartonsPerPallet) {
-                        const units = Number(activeRow.querySelector('.units').value || 0);
-                        palletsInput.value = units > 0 ? Math.ceil(units / Number(cartonsPerPallet)) : '';
-                        palletsInput.placeholder = 'Auto (' + cartonsPerPallet + ' ctn/pallet)';
-                        palletsInput.readOnly = false;
-                    } else {
-                        palletsInput.placeholder = 'Enter pallets';
-                        palletsInput.readOnly = false;
-                    }
-
-                    batchModal.show();
-                }
-            });
-
-            /* HIDE DROPDOWN ON CLICK OUTSIDE */
-            document.addEventListener('mousedown', e => {
-                if (e.target.classList.contains('product-search-item')) return;
-                if (productDropdown && !productDropdown.contains(e.target) && !e.target.classList.contains('product-input')) {
-                    hideProductDropdown();
-                }
-            });
-
-            /* Click Batch button to show batch modal */
-            document.addEventListener('click', e => {
-                let btn = e.target.closest('.open-batch-btn');
-                if (btn) {
-                    activeRow = btn.closest('tr');
-                    if(activeRow.querySelector('.product-id').value) {
-                        document.querySelector('.modal-sap').value = activeRow.querySelector('[name$="[sap_batch]"]').value;
-                        document.querySelector('.modal-vendor').value = activeRow.querySelector('[name$="[vendor_batch]"]').value;
-                        document.querySelector('.modal-po').value = activeRow.querySelector('[name$="[po_no]"]').value;
-                        document.querySelector('.modal-ibd').value = activeRow.querySelector('[name$="[ibd_no]"]').value;
-                        document.querySelector('.modal-mfg').value = activeRow.querySelector('[name$="[mfg_date]"]').value;
-                        document.querySelector('.modal-expiry').value = activeRow.querySelector('[name$="[expiry_date]"]').value;
-                        batchModal.show();
-                    } else {
-                        Swal.fire('Info', 'Please select a product first.', 'info');
-                    }
-                }
-            });
-
-            /* SAVE MODAL */
-            saveBatchBtn.onclick = () => {
-                if (!activeRow) return;
-                activeRow.querySelector('[name$="[sap_batch]"]').value = document.querySelector('.modal-sap').value;
-                activeRow.querySelector('[name$="[vendor_batch]"]').value = document.querySelector('.modal-vendor').value;
-                activeRow.querySelector('[name$="[po_no]"]').value = document.querySelector('.modal-po').value;
-                activeRow.querySelector('[name$="[ibd_no]"]').value = document.querySelector('.modal-ibd').value;
-                activeRow.querySelector('[name$="[mfg_date]"]').value = document.querySelector('.modal-mfg').value;
-                activeRow.querySelector('[name$="[expiry_date]"]').value = document.querySelector('.modal-expiry').value;
-                batchModal.hide();
-            };
-
-            /* TOTAL + PALLETS AUTO-CALC */
-            document.addEventListener('input', e => {
-                if (!e.target.classList.contains('units')) return;
-                const row = e.target.closest('tr');
-                const units = +e.target.value || 0;
-                const pack = +row.querySelector('.pack-size').value || 0;
-                row.querySelector('.total-qty').value = (units * pack).toFixed(0);
-
-                // Auto-recalculate pallets: ceil(units / cartons_per_pallet)
-                const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing').value || 0);
-                if (cartonsPerPallet > 0 && units > 0) {
-                    row.querySelector('.pallets-used').value = Math.ceil(units / cartonsPerPallet);
-                }
-            });
-
-            /* REMOVE & DUPLICATE */
-            document.addEventListener('click', e => {
-                let removeBtn = e.target.closest('.removeRow');
-                if (removeBtn) {
-                    removeBtn.closest('tr').remove();
-                }
-
-                let dupBtn = e.target.closest('.duplicateRow');
-                if (dupBtn) {
-                    const row = dupBtn.closest('tr');
-                    
-                    // Create new row
-                    addRow();
-                    
-                    // Find the newly added row (last row in table)
-                    const allRows = itemsTable.querySelectorAll('tbody tr');
-                    const newRow = allRows[allRows.length - 1];
-
-                    // Copy values
-                    newRow.querySelector('.product-input').value = row.querySelector('.product-input').value;
-                    newRow.querySelector('.product-id').value = row.querySelector('.product-id').value;
-                    newRow.querySelector('.units').value = row.querySelector('.units').value;
-                    newRow.querySelector('.pack-size').value = row.querySelector('.pack-size').value;
-                    newRow.querySelector('.total-qty').value = row.querySelector('.total-qty').value;
-                    newRow.querySelector('.pallets-used').value = row.querySelector('.pallets-used').value;
-                    newRow.querySelector('.pallets-per-packing').value = row.querySelector('.pallets-per-packing').value;
-                    
-                    newRow.querySelector('[name$="[sound_stock]"]').checked = row.querySelector('[name$="[sound_stock]"]').checked;
-                    newRow.querySelector('[name$="[block_stock]"]').checked = row.querySelector('[name$="[block_stock]"]').checked;
-                    newRow.querySelector('[name$="[hold_stock]"]').checked = row.querySelector('[name$="[hold_stock]"]').checked;
-                    
-                    const qcSelect = newRow.querySelector('.qc-select');
-                    qcSelect.value = row.querySelector('.qc-select').value;
-                    qcSelect.className = 'form-select form-select-sm qc-select qc-select-' + qcSelect.value;
-                    
-                    newRow.querySelector('[name$="[sap_batch]"]').value = row.querySelector('[name$="[sap_batch]"]').value;
-                    newRow.querySelector('[name$="[vendor_batch]"]').value = row.querySelector('[name$="[vendor_batch]"]').value;
-                    newRow.querySelector('[name$="[ibd_no]"]').value = row.querySelector('[name$="[ibd_no]"]').value;
-                    newRow.querySelector('[name$="[po_no]"]').value = row.querySelector('[name$="[po_no]"]').value;
-                    newRow.querySelector('[name$="[mfg_date]"]').value = row.querySelector('[name$="[mfg_date]"]').value;
-                    newRow.querySelector('[name$="[expiry_date]"]').value = row.querySelector('[name$="[expiry_date]"]').value;
-                }
-            });
-
-            /* AUTO-ADD ROW when last row gets a product */
-            document.addEventListener('mousedown', e => {
-                if (!e.target.classList.contains('product-search-item')) return;
-
-                const allRows = document.querySelectorAll('#itemsTable tbody tr');
-                const lastRow = allRows[allRows.length - 1];
-                const clickedRow = e.target.closest('tr') || (activeInput ? activeInput.closest('tr') : null);
-
-                // If user filled the last row, add a new one
-                if (clickedRow === lastRow && warehouseSelect.value) {
-                    setTimeout(() => addRow(), 100);
-                }
-            });
-
-            /* AJAX FORM SUBMISSION */
-            document.getElementById('inboundForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                let submitBtn = this.querySelector('button[type="submit"]') || this.querySelector('button.btn-primary');
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
-                }
-
-                let formData = new FormData(this);
-
-                fetch(this.action, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                })
-                .then(response => response.json().then(data => ({ status: response.status, body: data })))
-                .then(res => {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = 'Save Inbound';
-                    }
-
-                    if (res.status === 422) {
-                        let errors = res.body.errors || res.body;
-                        let errorMsg = Object.values(errors).flat().join('<br>');
-                        if(!errorMsg && res.body.message) {
-                            errorMsg = res.body.message;
-                        }
-
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Validation Error',
-                            html: errorMsg,
-                        });
-                    } else if (res.status >= 400) {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error',
-                            text: res.body.message || 'Something went wrong!',
-                        });
-                    } else if (res.status === 200 || res.status === 201) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Success',
-                            text: res.body.message || 'Saved successfully!',
-                            timer: 2000,
-                            showConfirmButton: false
-                        }).then(() => {
-                            if (res.body.redirect) {
-                                window.location.href = res.body.redirect;
-                            } else {
-                                window.location.reload();
-                            }
-                        });
-                    }
-                })
-                .catch(error => {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = 'Save Inbound';
-                    }
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Network Error',
-                        text: 'An error occurred while communicating with the server.',
-                    });
-                });
-            });
+// Sync global warehouse changes if element exists
+const globalWhElem = document.getElementById('global_warehouse_id');
+if (globalWhElem) {
+    globalWhElem.addEventListener('change', function () {
+        const val = this.value;
+        document.querySelectorAll('.warehouse-select').forEach(select => {
+            select.value = val;
         });
-    </script>
+    });
+}
+
+/* ================= CUSTOM PRODUCT AUTOCOMPLETE (Excel style) ================= */
+let activeAutocompleteInput = null;
+
+function renderAutocomplete(input) {
+    activeAutocompleteInput = input;
+    const globalDropdown = document.getElementById('global-product-autocomplete');
+    const query = input.value.trim().toLowerCase();
+
+    const rect = input.getBoundingClientRect();
+    globalDropdown.style.top = rect.bottom + 'px';
+    globalDropdown.style.left = rect.left + 'px';
+    globalDropdown.style.width = Math.max(260, rect.width) + 'px';
+
+    const matches = products.filter(p => {
+        if (!query) return true;
+        const nameMatch = p.name && p.name.toLowerCase().includes(query);
+        const codeMatch = p.item_code && p.item_code.toLowerCase().includes(query);
+        return nameMatch || codeMatch;
+    });
+
+    if (matches.length === 0) {
+        globalDropdown.innerHTML = '<div class="dropdown-item text-muted small">No product found</div>';
+        globalDropdown.style.display = 'block';
+        return;
+    }
+
+    let itemsHtml = '';
+    matches.forEach(p => {
+        itemsHtml += `<button type="button" class="dropdown-item small text-truncate select-autocomplete-product" 
+            data-id="${p.id}" 
+            data-name="${p.name}" 
+            data-code="${p.item_code}" 
+            data-pack="${p.pack_size}" 
+            data-cartons="${p.cartons_per_pallet || ''}">
+            <strong>${p.name}</strong> (${p.item_code})
+        </button>`;
+    });
+
+    globalDropdown.innerHTML = itemsHtml;
+    globalDropdown.style.display = 'block';
+}
+
+document.addEventListener('input', function (e) {
+    if (e.target.classList.contains('product-input')) {
+        renderAutocomplete(e.target);
+    }
+});
+
+document.addEventListener('focusin', function (e) {
+    if (e.target.classList.contains('product-input')) {
+        renderAutocomplete(e.target);
+    }
+});
+
+document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('product-input')) {
+        renderAutocomplete(e.target);
+    }
+});
+
+// Click handler to select autocomplete item
+document.addEventListener('click', function (e) {
+    const item = e.target.closest('.select-autocomplete-product');
+    if (item && activeAutocompleteInput) {
+        const input = activeAutocompleteInput;
+        const row = input.closest('tr');
+        const globalDropdown = document.getElementById('global-product-autocomplete');
+
+        const pId = item.dataset.id;
+        const pName = item.dataset.name;
+        const pCode = item.dataset.code;
+        const pPack = item.dataset.pack;
+        const pCartons = item.dataset.cartons;
+
+        input.value = `${pName} (${pCode})`;
+        row.querySelector('.product-id').value = pId;
+        row.querySelector('.pack-size').value = pPack;
+        row.querySelector('.product-code').value = pCode;
+        row.querySelector('.pallets-per-packing').value = pCartons;
+
+        const palletsInput = row.querySelector('.pallets-used');
+        if (pCartons) {
+            const units = Number(row.querySelector('.units').value || 0);
+            palletsInput.value = units > 0 ? Math.ceil(units / Number(pCartons)) : '';
+            palletsInput.placeholder = 'Auto (' + pCartons + ' ctn/pallet)';
+        } else {
+            palletsInput.placeholder = 'Enter pallets';
+        }
+
+        globalDropdown.innerHTML = '';
+        globalDropdown.style.display = 'none';
+
+        activeRow = row;
+
+        document.querySelector('.modal-sap').value = '';
+        document.querySelector('.modal-vendor').value = '';
+        document.querySelector('.modal-ibd').value = '';
+        document.querySelector('.modal-po').value = '';
+        document.querySelector('.modal-mfg').value = '';
+        document.querySelector('.modal-expiry').value = '';
+
+        new bootstrap.Modal(document.getElementById('batchModal')).show();
+        return;
+    }
+
+    if (!e.target.closest('.product-input') && !e.target.closest('#global-product-autocomplete')) {
+        const globalDropdown = document.getElementById('global-product-autocomplete');
+        if (globalDropdown) {
+            globalDropdown.style.display = 'none';
+        }
+    }
+});
+
+document.addEventListener('scroll', function (e) {
+    const globalDropdown = document.getElementById('global-product-autocomplete');
+    if (globalDropdown) {
+        globalDropdown.style.display = 'none';
+    }
+}, true);
+
+/* ================= PRODUCT CODE CLICK → EDIT ================= */
+document.addEventListener('click', function (e) {
+    if (!e.target.classList.contains('product-code')) return;
+
+    const row = e.target.closest('tr');
+    if (!row) return;
+
+    activeRow = row;
+
+    document.querySelector('.modal-sap').value =
+        row.querySelector('input[name$="[sap_batch]"]').value || '';
+
+    document.querySelector('.modal-vendor').value =
+        row.querySelector('input[name$="[vendor_batch]"]').value || '';
+
+    document.querySelector('.modal-ibd').value =
+        row.querySelector('input[name$="[ibd_no]"]').value || '';
+
+    document.querySelector('.modal-po').value =
+        row.querySelector('input[name$="[po_no]"]').value || '';
+
+    document.querySelector('.modal-mfg').value =
+        row.querySelector('input[name$="[mfg_date]"]').value || '';
+
+    document.querySelector('.modal-expiry').value =
+        row.querySelector('input[name$="[expiry_date]"]').value || '';
+
+    new bootstrap.Modal(document.getElementById('batchModal')).show();
+});
+
+/* ================= SAVE MODAL ================= */
+document.getElementById('saveBatchBtn').addEventListener('click', function () {
+    if (!activeRow) return;
+
+    activeRow.querySelector('input[name$="[sap_batch]"]').value =
+        document.querySelector('.modal-sap').value;
+
+    activeRow.querySelector('input[name$="[vendor_batch]"]').value =
+        document.querySelector('.modal-vendor').value;
+
+    activeRow.querySelector('input[name$="[ibd_no]"]').value =
+        document.querySelector('.modal-ibd').value;
+
+    activeRow.querySelector('input[name$="[po_no]"]').value =
+        document.querySelector('.modal-po').value;
+
+    activeRow.querySelector('input[name$="[mfg_date]"]').value =
+        document.querySelector('.modal-mfg').value;
+
+    activeRow.querySelector('input[name$="[expiry_date]"]').value =
+        document.querySelector('.modal-expiry').value;
+
+    bootstrap.Modal.getInstance(
+        document.getElementById('batchModal')
+    ).hide();
+
+    activeRow.querySelector('.units')?.focus();
+});
+
+/* ================= REAL-TIME UNITS → TOTAL + PALLETS ================= */
+document.addEventListener('input', function (e) {
+    if (!e.target.classList.contains('units')) return;
+
+    const row   = e.target.closest('tr');
+    const units = Number(e.target.value || 0);
+    const pack  = Number(row.querySelector('.pack-size').value || 0);
+
+    row.querySelector('.total-qty').value = units * pack;
+
+    const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing').value || 0);
+    const palletsInput = row.querySelector('.pallets-used');
+    if (cartonsPerPallet > 0 && units > 0) {
+        palletsInput.value = Math.ceil(units / cartonsPerPallet);
+    }
+});
+
+/* ================= REMOVE ROW ================= */
+document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('removeRow')) {
+        e.target.closest('tr').remove();
+    }
+});
+
+/* ================= SHOW UNIFIED PALLET MODAL ================= */
+function openUnifiedPalletModal(row) {
+    const rowWhId = row.querySelector('.warehouse-select')?.value;
+    const globalWhId = document.getElementById('global_warehouse_id')?.value;
+    const whId = rowWhId || globalWhId;
+    activeRow = row;
+
+    document.getElementById('pallet-preview-summary').innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary"></div> Calculating allocation...</div>';
+    
+    const manualRowId = row.querySelector('.manual-row-id').value;
+    const manualPalletStart = row.querySelector('.manual-pallet-start').value;
+    
+    if (manualRowId) {
+        document.getElementById('mode_manual').checked = true;
+        document.querySelector('.manual-controls-section').classList.remove('d-none');
+    } else {
+        document.getElementById('mode_auto').checked = true;
+        document.querySelector('.manual-controls-section').classList.add('d-none');
+    }
+
+    const modalWh = document.querySelector('.modal-manual-warehouse');
+    const selectedWhId = (whId && whId !== 'auto') ? whId : (warehouses[0]?.id || '');
+    modalWh.value = selectedWhId;
+
+    const rowSelect = document.querySelector('.modal-manual-row');
+    rowSelect.innerHTML = '<option value="">-- Select Row --</option>';
+    if (selectedWhId) {
+        const wh = warehouses.find(w => w.id == selectedWhId);
+        if (wh && wh.rows) {
+            wh.rows.forEach(r => {
+                rowSelect.innerHTML += `<option value="${r.id}">Row ${r.row_name} (Capacity: ${r.pallet_capacity})</option>`;
+            });
+        }
+    }
+    
+    rowSelect.value = manualRowId || '';
+    document.querySelector('.modal-manual-pallet-start').value = manualPalletStart || '';
+
+    const modalEl = document.getElementById('palletManualModal');
+    const modalObj = new bootstrap.Modal(modalEl);
+    modalObj.show();
+
+    fetchPreviewAndRender();
+}
+
+function fetchPreviewAndRender() {
+    if (!activeRow) return;
+
+    const rowWhVal = activeRow.querySelector('.warehouse-select')?.value;
+    const globalWhVal = document.getElementById('global_warehouse_id')?.value;
+    const activeWhVal = rowWhVal || globalWhVal;
+
+    const isManual = document.getElementById('mode_manual').checked;
+    const manualWhId = document.querySelector('.modal-manual-warehouse').value;
+    const manualRowId = document.querySelector('.modal-manual-row').value;
+    const manualPalletStart = document.querySelector('.modal-manual-pallet-start').value;
+
+    let targetWhId = isManual && manualWhId ? manualWhId : ((activeWhVal && activeWhVal !== 'auto') ? activeWhVal : (warehouses[0]?.id || ''));
+    let whObj = warehouses.find(w => w.id == targetWhId) || warehouses[0];
+    let defaultRowId = (whObj && whObj.rows && whObj.rows.length > 0) ? whObj.rows[0].id : null;
+
+    const tableRows = document.querySelectorAll('#itemsTable tbody tr');
+    const items = [];
+    let activeRowIndex = 0;
+
+    tableRows.forEach((row, idx) => {
+        if (row === activeRow) {
+            activeRowIndex = idx;
+        }
+
+        const pId = row.querySelector('.product-id').value;
+        const uVal = row.querySelector('.units').value || 0;
+        const wVal = row.querySelector('.warehouse-select')?.value || activeWhVal;
+        const pUsed = row.querySelector('.pallets-used').value || 0;
+        const mRowId = row.querySelector('.manual-row-id').value;
+        const mPalletStart = row.querySelector('.manual-pallet-start').value;
+
+        items.push({
+            product_id: pId || '',
+            units_received: uVal,
+            warehouse_id: wVal,
+            pallets_used: pUsed,
+            warehouse_row_id: mRowId,
+            pallet_start: mPalletStart
+        });
+    });
+
+    if (isManual) {
+        items[activeRowIndex].warehouse_id = manualWhId;
+        items[activeRowIndex].warehouse_row_id = manualRowId;
+        items[activeRowIndex].pallet_start = manualPalletStart;
+    }
+
+    const rangeInfoDiv = document.querySelector('.manual-range-info');
+    rangeInfoDiv.classList.add('d-none');
+    rangeInfoDiv.innerHTML = '';
+
+    const activeItem = items[activeRowIndex];
+
+    if (isManual && !activeItem.warehouse_id) {
+        document.getElementById('pallet-preview-summary').innerHTML = '<div class="alert alert-warning py-2 mb-0">Please select a specific warehouse to use manual override.</div>';
+        if (defaultRowId) {
+            loadPalletGridWithProposed(defaultRowId, []);
+        } else {
+            document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3">Please select a specific warehouse.</div>';
+        }
+        return;
+    }
+
+    const requestData = {
+        items: items,
+        active_row_index: activeRowIndex,
+        _token: '{{ csrf_token() }}'
+    };
+
+    $.post('/inbound/preview-pallets', requestData, function(response) {
+        if (!response.success) {
+            document.getElementById('pallet-preview-summary').innerHTML = `<div class="text-danger small">${response.message}</div>`;
+            return;
+        }
+
+        let summaryHtml = '';
+        currentProposedPalletNames = [];
+        let firstAssignedRowId = null;
+
+        if (response.allocations && response.allocations.length > 0) {
+            response.allocations.forEach(function(alloc) {
+                const badgeColor = alloc.type === 'manual' ? 'bg-primary' : (alloc.type === 'partial' ? 'bg-warning text-dark' : 'bg-success');
+                
+                let pNamesStr = '';
+                if (alloc.pallet_names && alloc.pallet_names.length > 0) {
+                    currentProposedPalletNames = currentProposedPalletNames.concat(alloc.pallet_names);
+                    if (alloc.pallets_count > 1) {
+                        pNamesStr = `<strong class="text-dark">${alloc.pallet_names[0]} to ${alloc.pallet_names[alloc.pallet_names.length - 1]}</strong> (${alloc.pallets_count} pallets contiguous)`;
+                    } else {
+                        pNamesStr = alloc.pallet_names.map(name => `<strong class="text-dark">${name}</strong>`).join(', ');
+                    }
+                }
+
+                const rowIdAttr = alloc.row_id ? `data-row-id="${alloc.row_id}"` : '';
+                const clickStyle = alloc.row_id ? 'cursor: pointer; transition: all 0.2s;' : '';
+                const clickClass = alloc.row_id ? 'allocation-item-card p-2 mb-2 rounded border hover-shadow bg-white' : 'p-2 mb-2 rounded border bg-light';
+
+                summaryHtml += `
+                    <div class="${clickClass}" ${rowIdAttr} style="${clickStyle}">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="badge ${badgeColor}">${alloc.type.toUpperCase()}</span>
+                            <span class="text-muted fw-bold" style="font-size:11px;">${alloc.units} cartons</span>
+                        </div>
+                        <div class="mb-1" style="font-size:12px;"><strong>Warehouse:</strong> ${alloc.warehouse_name}</div>
+                        <div class="mb-1" style="font-size:12px;"><strong>Row/Location:</strong> ${alloc.row_name}</div>
+                        <div style="font-size:12px;"><strong>Pallets:</strong> ${pNamesStr}</div>
+                        ${alloc.row_id ? '<div class="text-end mt-1"><span class="badge bg-primary-subtle text-primary" style="font-size: 9px;"><i class="bi bi-grid-3x3"></i> Click to View Grid</span></div>' : ''}
+                    </div>
+                `;
+
+                if (!firstAssignedRowId && alloc.row_id) {
+                    firstAssignedRowId = alloc.row_id;
+                }
+            });
+
+            if (isManual) {
+                const alloc = response.allocations[0];
+                rangeInfoDiv.classList.remove('d-none');
+                rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-info-subtle text-info-emphasis border-info';
+                
+                let rangeText = '';
+                if (alloc.pallet_names && alloc.pallet_names.length > 0) {
+                    const startP = alloc.pallet_names[0];
+                    const endP = alloc.pallet_names[alloc.pallet_names.length - 1];
+                    rangeText = `<strong>Range:</strong> ${startP} to ${endP} (${alloc.pallets_count} pallets)`;
+                } else {
+                    rangeText = `<strong>Range:</strong> No pallets allocated yet.`;
+                }
+
+                rangeInfoDiv.innerHTML = `
+                    <div class="fw-bold mb-1 text-primary"><i class="bi bi-info-circle"></i> Manual Assignment Details:</div>
+                    <div class="mb-1" style="font-size:11px;"><strong>Warehouse:</strong> ${alloc.warehouse_name}</div>
+                    <div class="mb-1" style="font-size:11px;">${rangeText}</div>
+                    <div class="manual-warnings text-danger fw-bold small" style="font-size:11px;"></div>
+                `;
+            }
+        } else {
+            summaryHtml = '<div class="alert alert-info py-2 mb-0">No pallets allocated. Enter cartons and/or pallets to see preview.</div>';
+        }
+
+        document.getElementById('pallet-preview-summary').innerHTML = summaryHtml;
+
+        const gridRowId = (isManual && manualRowId) ? manualRowId : (firstAssignedRowId || defaultRowId);
+        if (gridRowId) {
+            loadPalletGridWithProposed(gridRowId, currentProposedPalletNames);
+            setTimeout(() => {
+                const activeCard = document.querySelector(`.allocation-item-card[data-row-id="${gridRowId}"]`);
+                if (activeCard) {
+                    activeCard.classList.remove('bg-white');
+                    activeCard.classList.add('border-primary', 'bg-primary-subtle');
+                }
+            }, 50);
+        } else {
+            document.getElementById('modal-pallet-grid').innerHTML = '<div class="text-muted small p-3 text-center w-100">No row layout grid loaded. Switch to Manual Mode or select a specific Warehouse & Row.</div>';
+        }
+    }).fail(function(xhr) {
+        const errorMsg = xhr.responseJSON ? (xhr.responseJSON.message || 'Error fetching preview') : 'Failed to fetch preview.';
+        document.getElementById('pallet-preview-summary').innerHTML = `<div class="alert alert-danger py-2 mb-0">${errorMsg}</div>`;
+    });
+}
+
+function loadPalletGridWithProposed(rowId, proposedNames) {
+    const gridContainer = document.getElementById('modal-pallet-grid');
+    gridContainer.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Loading pallet grid...</div>';
+
+    let rowName = '';
+    let prefix = 'Pallet ';
+    let padLength = 0;
+    let usePrefixLogic = false;
+    let startNum = 1;
+
+    warehouses.forEach(wh => {
+        if (wh.rows) {
+            const foundRow = wh.rows.find(r => r.id == rowId);
+            if (foundRow) rowName = foundRow.row_name;
+        }
+    });
+
+    if (rowName) {
+        const match = rowName.match(/^(.+?)(\d+)\s+to\s+/i);
+        if (match) {
+            prefix = match[1];
+            padLength = match[2].length;
+            startNum = parseInt(match[2], 10);
+            usePrefixLogic = true;
+        }
+    }
+
+    $.get('/warehouses/rows/' + rowId + '/pallets', function(data) {
+        gridContainer.innerHTML = '';
+        
+        let occupiedProposed = [];
+
+        data.pallets.forEach(function(pallet) {
+            const currentNum = usePrefixLogic ? (startNum + pallet.pallet_number - 1) : pallet.pallet_number;
+            const displayName = usePrefixLogic 
+                ? prefix + String(currentNum).padStart(padLength, '0')
+                : 'Pallet ' + pallet.pallet_number;
+
+            const isProposed = proposedNames.some(name => {
+                const cleanName = name.split(' (')[0];
+                return cleanName === displayName;
+            });
+
+            if (isProposed && !pallet.is_empty) {
+                occupiedProposed.push(displayName);
+            }
+
+            const box = document.createElement('div');
+            box.className = 'pallet-box p-2 border rounded text-center small position-relative';
+            box.style.width = '120px';
+            box.style.minHeight = '75px';
+            box.style.cursor = pallet.is_empty ? 'pointer' : 'not-allowed';
+            box.dataset.number = pallet.pallet_number;
+            box.dataset.isEmpty = pallet.is_empty ? '1' : '0';
+            box.dataset.displayName = displayName;
+
+            if (isProposed) {
+                box.style.backgroundColor = pallet.is_empty ? '#cfe2ff' : '#f8d7da';
+                box.style.borderColor = pallet.is_empty ? '#9ec5fe' : '#f5c2c7';
+                box.style.borderWidth = '2px';
+                box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
+                box.innerHTML = `
+                    <div class="fw-bold ${pallet.is_empty ? 'text-primary' : 'text-danger'}" style="font-size:11px;">${displayName}</div>
+                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">${pallet.is_empty ? '[ Proposed ]' : '[ Conflict ]'}</div>
+                `;
+            } else if (pallet.is_empty) {
+                box.style.backgroundColor = '#d1e7dd';
+                box.style.borderColor = '#a3cfbb';
+                box.innerHTML = `
+                    <div class="fw-bold text-success" style="font-size:11px;">${displayName}</div>
+                    <div class="text-muted" style="font-size:10px; margin-top: 4px;">[ Empty ]</div>
+                `;
+            } else {
+                box.style.backgroundColor = '#f8d7da';
+                box.style.borderColor = '#f5c2c7';
+                box.innerHTML = `
+                    <div class="fw-bold text-danger" style="font-size:11px;">${displayName}</div>
+                    <div class="text-muted" style="font-size:10px; margin-top: 4px;">[ Occupied ]</div>
+                `;
+            }
+
+            box.addEventListener('click', function() {
+                if (!pallet.is_empty) return;
+                if (!document.getElementById('mode_manual').checked) {
+                    Swal.fire('Info', 'Switch to "Manual Override" allocation mode to manually assign pallets.', 'info');
+                    return;
+                }
+                document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
+                fetchPreviewAndRender();
+            });
+
+            gridContainer.appendChild(box);
+        });
+
+        const warningDiv = document.querySelector('.manual-warnings');
+        if (warningDiv) {
+            if (occupiedProposed.length > 0) {
+                warningDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Warning: Proposed range overlaps occupied pallets (${occupiedProposed.join(', ')})!`;
+            } else {
+                warningDiv.innerHTML = '';
+            }
+        }
+    });
+}
+
+document.addEventListener('click', function (e) {
+    const card = e.target.closest('.allocation-item-card');
+    if (card && card.dataset.rowId) {
+        const rowId = card.dataset.rowId;
+        document.querySelectorAll('.allocation-item-card').forEach(c => {
+            c.classList.remove('border-primary', 'bg-primary-subtle');
+            c.classList.add('bg-white');
+        });
+        card.classList.remove('bg-white');
+        card.classList.add('border-primary', 'bg-primary-subtle');
+        loadPalletGridWithProposed(rowId, currentProposedPalletNames);
+    }
+
+    if (e.target.classList.contains('preview-pallets-btn') || e.target.closest('.preview-pallets-btn')) {
+        const btn = e.target.classList.contains('preview-pallets-btn') ? e.target : e.target.closest('.preview-pallets-btn');
+        const row = btn.closest('tr');
+        openUnifiedPalletModal(row);
+    }
+});
+
+document.querySelectorAll('input[name="allocation_mode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'manual') {
+            document.querySelector('.manual-controls-section').classList.remove('d-none');
+        } else {
+            document.querySelector('.manual-controls-section').classList.add('d-none');
+        }
+        fetchPreviewAndRender();
+    });
+});
+
+document.querySelector('.modal-manual-warehouse').addEventListener('change', function() {
+    const whId = this.value;
+    const rowSelect = document.querySelector('.modal-manual-row');
+    rowSelect.innerHTML = '<option value="">-- Select Row --</option>';
+    if (whId) {
+        const wh = warehouses.find(w => w.id == whId);
+        if (wh && wh.rows) {
+            wh.rows.forEach(r => {
+                rowSelect.innerHTML += `<option value="${r.id}">Row ${r.row_name} (Capacity: ${r.pallet_capacity})</option>`;
+            });
+        }
+    }
+    fetchPreviewAndRender();
+});
+
+document.querySelector('.modal-manual-row').addEventListener('change', function() {
+    fetchPreviewAndRender();
+});
+
+document.querySelector('.modal-manual-pallet-start').addEventListener('input', function() {
+    fetchPreviewAndRender();
+});
+
+document.getElementById('saveManualPalletBtn').addEventListener('click', function() {
+    if (!activeRow) return;
+
+    const isManual = document.getElementById('mode_manual').checked;
+    const manualWhId = document.querySelector('.modal-manual-warehouse').value;
+    const manualRowId = document.querySelector('.modal-manual-row').value;
+    const manualPalletStart = document.querySelector('.modal-manual-pallet-start').value;
+    const infoDiv = activeRow.querySelector('.manual-pallet-info');
+
+    if (isManual) {
+        if (!manualWhId || !manualRowId) {
+            Swal.fire('Warning', 'Please select both Warehouse and Row for manual assignment.', 'warning');
+            return;
+        }
+
+        activeRow.querySelector('.manual-row-id').value = manualRowId;
+        activeRow.querySelector('.manual-pallet-start').value = manualPalletStart;
+
+        const whObj = warehouses.find(w => w.id == manualWhId);
+        const whName = whObj ? whObj.name : 'Warehouse';
+        const rowObj = whObj && whObj.rows ? whObj.rows.find(r => r.id == manualRowId) : null;
+        const rowName = rowObj ? rowObj.row_name : 'Row';
+        const startText = manualPalletStart ? `, Start: P${manualPalletStart}` : '';
+
+        if (infoDiv) {
+            infoDiv.innerHTML = `<span class="badge bg-warning text-dark"><i class="bi bi-pin-angle-fill me-1"></i>Manual: ${whName} - ${rowName}${startText}</span>`;
+        }
+    } else {
+        activeRow.querySelector('.manual-row-id').value = '';
+        activeRow.querySelector('.manual-pallet-start').value = '';
+        
+        let firstAllocText = '';
+        const cards = document.querySelectorAll('#pallet-preview-summary .allocation-item-card');
+        if (cards.length > 0) {
+            const firstCard = cards[0];
+            const whText = firstCard.querySelector('div:nth-child(2)')?.textContent?.replace('Warehouse:', '')?.trim() || '';
+            const rowText = firstCard.querySelector('div:nth-child(3)')?.textContent?.replace('Row/Location:', '')?.trim() || '';
+            const palletText = firstCard.querySelector('div:nth-child(4)')?.textContent?.replace('Pallets:', '')?.trim() || '';
+            firstAllocText = `<span class="badge bg-success-subtle text-success border border-success"><i class="bi bi-magic me-1"></i>Auto: ${whText} - ${rowText} (${palletText})</span>`;
+        } else {
+            firstAllocText = `<span class="badge bg-secondary-subtle text-secondary border"><i class="bi bi-magic me-1"></i>Auto FIFO</span>`;
+        }
+
+        if (infoDiv) {
+            infoDiv.innerHTML = firstAllocText;
+        }
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('palletManualModal')).hide();
+});
+
+document.getElementById('clearManualPalletBtn').addEventListener('click', function() {
+    document.getElementById('mode_auto').checked = true;
+    document.querySelector('.manual-controls-section').classList.add('d-none');
+    document.querySelector('.modal-manual-row').value = '';
+    document.querySelector('.modal-manual-pallet-start').value = '';
+    
+    if (activeRow) {
+        activeRow.querySelector('.manual-row-id').value = '';
+        activeRow.querySelector('.manual-pallet-start').value = '';
+        const infoDiv = activeRow.querySelector('.manual-pallet-info');
+        if (infoDiv) infoDiv.innerHTML = '';
+    }
+
+    fetchPreviewAndRender();
+});
+
+});
+</script>
 @endpush
