@@ -108,20 +108,16 @@
       <table class="table table-bordered header-meta mb-4">
         <tbody>
           <tr>
-            <th>Warehouse</th>
-            <td>{{ $stockIn->warehouse->name ?? 'Auto Assign' }}</td>
             <th>Document Date</th>
             <td>{{ $stockIn->created_at->format('d M Y, H:i') }}</td>
-          </tr>
-          <tr>
             <th>Total Products</th>
             <td>{{ $stockIn->items->pluck('product_id')->unique()->count() }} items</td>
-            <th>Total Cartons</th>
-            <td>{{ number_format($stockIn->items->sum('units_received')) }} ctn</td>
           </tr>
           <tr>
+            <th>Total Cartons</th>
+            <td>{{ number_format($stockIn->items->sum('units_received')) }} ctn</td>
             <th>Remarks</th>
-            <td colspan="3" class="text-muted">{{ $stockIn->remarks ?: 'No remarks provided.' }}</td>
+            <td class="text-muted">{{ $stockIn->remarks ?: 'No remarks provided.' }}</td>
           </tr>
         </tbody>
       </table>
