@@ -337,9 +337,8 @@
                         if ($expiry->isPast()) $expClass = 'text-danger fw-bold';
                         elseif ($expiry->diffInDays(now()) <= 30) $expClass = 'text-warning fw-bold';
                     }
-                    $wh  = $item->stockIn->warehouse->name ?? '—';
-                    $row = $item->warehouseRow->row_name ?? null;
-                    $loc = $row ? "$wh / Row $row" : $wh;
+                    $wh  = $item->warehouse->name ?? $item->stockIn->warehouse->name ?? '—';
+                    $palletRange = $item->pallet_range_display;
                 @endphp
                 <tr class="{{ $isRej ? 'qc-rejected-row' : '' }}" data-item-id="{{ $item->id }}">
                     <td>
@@ -364,7 +363,7 @@
                     </td>
                     <td style="font-size:12px;">
                         <div class="fw-semibold" style="color:#1e293b;">{{ $wh }}</div>
-                        @if($row)<small class="text-muted">Row: {{ $row }}</small>@endif
+                        @if($palletRange && $palletRange !== '—')<small class="text-muted">Loc: {{ $palletRange }}</small>@endif
                     </td>
                     <td>
                         <span style="font-family:'Courier New',monospace; font-size:12px; background:#f1f5f9; padding:2px 7px; border-radius:6px; border:1px solid #e2e8f0;">

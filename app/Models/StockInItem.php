@@ -198,6 +198,25 @@ class StockInItem extends Model
     {
         return $this->belongsTo(StockIn::class);
     }
+    public function getPalletRangeDisplayAttribute()
+    {
+        $row = $this->warehouseRow;
+        $units = (int)$this->units_received;
+        $pallets = $this->pallets_used ?: ($this->product && $this->product->cartons_per_pallet > 0
+            ? ceil($units / $this->product->cartons_per_pallet) : 0);
+
+        if (!$row || !$this->pallet_start || $pallets <= 0) {
+            return $row ? $row->row_name : '—';
+        }
+
+        $firstPallet = $this->getPalletName(0);
+        if ($pallets > 1) {
+            $lastPallet = $this->getPalletName($pallets - 1);
+            return $firstPallet . ' to ' . $lastPallet;
+        }
+
+        return $firstPallet;
+    }
 
     public function product()
     {

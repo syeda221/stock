@@ -20,6 +20,7 @@ class QcStatusController extends Controller
         $query = StockInItem::with([
             'product.category',
             'stockIn.warehouse',
+            'warehouse',
             'stockIn.vendor',
             'warehouseRow',
         ])->where('balance_quantity', '>', 0);
