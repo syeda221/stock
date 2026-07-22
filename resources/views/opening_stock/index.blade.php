@@ -372,7 +372,18 @@
               <td class="text-muted" style="font-size:11px;">{{ ($transactions->currentPage()-1)*$transactions->perPage()+$loop->iteration }}</td>
               <td class="fw-bold" style="color:#1d4ed8;">#OS-{{ $tx->id }}</td>
               <td style="font-size:11.5px;color:#64748b;">{{ $tx->created_at->format('d.m.Y H:i') }}</td>
-              <td><span class="pill-wh"><i class="bi bi-building"></i> {{ $tx->warehouse->name ?? 'Auto' }}</span></td>
+              <td>
+                @php
+                  $whNames = $tx->items->map(fn($i) => $i->warehouse->name ?? $tx->warehouse->name ?? 'Auto')->unique()->filter()->values();
+                @endphp
+                @if($whNames->count() > 1)
+                  <span class="pill-wh" title="{{ $whNames->join(', ') }}">
+                    <i class="bi bi-building"></i> {{ Str::limit($whNames->first(), 15) }} <small style="opacity:0.8;">(+{{ $whNames->count() - 1 }})</small>
+                  </span>
+                @else
+                  <span class="pill-wh"><i class="bi bi-building"></i> {{ $whNames->first() ?? 'Auto' }}</span>
+                @endif
+              </td>
               <td class="text-center">
                 <span class="badge bg-secondary" style="font-size:11px;font-weight:700;">{{ $tx->items->count() }} Items</span>
               </td>

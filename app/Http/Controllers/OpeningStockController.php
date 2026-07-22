@@ -79,7 +79,7 @@ class OpeningStockController extends Controller
         $products = Product::orderBy('name')->get();
 
         $transactions = StockIn::where('source_type', 'opening')
-            ->with(['warehouse', 'items.product'])
+            ->with(['warehouse', 'items.product', 'items.warehouse'])
             ->latest()
             ->paginate(15, ['*'], 'transactions_page');
 
