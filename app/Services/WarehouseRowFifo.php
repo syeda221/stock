@@ -75,9 +75,10 @@ class WarehouseRowFifo
 
     /**
      * Helper to find contiguous free blocks of pallets in a row.
-     * Considers the full pallet_start to pallet_start + pallets_used - 1 range as occupied.
+     * Considers the full pallet_start to pallet_start + pallets_used - 1 range as occupied,
+     * incorporating both DB records and in-memory simulated allocations.
      */
-    public static function getFreeBlocksForRow(int $rowId, int $capacity): array
+    public static function getFreeBlocksForRow(int $rowId, int $capacity, array $simulatedOccupied = []): array
     {
         $items = StockInItem::where('warehouse_row_id', $rowId)
             ->where('balance_quantity', '>', 0)
@@ -86,6 +87,10 @@ class WarehouseRowFifo
             ->get();
 
         $occupied = [];
+        if (isset($simulatedOccupied[$rowId]) && is_array($simulatedOccupied[$rowId])) {
+            $occupied = $simulatedOccupied[$rowId];
+        }
+
         foreach ($items as $item) {
             $start = (int) $item->pallet_start;
             $count = (int) $item->pallets_used;
@@ -122,16 +127,15 @@ class WarehouseRowFifo
 
     /**
      * Assign warehouse rows for a given number of pallets using FIFO.
+     * Supports optional manual start row ID, start pallet index, and simulation state.
      *
      * Returns an array of "splits", each with:
+     *   - warehouse_id      : ID of assigned warehouse
      *   - warehouse_row_id  : ID of assigned row (null if no rows configured)
      *   - pallet_start      : start position of pallets
      *   - pallets           : pallets assigned to this split
      *   - units             : units for this split
      *   - qty               : units × pack_size
-     *
-     * If palletsNeeded = 0 or no rows configured, returns one split
-     * with warehouse_row_id = null.
      */
     public static function assign(
         int   $warehouseId,
@@ -139,18 +143,44 @@ class WarehouseRowFifo
         int   $totalUnits,
         float $packSize,
         bool  $allowOverflow = true,
-        int   $cartonsPerPallet = 0
+        int   $cartonsPerPallet = 0,
+        ?int  $startRowId = null,
+        ?int  $startPallet = null,
+        array &$simulatedOccupied = []
     ): array {
-        // Load rows and sort them using natural sorting
-        // This ensures "row 10" comes after "row 2", and "row1" comes before "row 2" despite spaces
-        $rows = WarehouseRow::where('warehouse_id', $warehouseId)
-            ->get()
-            ->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values();
-
-        if ($rows->isEmpty() || $palletsNeeded <= 0) {
+        if ($palletsNeeded <= 0) {
             return [[
+                'warehouse_id'     => $warehouseId,
                 'warehouse_row_id' => null,
+                'pallet_start'     => null,
+                'pallets'          => 0,
+                'units'            => $totalUnits,
+                'qty'              => round($totalUnits * $packSize, 4),
+            ]];
+        }
+
+        // Build warehouse sequence: target warehouse first, then other active warehouses if overflow allowed
+        $primaryWh = \App\Models\Warehouse::find($warehouseId);
+        $otherWhs = \App\Models\Warehouse::where('status', 1)
+            ->where('id', '!=', $warehouseId)
+            ->orderBy('name')
+            ->get();
+
+        $warehousesToTry = collect([]);
+        if ($primaryWh) {
+            $warehousesToTry->push($primaryWh);
+        }
+        if ($allowOverflow) {
+            foreach ($otherWhs as $owh) {
+                $warehousesToTry->push($owh);
+            }
+        }
+
+        if ($warehousesToTry->isEmpty()) {
+            return [[
+                'warehouse_id'     => $warehouseId,
+                'warehouse_row_id' => null,
+                'pallet_start'     => null,
                 'pallets'          => $palletsNeeded,
                 'units'            => $totalUnits,
                 'qty'              => round($totalUnits * $packSize, 4),
@@ -161,44 +191,110 @@ class WarehouseRowFifo
         $remainingUnits = $totalUnits;
         $splits         = [];
 
-        foreach ($rows as $row) {
+        $isFirstWarehouse = true;
+
+        foreach ($warehousesToTry as $wh) {
             if ($remaining <= 0) break;
 
-            $capacity   = (int) $row->pallet_capacity;
-            $freeBlocks = self::getFreeBlocksForRow($row->id, $capacity);
+            $allRows = WarehouseRow::where('warehouse_id', $wh->id)
+                ->get()
+                ->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
 
-            foreach ($freeBlocks as $block) {
+            if ($allRows->isEmpty()) continue;
+
+            $orderedRows = collect([]);
+            if ($isFirstWarehouse && $startRowId) {
+                $startRowObj = $allRows->firstWhere('id', $startRowId);
+                if ($startRowObj) {
+                    $orderedRows->push($startRowObj);
+                    foreach ($allRows as $r) {
+                        if ($r->id != $startRowId) {
+                            $orderedRows->push($r);
+                        }
+                    }
+                } else {
+                    $orderedRows = $allRows;
+                }
+            } else {
+                $orderedRows = $allRows;
+            }
+
+            $isFirstWarehouse = false;
+
+            foreach ($orderedRows as $row) {
                 if ($remaining <= 0) break;
 
-                $palletsHere = min($remaining, $block['length']);
+                $capacity = (int) $row->pallet_capacity;
+                if ($capacity <= 0) continue;
 
-                // Sequential fill: each row gets as many units as its pallets can hold
-                if ($palletsHere >= $remaining) {
-                    $unitsHere = $remainingUnits;
-                } elseif ($cartonsPerPallet > 0) {
-                    $unitsHere = min($remainingUnits, $palletsHere * $cartonsPerPallet);
-                } else {
-                    $unitsHere = (int) round($totalUnits * ($palletsHere / $palletsNeeded));
-                    $unitsHere = min($unitsHere, $remainingUnits);
+                $freeBlocks = self::getFreeBlocksForRow($row->id, $capacity, $simulatedOccupied);
+
+                // If this is the requested startRowId and startPallet is provided, filter/adjust free blocks
+                if ($startRowId && $row->id == $startRowId && $startPallet !== null && $startPallet > 0) {
+                    $adjustedBlocks = [];
+                    foreach ($freeBlocks as $block) {
+                        $bEnd = $block['start'] + $block['length'] - 1;
+                        if ($bEnd < $startPallet) {
+                            continue;
+                        }
+                        if ($block['start'] < $startPallet && $bEnd >= $startPallet) {
+                            $adjustedBlocks[] = [
+                                'start'  => $startPallet,
+                                'length' => $bEnd - $startPallet + 1,
+                            ];
+                        } elseif ($block['start'] >= $startPallet) {
+                            $adjustedBlocks[] = $block;
+                        }
+                    }
+                    $freeBlocks = $adjustedBlocks;
+                    $startRowId = null; // Clear so subsequent rows use normal start
                 }
 
-                $splits[] = [
-                    'warehouse_row_id' => $row->id,
-                    'pallet_start'     => $block['start'],
-                    'pallets'          => $palletsHere,
-                    'units'            => $unitsHere,
-                    'qty'              => round($unitsHere * $packSize, 4),
-                ];
+                foreach ($freeBlocks as $block) {
+                    if ($remaining <= 0) break;
 
-                $remaining      -= $palletsHere;
-                $remainingUnits -= $unitsHere;
+                    $palletsHere = min($remaining, $block['length']);
+                    if ($palletsHere <= 0) continue;
+
+                    if ($palletsHere >= $remaining) {
+                        $unitsHere = $remainingUnits;
+                    } elseif ($cartonsPerPallet > 0) {
+                        $unitsHere = min($remainingUnits, $palletsHere * $cartonsPerPallet);
+                    } else {
+                        $unitsHere = (int) round($totalUnits * ($palletsHere / $palletsNeeded));
+                        $unitsHere = min($unitsHere, $remainingUnits);
+                    }
+                    if ($unitsHere <= 0 && $remainingUnits > 0) {
+                        $unitsHere = $remainingUnits;
+                    }
+
+                    $pStart = $block['start'];
+
+                    // Update simulated occupation for live multi-item or preview tracking
+                    for ($k = 0; $k < $palletsHere; $k++) {
+                        $simulatedOccupied[$row->id][$pStart + $k] = true;
+                    }
+
+                    $splits[] = [
+                        'warehouse_id'     => $wh->id,
+                        'warehouse_row_id' => $row->id,
+                        'pallet_start'     => $pStart,
+                        'pallets'          => $palletsHere,
+                        'units'            => $unitsHere,
+                        'qty'              => round($unitsHere * $packSize, 4),
+                    ];
+
+                    $remaining      -= $palletsHere;
+                    $remainingUnits -= $unitsHere;
+                }
             }
         }
 
         if ($remaining > 0) {
             throw new \RuntimeException(
-                "Insufficient warehouse capacity: {$remaining} pallet(s) could not be allocated. "
-                . "All rows in warehouse {$warehouseId} are full."
+                "Insufficient total warehouse capacity: {$remaining} pallet(s) could not be allocated. "
+                . "All available warehouses are 100% full."
             );
         }
 
