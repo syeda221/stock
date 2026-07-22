@@ -135,11 +135,12 @@
               <th>Item Code</th>
               <th>Description</th>
               <th>Category</th>
+              <th>Warehouse</th>
               <th>Row / Slot</th>
               <th>SAP / Vendor Batch</th>
               <th>MFG / Expiry</th>
               <th class="text-end">Units (ctn)</th>
-              <th class="text-end">Total Weight</th>
+              <th class="text-end">Total Units</th>
               <th>QC Check</th>
               <th>UOM</th>
               <th>Status</th>
@@ -160,6 +161,7 @@
                   <td class="font-monospace fw-bold" style="font-size:11.5px;">{{ $item->product->item_code }}</td>
                   <td class="fw-semibold">{{ $item->product->name }}</td>
                   <td>{{ $item->product->category->name ?? '—' }}</td>
+                  <td class="text-center">{{ $item->warehouse->name ?? $stockIn->warehouse->name ?? '—' }}</td>
                   <td class="text-center fw-bold text-dark">{{ $item->getPalletName($pIdx) }}</td>
                   <td>
                     <div><small class="text-muted">SAP:</small> {{ $item->sap_batch ?: '—' }}</div>
@@ -189,7 +191,7 @@
               @endforeach
             @endforeach
             <tr class="fw-bold bg-light">
-              <td colspan="6" class="text-end">TOTAL</td>
+              <td colspan="7" class="text-end">TOTAL</td>
               <td class="text-end font-monospace">{{ number_format($totalReceived) }}</td>
               <td class="text-end font-monospace text-success">{{ number_format($totalQty, 2) }}</td>
               <td colspan="3"></td>

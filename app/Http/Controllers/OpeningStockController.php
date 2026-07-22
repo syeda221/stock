@@ -97,6 +97,7 @@ class OpeningStockController extends Controller
             ->where('product_id', $productId)
             ->with([
                 'stockIn.warehouse',
+                'warehouse',
                 'warehouseRow',
                 'product.category',
                 'product.uom',
@@ -127,8 +128,8 @@ class OpeningStockController extends Controller
         // Sort items naturally: Warehouse Name -> Location (pallet_range_display / row_name) -> Pallet Start -> ID
         $items = $items->sortBy([
             fn ($a, $b) => strnatcasecmp(
-                $a->stockIn->warehouse->name ?? $a->warehouse->name ?? '',
-                $b->stockIn->warehouse->name ?? $b->warehouse->name ?? ''
+                $a->warehouse->name ?? $a->stockIn->warehouse->name ?? '',
+                $b->warehouse->name ?? $b->stockIn->warehouse->name ?? ''
             ),
             fn ($a, $b) => strnatcasecmp(
                 $a->pallet_range_display ?? $a->warehouseRow->row_name ?? '',
@@ -1225,6 +1226,7 @@ class OpeningStockController extends Controller
     {
         $stockIn->load([
             'warehouse',
+            'items.warehouse',
             'items.product.category',
             'items.product.uom',
             'items.warehouseRow'

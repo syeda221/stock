@@ -534,7 +534,7 @@ document.addEventListener('click', function(e) {
     var viewBtn = e.target.closest('.view-btn');
     if (viewBtn) {
         var d = JSON.parse(viewBtn.dataset.item);
-        document.getElementById('vWarehouse').innerText     = d.stock_in?.warehouse?.name ?? d.warehouse?.name ?? '—';
+        document.getElementById('vWarehouse').innerText     = d.warehouse?.name ?? d.stock_in?.warehouse?.name ?? '—';
         document.getElementById('vRow').innerText           = d.warehouse_row?.row_name ?? '—';
         document.getElementById('vDate').innerText          = d.created_at ? d.created_at.substring(0,16).replace('T',' ') : '—';
         document.getElementById('vCode').innerText          = d.product?.item_code ?? '—';
@@ -610,7 +610,7 @@ document.addEventListener('click', function(e) {
 
             /* ── Render each batch row ── */
             data.forEach(function(item) {
-                var wh       = item.stock_in?.warehouse?.name || item.warehouse?.name || '—';
+                var wh       = item.warehouse?.name || item.stock_in?.warehouse?.name || '—';
                 var rowName  = item.warehouse_row?.row_name || '—';
                 var sap      = item.sap_batch    || '—';
                 var vendor   = item.vendor_batch || '—';
