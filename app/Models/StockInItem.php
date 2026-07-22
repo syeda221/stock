@@ -165,15 +165,29 @@ class StockInItem extends Model
             return $row ? $row->row_name : '-';
         }
 
-        $rowName = $row->row_name;
+        $rowName   = $row->row_name;
+        $capacity  = (int) ($row->pallet_capacity ?? 999);
+
+        // Parse range format: "A001 to A010"
         $parts = preg_split('/ to /i', $rowName);
         $firstPallet = $parts[0];
+        $maxNum = null;
+
+        // Try to get max number from the end range (e.g. "A010" → 10)
+        if (isset($parts[1]) && preg_match('/(\d+)$/', $parts[1], $endMatch)) {
+            $maxNum = (int) $endMatch[1];
+        }
 
         if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
-            $prefix = $matches[1];
-            $startNum = (int)$matches[2];
-            $actualNum = $startNum + $this->pallet_start - 1 + $offsetIndex;
-            $digits = strlen($matches[2]);
+            $prefix   = $matches[1];
+            $startNum = (int) $matches[2];
+            $digits   = strlen($matches[2]);
+
+            // Cap: actual pallet number must not exceed defined range end or capacity
+            $rawNum  = $startNum + $this->pallet_start - 1 + $offsetIndex;
+            $maxAllowed = $maxNum ?? ($startNum + $capacity - 1);
+            $actualNum  = min($rawNum, $maxAllowed);
+
             return $prefix . sprintf("%0{$digits}d", $actualNum);
         }
 
