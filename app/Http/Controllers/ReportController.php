@@ -2217,7 +2217,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'Date', 'Item Code', 'Product Name', 'Warehouse', 'Category', 'UOM',
                 'IBD', 'PO', 'Vendor Batch', 'SAP Batch', 'Packing', 'Pack Size',
                 'Units', 'Total Qty', 'MFG Date', 'Expiry Date',
-                'Days in Warehouse', 'Balance Qty', 'Pallets Used', 'Quality Check',
+                'Days in Warehouse', 'Balance Qty', 'Balance Unit', 'Pallets Used', 'Quality Check',
                 'Sound', 'Blocked', 'Hold',
                 'Entry ID', 'Source Type', 'Vendor', 'Arrived From', 'Transporter',
                 'Inbound Invoice', 'Record ID', 'Dispatched Invoice', 'Shipment No', 'STO No',
@@ -2237,6 +2237,14 @@ $item->hold_stock ? 'Yes' : 'No',
                 $blocked = $isIn ? ($entry->block_stock ? 'Yes' : 'No') : '-';
                 $hold = $isIn ? ($entry->hold_stock ? 'Yes' : 'No') : '-';
                 $balance = $isIn ? ($entry->balance_quantity ?? 0) : '-';
+                
+                $balanceUnit = '-';
+                if ($isIn) {
+                    $packSize = (float)($entry->pack_size ?? 0);
+                    $balanceQty = (float)($entry->balance_quantity ?? 0);
+                    $balanceUnit = $packSize > 0 ? round($balanceQty / $packSize, 4) : 0;
+                }
+
                 $days = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
 
                 fputcsv($file, [
@@ -2258,6 +2266,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $entry->expiry_date ?? '',
                     $days,
                     $balance,
+                    $balanceUnit,
                     $pallets,
                     $qc,
                     $sound,
