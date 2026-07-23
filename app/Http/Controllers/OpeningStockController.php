@@ -72,6 +72,12 @@ class OpeningStockController extends Controller
             if ($item->product && $item->product->cartons_per_pallet > 0 && $item->total_units > 0) {
                 $item->total_pallets = ceil($item->total_units / $item->product->cartons_per_pallet);
             }
+            $item->stock_in_ids = StockInItem::whereHas('stockIn', fn($q) => $q->where('source_type', 'opening'))
+                ->where('product_id', $item->product_id)
+                ->pluck('stock_in_id')
+                ->unique()
+                ->sortDesc()
+                ->values();
             return $item;
         });
 

@@ -308,25 +308,52 @@
                 {{ rtrim(rtrim(number_format($item->total_qty,2),'0'),'.') }}
               </td>
               <td class="text-center">
-                <div class="d-flex gap-1 justify-content-center">
+                <div class="d-flex gap-1 justify-content-center align-items-center">
                   <button class="os-details-btn view-batches-btn"
                           data-product-id="{{ $item->product_id }}"
                           data-product-name="{{ $item->product->name }} ({{ $item->product->item_code }})">
                     <i class="bi bi-list-columns-reverse"></i> Details
                   </button>
-                  @if($item->latest_stock_in_id)
-                    <a href="{{ route('opening-stock.transaction.show', $item->latest_stock_in_id) }}"
+
+                  @php
+                    $sIds = $item->stock_in_ids ?? collect([$item->latest_stock_in_id])->filter();
+                  @endphp
+
+                  @if($sIds->count() === 1)
+                    <a href="{{ route('opening-stock.transaction.show', $sIds->first()) }}"
                        class="btn btn-sm btn-info fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
-                       style="font-size:11px; padding:5px 11px; border-radius:20px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);"
-                       title="View Document #OS-{{ $item->latest_stock_in_id }}">
-                      <i class="bi bi-file-earmark-text"></i> Doc #OS-{{ $item->latest_stock_in_id }}
+                       style="font-size:11px; padding:5px 10px; border-radius:20px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);"
+                       title="View Document #OS-{{ $sIds->first() }}">
+                      <i class="bi bi-file-earmark-text"></i> #OS-{{ $sIds->first() }}
                     </a>
-                    <a href="{{ route('opening-stock.transaction.edit', $item->latest_stock_in_id) }}"
+                    <a href="{{ route('opening-stock.transaction.edit', $sIds->first()) }}"
                        class="btn btn-sm btn-warning fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
-                       style="font-size:11px; padding:5px 11px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
-                       title="Edit Entire Entry">
+                       style="font-size:11px; padding:5px 10px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                       title="Edit Sheet #OS-{{ $sIds->first() }}">
                       <i class="bi bi-pencil"></i> Edit
                     </a>
+                  @elseif($sIds->count() > 1)
+                    <div class="btn-group">
+                      <button type="button" class="btn btn-sm btn-warning fw-bold text-white dropdown-toggle d-inline-flex align-items-center gap-1 shadow-sm"
+                              data-bs-toggle="dropdown" aria-expanded="false"
+                              style="font-size:11px; padding:5px 12px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                        <i class="bi bi-pencil-square"></i> Edit Sheet ({{ $sIds->count() }})
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:12px; border-radius:8px;">
+                        <li class="dropdown-header text-uppercase fw-bold" style="font-size:10px;">Select Sheet to Edit</li>
+                        @foreach($sIds as $sId)
+                          <li>
+                            <a class="dropdown-item d-flex justify-content-between align-items-center py-1 px-3"
+                               href="{{ route('opening-stock.transaction.edit', $sId) }}">
+                              <span><i class="bi bi-pencil text-warning me-1"></i> Edit <strong>#OS-{{ $sId }}</strong></span>
+                              <span class="badge bg-info-subtle text-info rounded-pill ms-2"
+                                    onclick="event.preventDefault(); event.stopPropagation(); window.location.href='{{ route('opening-stock.transaction.show', $sId) }}';"
+                                    title="View Sheet #OS-{{ $sId }}">View</span>
+                            </a>
+                          </li>
+                        @endforeach
+                      </ul>
+                    </div>
                   @endif
                 </div>
               </td>
