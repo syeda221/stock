@@ -44,7 +44,8 @@ class WarehouseRowFifo
         $result = [];
         foreach ($items as $item) {
             $rowId = $item->warehouse_row_id;
-            $result[$rowId] = ($result[$rowId] ?? 0) + (int) max(1, $item->pallets_used);
+            $activeCount = count($item->getPalletBalances());
+            $result[$rowId] = ($result[$rowId] ?? 0) + $activeCount;
         }
         return $result;
     }
@@ -88,8 +89,9 @@ class WarehouseRowFifo
 
     /**
      * Helper to find contiguous free blocks of pallets in a row.
-     * Considers the full pallet_start to pallet_start + pallets_used - 1 range as occupied,
+     * Considers active pallet positions (live balance > 0) as occupied,
      * incorporating both DB records and in-memory simulated allocations.
+     * Dispatched/empty pallet slots are treated as free.
      */
     public static function getFreeBlocksForRow(
         int $rowId, 
@@ -119,9 +121,11 @@ class WarehouseRowFifo
 
         foreach ($items as $item) {
             $start = (int) $item->pallet_start;
-            $count = (int) $item->pallets_used;
-            for ($k = 0; $k < $count; $k++) {
-                $occupied[$start + $k] = true;
+            $palletBalances = $item->getPalletBalances();
+            foreach ($palletBalances as $offset => $balance) {
+                if ($balance > 0.0001) {
+                    $occupied[$start + (int)$offset] = true;
+                }
             }
         }
 

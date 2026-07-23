@@ -8,7 +8,7 @@ use App\Http\Controllers\InboundController;
 use App\Http\Controllers\OpeningStockController;
 use App\Http\Controllers\OutboundController;
 use App\Http\Controllers\PackingTypeController;
-use App\Http\Controllers\PalletTransferController;
+// use App\Http\Controllers\PalletTransferController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
@@ -164,13 +164,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/qc-status/bulk-update', [QcStatusController::class, 'bulkUpdate'])->name('qc.bulk.update');
     Route::post('/qc-management/auto-reject-expired', [QcStatusController::class, 'autoRejectExpired'])->name('qc.auto.reject');
 
-    // Pallet Transfers
-    Route::get('/pallet-transfers', [PalletTransferController::class, 'index'])->name('pallet-transfers.index');
-    Route::get('/pallet-transfers/create', [PalletTransferController::class, 'create'])->name('pallet-transfers.create');
-    Route::post('/pallet-transfers', [PalletTransferController::class, 'store'])->name('pallet-transfers.store');
-    Route::get('/pallet-transfers/api/occupied-pallets', [PalletTransferController::class, 'getOccupiedPallets'])->name('pallet-transfers.occupied');
-    Route::get('/pallet-transfers/api/free-pallets', [PalletTransferController::class, 'getFreePallets'])->name('pallet-transfers.free');
-    Route::get('/pallet-transfers/{id}/pdf', [PalletTransferController::class, 'pdf'])->name('pallet-transfers.pdf');
+    // Pallet Transfers (Pending Controller Implementation)
+    // Route::get('/pallet-transfers', [PalletTransferController::class, 'index'])->name('pallet-transfers.index');
+    // Route::get('/pallet-transfers/create', [PalletTransferController::class, 'create'])->name('pallet-transfers.create');
+    // Route::post('/pallet-transfers', [PalletTransferController::class, 'store'])->name('pallet-transfers.store');
+    // Route::get('/pallet-transfers/api/occupied-pallets', [PalletTransferController::class, 'getOccupiedPallets'])->name('pallet-transfers.occupied');
+    // Route::get('/pallet-transfers/api/free-pallets', [PalletTransferController::class, 'getFreePallets'])->name('pallet-transfers.free');
+    // Route::get('/pallet-transfers/{id}/pdf', [PalletTransferController::class, 'pdf'])->name('pallet-transfers.pdf');
 
     // Outbound Routes
    // ================= OUTBOUND =================
