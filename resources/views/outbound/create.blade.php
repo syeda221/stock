@@ -9,6 +9,7 @@
             @endforeach
         </ul>
     </div>
+    
 @endif
 
 <style>
@@ -466,8 +467,8 @@ autocompleteList.addEventListener('click', function(e) {
                 let options = `<option value="auto" data-stock="${totalStockStr}" data-pack="${pack}" selected>Auto Assign (FIFO) (Avail: ${totalStockStr} Qty)</option>`;
                 data.forEach(wh => {
                     const whStockStr = parseFloat(wh.total_stock || 0).toFixed(2);
-                    options += `<option value="${wh.warehouse_id}" 
-                                      data-stock="${whStockStr}" 
+                    options += `<option value="${wh.warehouse_id}"
+                                      data-stock="${whStockStr}"
                                       data-pack="${pack}">
                                     ${wh.warehouse} (Avail: ${whStockStr} Qty)
                                 </option>`;
@@ -487,10 +488,10 @@ autocompleteList.addEventListener('click', function(e) {
 // Update stock fields when Warehouse is selected in Row
 document.addEventListener('change', e => {
     if (!e.target.classList.contains('warehouse-select')) return;
-    
+
     const row = e.target.closest('tr');
     const option = e.target.options[e.target.selectedIndex];
-    
+
     if (option) {
         row.querySelector('.avail').value = option.getAttribute('data-stock') || '';
         row.querySelector('.pack').value = option.getAttribute('data-pack') || '';
@@ -513,9 +514,9 @@ function calculateQty(row) {
     const units = parseFloat(row.querySelector('.units').value || 0);
     const avail = parseFloat(row.querySelector('.avail').value || 0);
     const qty = pack * units;
-    
+
     row.querySelector('.qty').value = qty.toFixed(2);
-    
+
     // Auto calculate pallets count
     const cpp = parseFloat(row.querySelector('.pallets-per-packing').value || 0);
     if (cpp > 0 && units > 0) {
@@ -535,7 +536,7 @@ document.addEventListener('keydown', function(e) {
         const target = e.target;
         if (target.tagName === 'INPUT' || target.tagName === 'SELECT') {
             e.preventDefault();
-            
+
             const currentCell = target.closest('td');
             const currentRow = target.closest('tr');
             if (!currentCell || !currentRow) return;
@@ -595,7 +596,7 @@ document.addEventListener('click', e => {
     const rowFetchUrl = (warehouseId && warehouseId !== 'auto')
         ? `/outbound/product-stock/${productId}?warehouse_id=${warehouseId}&t=${new Date().getTime()}`
         : `/outbound/product-stock/${productId}?t=${new Date().getTime()}`;
-    
+
     manualRowSelect.innerHTML = '<option value="">Loading rows...</option>';
     fetch(rowFetchUrl)
         .then(r => r.json())
@@ -616,7 +617,7 @@ document.addEventListener('click', e => {
                         });
                     }
                 });
-                
+
                 let options = '<option value="">Select Specific Row</option>';
                 if (rowMap.size === 0) {
                     options += '<option value="" disabled>No rows found for this product</option>';
@@ -773,32 +774,32 @@ document.addEventListener('click', e => {
 // Form submission wrapper with AJAX and Swal notifications
 document.getElementById('outboundForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    
+
     let hasError = false;
     let hasValidRow = false;
-    
+
     document.querySelectorAll('#itemsTable tbody tr').forEach(row => {
         const prodId = row.querySelector('.selected-product-id');
         const warehouseId = row.querySelector('.warehouse-select');
-        
+
         if (!prodId || !prodId.value) return;
-        
+
         hasValidRow = true;
-        
+
         if (!warehouseId.value) {
             hasError = true;
             warehouseId.classList.add('is-invalid');
         }
-        
+
         const units = parseFloat(row.querySelector('.units').value || 0);
         const avail = parseFloat(row.querySelector('.avail').value || 0);
-        
+
         if (units > avail) {
             hasError = true;
             row.querySelector('.units').classList.add('is-invalid');
         }
     });
-    
+
     if (hasError || !hasValidRow) {
         Swal.fire('Error', 'Please resolve validation errors and ensure at least one row contains a valid product and warehouse.', 'error');
         return;
