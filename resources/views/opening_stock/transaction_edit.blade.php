@@ -730,6 +730,7 @@ function fetchPreviewAndRender() {
     const requestData = {
         items: items,
         active_row_index: activeRowIndex,
+        stock_in_id: '{{ $stockIn->id }}',
         _token: '{{ csrf_token() }}'
     };
 
@@ -860,7 +861,8 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
         }
     }
 
-    $.get('/warehouses/rows/' + rowId + '/pallets', function(data) {
+    $.get('/warehouses/rows/' + rowId + '/pallets?ignore_stock_in_id={{ $stockIn->id }}', function(data) {
+
         gridContainer.innerHTML = '';
         
         let occupiedProposed = [];
@@ -889,14 +891,14 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
             box.dataset.isEmpty = pallet.is_empty ? '1' : '0';
             box.dataset.displayName = displayName;
 
-            if (isProposed) {
-                box.style.backgroundColor = pallet.is_empty ? '#cfe2ff' : '#f8d7da';
-                box.style.borderColor = pallet.is_empty ? '#9ec5fe' : '#f5c2c7';
+            if (isProposed && pallet.is_empty) {
+                box.style.backgroundColor = '#cfe2ff';
+                box.style.borderColor = '#9ec5fe';
                 box.style.borderWidth = '2px';
                 box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
                 box.innerHTML = `
-                    <div class="fw-bold ${pallet.is_empty ? 'text-primary' : 'text-danger'}" style="font-size:11px;">${displayName}</div>
-                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">${pallet.is_empty ? '[ Proposed ]' : '[ Conflict ]'}</div>
+                    <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
+                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
                 `;
             } else if (pallet.is_empty) {
                 box.style.backgroundColor = '#d1e7dd';
@@ -910,7 +912,8 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                 box.style.borderColor = '#f5c2c7';
                 box.innerHTML = `
                     <div class="fw-bold text-danger" style="font-size:11px;">${displayName}</div>
-                    <div class="text-muted" style="font-size:10px; margin-top: 4px;">[ Occupied ]</div>
+                    <div class="text-truncate text-muted fw-semibold" style="font-size:9px; margin-top: 2px;" title="${pallet.product_name || ''}">${pallet.product_name || '[ Occupied ]'}</div>
+                    <div class="text-muted" style="font-size:9px;">${pallet.carton_qty ? 'Qty: ' + pallet.carton_qty : '[ Occupied ]'}</div>
                 `;
             }
 
@@ -920,12 +923,13 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
         const warningDiv = document.querySelector('.manual-warnings');
         if (warningDiv) {
             if (occupiedProposed.length > 0) {
-                warningDiv.innerHTML = `⚠️ Conflict: Pallet(s) ${occupiedProposed.join(', ')} already occupied! Please select another start position.`;
+                warningDiv.innerHTML = `⚠️ No Space Available: Pallet(s) ${occupiedProposed.join(', ')} are already occupied. Please select another starting position or row.`;
             } else {
                 warningDiv.innerHTML = '';
             }
         }
     });
+
 }
 
 /* ================= MANUAL PALLET ALLOCATION MODAL EVENTS ================= */
@@ -989,7 +993,11 @@ document.getElementById('saveManualPalletBtn').addEventListener('click', functio
     const palletStart = document.querySelector('.modal-manual-pallet-start').value;
 
     if (isManual && manualWhId && rowId) {
-        activeRow.querySelector('.warehouse-select').value = manualWhId;
+        const whSelect = activeRow.querySelector('.warehouse-select');
+        if (whSelect) {
+            whSelect.value = manualWhId;
+            whSelect.dispatchEvent(new Event('change'));
+        }
 
         const rowText = document.querySelector('.modal-manual-row option:checked').text;
         activeRow.querySelector('.manual-row-id').value = rowId;

@@ -1095,17 +1095,18 @@ class OpeningStockController extends Controller
             if ($skipped > 0) $message .= " {$skipped} skipped.";
             if ($errors) $message .= " " . implode(' | ', array_slice($errors, 0, 10));
 
-            return redirect()->route('opening-stock.index')->with('success', $message);
-
         } catch (\Exception $e) {
             return back()->with('error', 'Import failed: ' . $e->getMessage());
         }
     }
 
     public function previewPallets(Request $request)
+
     {
         $items = $request->input('items', []);
         $activeRowIndex = $request->input('active_row_index', 0);
+        $stockInId = $request->input('stock_in_id');
+        $ignoreStockInId = !empty($stockInId) ? (int)$stockInId : null;
 
         if (empty($items)) {
             return response()->json(['success' => true, 'allocations' => []]);
@@ -1123,13 +1124,29 @@ class OpeningStockController extends Controller
             return response()->json(['success' => false, 'message' => 'No active warehouses found.']);
         }
 
-        foreach ($items as $idx => $itemData) {
+        $sortedIndices = array_keys($items);
+        usort($sortedIndices, function ($a, $b) use ($items) {
+            $aManual = !empty($items[$a]['warehouse_row_id']);
+            $bManual = !empty($items[$b]['warehouse_row_id']);
+
+            if ($aManual !== $bManual) {
+                return $aManual ? -1 : 1;
+            }
+
+            return $a <=> $b;
+        });
+
+        foreach ($sortedIndices as $idx) {
+            $itemData = $items[$idx];
             $productId = $itemData['product_id'] ?? null;
             $units = (int) ($itemData['units_received'] ?? 0);
             $warehouseId = $itemData['warehouse_id'] ?? 'auto'; // 'auto' or ID
             $palletsUsed = isset($itemData['pallets_used']) ? (int) $itemData['pallets_used'] : 0;
             $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
             $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
+
+            $splitIdsStr = $itemData['split_ids'] ?? '';
+            $ignoreItemIds = array_filter(array_map('intval', explode(',', $splitIdsStr)));
 
             if (!$productId || $units <= 0) {
                 continue;
@@ -1174,7 +1191,9 @@ class OpeningStockController extends Controller
                     $cartonsPerPallet,
                     $manualRowId,
                     $manualPalletStart,
-                    $simulatedOccupied
+                    $simulatedOccupied,
+                    $ignoreStockInId,
+                    $ignoreItemIds
                 );
 
                 foreach ($splits as $split) {
@@ -1205,6 +1224,7 @@ class OpeningStockController extends Controller
                     ]);
                 }
             }
+
 
             if ($idx == $activeRowIndex) {
                 $activeAllocations = $allocations;
@@ -1251,6 +1271,7 @@ class OpeningStockController extends Controller
 
             return [
                 'product_id' => $first->product_id,
+                'warehouse_id' => $first->warehouse_id,
                 'product_name' => optional($first->product)->name,
                 'item_code' => optional($first->product)->item_code,
                 'pack_size' => $first->pack_size_snapshot,
@@ -1335,10 +1356,11 @@ class OpeningStockController extends Controller
                 // Track remaining capacities
                 $remainingFree = [];
                 foreach ($activeWarehouses as $wh) {
-                    $remainingFree[$wh->id] = WarehouseRowFifo::getFreeRowCapacity($wh->id);
+                    $remainingFree[$wh->id] = WarehouseRowFifo::getFreeRowCapacity($wh->id, $stockIn->id);
                 }
 
                 // Process Items
+                $simulatedOccupied = [];
                 foreach ($request->items as $itemData) {
                     if (empty($itemData['product_id']) || empty($itemData['units_received'])) continue;
 
@@ -1383,11 +1405,11 @@ class OpeningStockController extends Controller
                         } else {
                             // Not dispatched - delete old and recreate
                             StockInItem::whereIn('id', $splitIds)->delete();
-                            $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses);
+                            $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses, $simulatedOccupied);
                         }
                     } else {
                         // New Item
-                        $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses);
+                        $this->createTransactionItemSplits($stockIn, $tempWhId, $product, $itemData, $remainingFree, $activeWarehouses, $simulatedOccupied);
                     }
                 }
 
@@ -1452,7 +1474,7 @@ class OpeningStockController extends Controller
         }
     }
 
-    private function createTransactionItemSplits($stockIn, $headerWhId, $product, $itemData, &$remainingFree, $activeWarehouses)
+    private function createTransactionItemSplits($stockIn, $headerWhId, $product, $itemData, &$remainingFree, $activeWarehouses, &$simulatedOccupied)
     {
         $units = (int) $itemData['units_received'];
         $packSize = (float) $product->pack_size;
@@ -1468,7 +1490,7 @@ class OpeningStockController extends Controller
             $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
         }
 
-        $simulatedOccupied = [];
+        $ignoreStockInId = $stockIn ? (int)$stockIn->id : null;
 
         $splits = WarehouseRowFifo::assign(
             $whId,
@@ -1479,8 +1501,10 @@ class OpeningStockController extends Controller
             (int) $product->cartons_per_pallet,
             $manualRowId,
             $manualPalletStart,
-            $simulatedOccupied
+            $simulatedOccupied,
+            $ignoreStockInId
         );
+
 
         foreach ($splits as $split) {
             $splitUnits   = $split['units'];

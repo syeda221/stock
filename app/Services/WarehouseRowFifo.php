@@ -21,12 +21,25 @@ class WarehouseRowFifo
      * Get pallet slots already occupied per row (live from DB).
      * Only counts stock_in_items with balance_quantity > 0.
      */
-    public static function usedPalletsPerRow(int $warehouseId): array
+    /**
+     * Get pallet slots already occupied per row (live from DB).
+     * Only counts stock_in_items with balance_quantity > 0.
+     * Optionally excludes items from a specific stock_in_id or item ID list.
+     */
+    public static function usedPalletsPerRow(int $warehouseId, ?int $ignoreStockInId = null, array $ignoreItemIds = []): array
     {
-        $items = StockInItem::where('warehouse_id', $warehouseId)
+        $query = StockInItem::where('warehouse_id', $warehouseId)
             ->where('balance_quantity', '>', 0)
-            ->whereNotNull('warehouse_row_id')
-            ->get();
+            ->whereNotNull('warehouse_row_id');
+
+        if ($ignoreStockInId) {
+            $query->where('stock_in_id', '!=', $ignoreStockInId);
+        }
+        if (!empty($ignoreItemIds)) {
+            $query->whereNotIn('id', $ignoreItemIds);
+        }
+
+        $items = $query->get();
 
         $result = [];
         foreach ($items as $item) {
@@ -59,10 +72,10 @@ class WarehouseRowFifo
      * Get total free pallet capacity across all rows in a warehouse.
      * This is the actual available space considering current usage per row.
      */
-    public static function getFreeRowCapacity(int $warehouseId): int
+    public static function getFreeRowCapacity(int $warehouseId, ?int $ignoreStockInId = null, array $ignoreItemIds = []): int
     {
         $rows = WarehouseRow::where('warehouse_id', $warehouseId)->get();
-        $usedPallets = self::usedPalletsPerRow($warehouseId);
+        $usedPallets = self::usedPalletsPerRow($warehouseId, $ignoreStockInId, $ignoreItemIds);
         
         $free = 0;
         foreach ($rows as $row) {
@@ -78,13 +91,26 @@ class WarehouseRowFifo
      * Considers the full pallet_start to pallet_start + pallets_used - 1 range as occupied,
      * incorporating both DB records and in-memory simulated allocations.
      */
-    public static function getFreeBlocksForRow(int $rowId, int $capacity, array $simulatedOccupied = []): array
-    {
-        $items = StockInItem::where('warehouse_row_id', $rowId)
+    public static function getFreeBlocksForRow(
+        int $rowId, 
+        int $capacity, 
+        array $simulatedOccupied = [], 
+        ?int $ignoreStockInId = null, 
+        array $ignoreItemIds = []
+    ): array {
+        $query = StockInItem::where('warehouse_row_id', $rowId)
             ->where('balance_quantity', '>', 0)
             ->whereNotNull('pallet_start')
-            ->where('pallets_used', '>', 0)
-            ->get();
+            ->where('pallets_used', '>', 0);
+
+        if ($ignoreStockInId) {
+            $query->where('stock_in_id', '!=', $ignoreStockInId);
+        }
+        if (!empty($ignoreItemIds)) {
+            $query->whereNotIn('id', $ignoreItemIds);
+        }
+
+        $items = $query->get();
 
         $occupied = [];
         if (isset($simulatedOccupied[$rowId]) && is_array($simulatedOccupied[$rowId])) {
@@ -127,7 +153,8 @@ class WarehouseRowFifo
 
     /**
      * Assign warehouse rows for a given number of pallets using FIFO.
-     * Supports optional manual start row ID, start pallet index, and simulation state.
+     * Supports optional manual start row ID, start pallet index, simulation state,
+     * and optional stock_in_id / item_ids to ignore for edit operations.
      *
      * Returns an array of "splits", each with:
      *   - warehouse_id      : ID of assigned warehouse
@@ -146,7 +173,9 @@ class WarehouseRowFifo
         int   $cartonsPerPallet = 0,
         ?int  $startRowId = null,
         ?int  $startPallet = null,
-        array &$simulatedOccupied = []
+        array &$simulatedOccupied = [],
+        ?int  $ignoreStockInId = null,
+        array $ignoreItemIds = []
     ): array {
         if ($palletsNeeded <= 0) {
             return [[
@@ -197,9 +226,8 @@ class WarehouseRowFifo
             if ($remaining <= 0) break;
 
             $allRows = WarehouseRow::where('warehouse_id', $wh->id)
-                ->get()
-                ->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)
-                ->values();
+                ->orderBy('id', 'asc')
+                ->get();
 
             if ($allRows->isEmpty()) continue;
 
@@ -228,28 +256,31 @@ class WarehouseRowFifo
                 $capacity = (int) $row->pallet_capacity;
                 if ($capacity <= 0) continue;
 
-                $freeBlocks = self::getFreeBlocksForRow($row->id, $capacity, $simulatedOccupied);
+                $freeBlocks = self::getFreeBlocksForRow($row->id, $capacity, $simulatedOccupied, $ignoreStockInId, $ignoreItemIds);
 
-                // If this is the requested startRowId and startPallet is provided, filter/adjust free blocks
-                if ($startRowId && $row->id == $startRowId && $startPallet !== null && $startPallet > 0) {
-                    $adjustedBlocks = [];
-                    foreach ($freeBlocks as $block) {
-                        $bEnd = $block['start'] + $block['length'] - 1;
-                        if ($bEnd < $startPallet) {
-                            continue;
+                // If this is the requested startRowId, filter/adjust free blocks if startPallet is provided
+                if ($startRowId && $row->id == $startRowId) {
+                    if ($startPallet !== null && $startPallet > 0) {
+                        $adjustedBlocks = [];
+                        foreach ($freeBlocks as $block) {
+                            $bEnd = $block['start'] + $block['length'] - 1;
+                            if ($bEnd < $startPallet) {
+                                continue;
+                            }
+                            if ($block['start'] < $startPallet && $bEnd >= $startPallet) {
+                                $adjustedBlocks[] = [
+                                    'start'  => $startPallet,
+                                    'length' => $bEnd - $startPallet + 1,
+                                ];
+                            } elseif ($block['start'] >= $startPallet) {
+                                $adjustedBlocks[] = $block;
+                            }
                         }
-                        if ($block['start'] < $startPallet && $bEnd >= $startPallet) {
-                            $adjustedBlocks[] = [
-                                'start'  => $startPallet,
-                                'length' => $bEnd - $startPallet + 1,
-                            ];
-                        } elseif ($block['start'] >= $startPallet) {
-                            $adjustedBlocks[] = $block;
-                        }
+                        $freeBlocks = $adjustedBlocks;
                     }
-                    $freeBlocks = $adjustedBlocks;
                     $startRowId = null; // Clear so subsequent rows use normal start
                 }
+
 
                 foreach ($freeBlocks as $block) {
                     if ($remaining <= 0) break;
@@ -301,3 +332,4 @@ class WarehouseRowFifo
         return $splits;
     }
 }
+

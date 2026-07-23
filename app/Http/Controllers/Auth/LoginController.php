@@ -23,6 +23,12 @@ class LoginController extends Controller
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
+
+            $intended = session('url.intended');
+            if ($intended && (str_contains($intended, '/notifications') || str_contains($intended, '/preview-pallets') || str_contains($intended, '/batches'))) {
+                session()->forget('url.intended');
+            }
+
             return redirect()->intended(route('dashboard'));
         }
 

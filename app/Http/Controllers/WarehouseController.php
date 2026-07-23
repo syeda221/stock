@@ -247,26 +247,39 @@ class WarehouseController extends Controller
         return response()->json($rows);
     }
 
-    public function getPallets($rowId)
+    public function getPallets($rowId, Request $request = null)
     {
+        $ignoreStockInId = $request ? $request->input('ignore_stock_in_id') : null;
+
         if ($rowId === 'unassigned') {
-            $items = StockInItem::with('product')
+            $query = StockInItem::with('product')
                 ->whereNull('warehouse_row_id')
-                ->where('balance_quantity', '>', 0)
-                ->orderBy('id')
-                ->get();
+                ->where('balance_quantity', '>', 0);
+
+            if (!empty($ignoreStockInId)) {
+                $query->where('stock_in_id', '!=', $ignoreStockInId);
+            }
+
+            $items = $query->orderBy('id')->get();
             $totalCapacity = $items->sum(fn($i) => StockInItem::computeActivePallets($i));
             $row = (object)['pallet_capacity' => $totalCapacity, 'row_name' => 'Unassigned Stock'];
         } else {
             $row = WarehouseRow::findOrFail($rowId);
             $row->load('warehouse');
-            $items = StockInItem::with('product')
+
+            $query = StockInItem::with('product')
                 ->where('warehouse_row_id', $row->id)
-                ->where('balance_quantity', '>', 0)
-                ->orderBy('pallet_start')
+                ->where('balance_quantity', '>', 0);
+
+            if (!empty($ignoreStockInId)) {
+                $query->where('stock_in_id', '!=', $ignoreStockInId);
+            }
+
+            $items = $query->orderBy('pallet_start')
                 ->orderBy('id')
                 ->get();
         }
+
 
         $totalCapacity = $row->pallet_capacity;
         $occupied = [];

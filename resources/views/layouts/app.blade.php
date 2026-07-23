@@ -343,6 +343,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function fetchAlerts() {
         var xhr = new XMLHttpRequest();
         xhr.open('GET', '/notifications', true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('Accept', 'application/json');
         xhr.onload = function() {
             if (xhr.status !== 200) return;
             try { var d = JSON.parse(xhr.responseText); } catch(e) { return; }

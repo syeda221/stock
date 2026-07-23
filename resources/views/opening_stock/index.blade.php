@@ -315,9 +315,15 @@
                     <i class="bi bi-list-columns-reverse"></i> Details
                   </button>
                   @if($item->latest_stock_in_id)
+                    <a href="{{ route('opening-stock.transaction.show', $item->latest_stock_in_id) }}"
+                       class="btn btn-sm btn-info fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
+                       style="font-size:11px; padding:5px 11px; border-radius:20px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);"
+                       title="View Document #OS-{{ $item->latest_stock_in_id }}">
+                      <i class="bi bi-file-earmark-text"></i> Doc #OS-{{ $item->latest_stock_in_id }}
+                    </a>
                     <a href="{{ route('opening-stock.transaction.edit', $item->latest_stock_in_id) }}"
                        class="btn btn-sm btn-warning fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
-                       style="font-size:11px; padding:5px 13px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                       style="font-size:11px; padding:5px 11px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
                        title="Edit Entire Entry">
                       <i class="bi bi-pencil"></i> Edit
                     </a>
@@ -505,7 +511,7 @@
             <th class="text-center">Pallets</th>
             <th class="text-center">QC Check</th>
             <th class="text-center">Status</th>
-            {{-- <th class="text-center" width="80">Action</th> --}}
+            <th class="text-center" width="140">Document / Action</th>
           </tr>
         </thead>
         <tbody id="batchesTableBody">
@@ -653,6 +659,14 @@ document.addEventListener('click', function(e) {
                 var mfgStr    = fmtDate(item.mfg_date);
                 var expStr    = fmtDate(item.expiry_date);
 
+                var stockInId = item.stock_in_id;
+                var docBtnHtml = stockInId 
+                    ? '<div class="d-flex gap-1 justify-content-center">' +
+                        '<a href="/opening-stock/transaction/' + stockInId + '" class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" style="font-size:10.5px;" title="View Document #OS-' + stockInId + '"><i class="bi bi-file-earmark-text"></i> #OS-' + stockInId + '</a>' +
+                        '<a href="/opening-stock/transaction/' + stockInId + '/edit" class="btn btn-sm btn-outline-warning py-0 px-2" style="font-size:10.5px;" title="Edit Entry"><i class="bi bi-pencil"></i></a>' +
+                      '</div>'
+                    : '—';
+
                 var tr = document.createElement('tr');
                 tr.innerHTML =
                     '<td>' + wh + '</td>' +
@@ -665,7 +679,8 @@ document.addEventListener('click', function(e) {
                     '<td class="text-end font-monospace fw-bold text-success">' + balance.toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
                     '<td class="text-center"><span class="badge bg-secondary">' + pallets + '</span></td>' +
                     '<td class="text-center">' + qcHtml + '</td>' +
-                    '<td class="text-center">' + sHtml + '</td>';
+                    '<td class="text-center">' + sHtml + '</td>' +
+                    '<td class="text-center">' + docBtnHtml + '</td>';
 
                 tbody.appendChild(tr);
             });

@@ -983,14 +983,14 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
             box.dataset.isEmpty = pallet.is_empty ? '1' : '0';
             box.dataset.displayName = displayName;
 
-            if (isProposed) {
-                box.style.backgroundColor = pallet.is_empty ? '#cfe2ff' : '#f8d7da';
-                box.style.borderColor = pallet.is_empty ? '#9ec5fe' : '#f5c2c7';
+            if (isProposed && pallet.is_empty) {
+                box.style.backgroundColor = '#cfe2ff';
+                box.style.borderColor = '#9ec5fe';
                 box.style.borderWidth = '2px';
                 box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
                 box.innerHTML = `
-                    <div class="fw-bold ${pallet.is_empty ? 'text-primary' : 'text-danger'}" style="font-size:11px;">${displayName}</div>
-                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">${pallet.is_empty ? '[ Proposed ]' : '[ Conflict ]'}</div>
+                    <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
+                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
                 `;
             } else if (pallet.is_empty) {
                 box.style.backgroundColor = '#d1e7dd';
@@ -1004,7 +1004,7 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                 box.style.borderColor = '#f5c2c7';
                 box.innerHTML = `
                     <div class="fw-bold text-danger" style="font-size:11px;">${displayName}</div>
-                    <div class="text-truncate text-muted fw-semibold" style="font-size:9px; margin-top: 2px;" title="${pallet.product_name || ''}">${pallet.product_name || 'Occupied'}</div>
+                    <div class="text-truncate text-muted fw-semibold" style="font-size:9px; margin-top: 2px;" title="${pallet.product_name || ''}">${pallet.product_name || '[ Occupied ]'}</div>
                     <div class="text-muted" style="font-size:9px;">Qty: ${pallet.carton_qty || 0}</div>
                 `;
             }
@@ -1026,8 +1026,9 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
         const warningsDiv = document.querySelector('.manual-warnings');
         if (warningsDiv) {
             if (occupiedProposed.length > 0) {
-                warningsDiv.innerHTML = `❌ Conflict: Pallet(s) ${occupiedProposed.join(', ')} are already OCCUPIED! One pallet can only hold one product.`;
+                warningsDiv.innerHTML = `⚠️ No Space Available: Pallet(s) ${occupiedProposed.join(', ')} are already occupied. Please select another starting position or row.`;
                 const rangeInfoDiv = document.querySelector('.manual-range-info');
+
                 rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-danger-subtle text-danger border-danger';
             } else {
                 warningsDiv.innerHTML = '';
@@ -1112,7 +1113,11 @@ document.getElementById('saveManualPalletBtn').addEventListener('click', functio
 
     if (isManual && manualWhId && rowId) {
         // Sync warehouse selection to table row dropdown
-        activeRow.querySelector('.warehouse-select').value = manualWhId;
+        const whSelect = activeRow.querySelector('.warehouse-select');
+        if (whSelect) {
+            whSelect.value = manualWhId;
+            whSelect.dispatchEvent(new Event('change'));
+        }
 
         const rowText = document.querySelector('.modal-manual-row option:checked').text;
         activeRow.querySelector('.manual-row-id').value = rowId;

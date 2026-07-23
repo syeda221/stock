@@ -214,6 +214,8 @@ class InboundController extends Controller
     {
         $items = $request->input('items', []);
         $activeRowIndex = (int) $request->input('active_row_index', 0);
+        $stockInId = $request->input('stock_in_id');
+        $ignoreStockInId = !empty($stockInId) ? (int)$stockInId : null;
 
         if (empty($items)) {
             return response()->json(['success' => true, 'allocations' => []]);
@@ -229,13 +231,30 @@ class InboundController extends Controller
             return response()->json(['success' => false, 'message' => 'No active warehouses found.']);
         }
 
-        foreach ($items as $idx => $itemData) {
+        $sortedIndices = array_keys($items);
+        usort($sortedIndices, function ($a, $b) use ($items) {
+            $aManual = !empty($items[$a]['warehouse_row_id']);
+            $bManual = !empty($items[$b]['warehouse_row_id']);
+
+            if ($aManual !== $bManual) {
+                return $aManual ? -1 : 1;
+            }
+
+            return $a <=> $b;
+        });
+
+        foreach ($sortedIndices as $idx) {
+            $itemData = $items[$idx];
             $productId = $itemData['product_id'] ?? null;
             $units = (int) ($itemData['units_received'] ?? 0);
             $warehouseId = $itemData['warehouse_id'] ?? 'auto'; // 'auto' or ID
             $palletsUsed = isset($itemData['pallets_used']) ? (int) $itemData['pallets_used'] : 0;
             $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
             $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
+
+
+            $splitIdsStr = $itemData['split_ids'] ?? '';
+            $ignoreItemIds = array_filter(array_map('intval', explode(',', $splitIdsStr)));
 
             $product = $productId ? Product::find($productId) : null;
             $packSize = $product ? (float) $product->pack_size : 1.0;
@@ -291,7 +310,9 @@ class InboundController extends Controller
                     $cartonsPerPallet,
                     $manualRowId,
                     $manualPalletStart,
-                    $simulatedOccupied
+                    $simulatedOccupied,
+                    $ignoreStockInId,
+                    $ignoreItemIds
                 );
 
                 foreach ($splits as $split) {
@@ -330,12 +351,12 @@ class InboundController extends Controller
 
         return response()->json([
             'success' => true,
-            'allocations' => $activeAllocations
+            'allocations' => $activeAllocations,
         ]);
     }
 
-
 //     private function generateInboundInvoiceNo()
+
 // {
 //     $last = StockIn::where('source_type', 'inbound')
 //         ->orderBy('id', 'desc')
@@ -904,6 +925,7 @@ class InboundController extends Controller
         }
 
         $simulatedOccupied = [];
+        $ignoreStockInId = $stockIn ? (int)$stockIn->id : null;
 
         $splits = \App\Services\WarehouseRowFifo::assign(
             $primaryWarehouse->id,
@@ -914,8 +936,10 @@ class InboundController extends Controller
             (int) $product->cartons_per_pallet,
             $manualRowId,
             $manualPalletStart,
-            $simulatedOccupied
+            $simulatedOccupied,
+            $ignoreStockInId
         );
+
 
         foreach ($splits as $split) {
             $splitUnits   = $split['units'];
