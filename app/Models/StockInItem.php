@@ -53,6 +53,10 @@ class StockInItem extends Model
 
     public static function computeActivePallets($item): int
     {
+        if (!$item || (float)($item->balance_quantity ?? 0) <= 0.0001) {
+            return 0;
+        }
+
         $maxPerPallet = $item->product?->cartons_per_pallet ?? null;
 
         if ($maxPerPallet && $maxPerPallet > 0 && $item->pallets_used > 0) {
@@ -67,6 +71,10 @@ class StockInItem extends Model
 
     public function getPalletBalances(): array
     {
+        if ((float)($this->balance_quantity ?? 0) <= 0.0001) {
+            return [];
+        }
+
         $maxPerPallet = $this->product?->cartons_per_pallet ?? null;
         $active = self::computeActivePallets($this);
 
@@ -110,10 +118,6 @@ class StockInItem extends Model
             if ($qty > 0.0001) {
                 $activePallets[$i] = $qty;
             }
-        }
-        
-        if (empty($activePallets)) {
-            return [0 => $this->balance_quantity];
         }
         
         return $activePallets;
