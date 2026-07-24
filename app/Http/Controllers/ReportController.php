@@ -1143,6 +1143,302 @@ $item->hold_stock ? 'Yes' : 'No',
         return view('reports.all_stocks', compact('stockReport', 'warehouses', 'products', 'categories', 'summary'));
     }
 
+    public function currentStock(Request $request)
+    {
+        $warehouses = \App\Models\Warehouse::orderBy('name')->get();
+        $products = \App\Models\Product::orderBy('name')->get();
+        $categories = \App\Models\ProductCategory::orderBy('name')->get();
+
+        $query = DB::table('stock_in_items')
+            ->join('products', 'stock_in_items.product_id', '=', 'products.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
+            ->leftJoin('product_categories', 'products.product_category_id', '=', 'product_categories.id')
+            ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
+            ->where('stock_in_items.balance_quantity', '>', 0.001)
+            ->select(
+                'stock_in_items.id',
+                'products.item_code',
+                'products.name as product_name',
+                'product_categories.name as category_name',
+                'uoms.name as uom_name',
+                'warehouses.id as warehouse_id',
+                'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
+                'stock_in_items.sap_batch',
+                'stock_in_items.vendor_batch',
+                'stock_in_items.po_no',
+                'stock_in_items.ibd_no',
+                'stock_in_items.mfg_date',
+                'stock_in_items.expiry_date',
+                'stock_in_items.balance_quantity as quantity',
+                'stock_in_items.pack_size_snapshot as pack_size',
+                'stock_in_items.pallet_start',
+                'stock_in_items.pallets_used',
+                'stock_in_items.quality_clearance',
+                'stock_in_items.created_at'
+            );
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('stock_in_items.warehouse_id', $request->warehouse_id);
+        }
+        if ($request->filled('product_id')) {
+            $query->where('stock_in_items.product_id', $request->product_id);
+        }
+        if ($request->filled('category_id')) {
+            $query->where('products.product_category_id', $request->category_id);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('products.item_code', 'like', '%'.$search.'%')
+                  ->orWhere('products.name', 'like', '%'.$search.'%')
+                  ->orWhere('stock_in_items.sap_batch', 'like', '%'.$search.'%')
+                  ->orWhere('stock_in_items.vendor_batch', 'like', '%'.$search.'%');
+            });
+        }
+
+        $items = $query->orderBy('warehouses.name')
+            ->orderBy('warehouse_rows.row_name')
+            ->orderBy('stock_in_items.pallet_start')
+            ->get();
+
+        // Build row letter mapping for warehouse display formatting
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        // Format warehouse display
+        foreach ($items as $item) {
+            $item->warehouse_display = '—';
+            if ($item->pallet_start !== null && $item->row_name) {
+                $whId = $item->warehouse_id;
+                $rowKey = $whId . '-' . $item->row_name;
+                $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                if ($rowLetter) {
+                    $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($whId, 2, '0', STR_PAD_LEFT);
+                    
+                    // Retrieve product cartons_per_pallet to calculate actual active pallets dynamically
+                    $product = DB::table('products')->where('item_code', $item->item_code)->first();
+                    $cpp = $product && $product->cartons_per_pallet > 0 ? (int)$product->cartons_per_pallet : 0;
+                    
+                    $packSize = $item->pack_size > 0 ? $item->pack_size : 1;
+                    $remainingUnits = ceil($item->quantity / $packSize);
+                    
+                    $activePallets = 1;
+                    if ($cpp > 0 && $remainingUnits > 0) {
+                        $activePallets = ceil($remainingUnits / $cpp);
+                    }
+                    if ($activePallets > $item->pallets_used) {
+                        $activePallets = $item->pallets_used;
+                    }
+
+                    $pStart = (int) $item->pallet_start;
+                    $startName = $rowLetter . str_pad($pStart, 3, '0', STR_PAD_LEFT);
+                    if ($activePallets > 1) {
+                        $endName = $rowLetter . str_pad($pStart + $activePallets - 1, 3, '0', STR_PAD_LEFT);
+                        $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
+                    } else {
+                        $item->warehouse_display = "{$whPrefix}.{$startName}";
+                    }
+                }
+            }
+        }
+
+        $summary = [
+            'total_products' => $items->unique('item_code')->count(),
+            'total_balance_qty' => $items->sum('quantity'),
+            'total_balance_units' => $items->sum(function($item) {
+                return $item->pack_size > 0 ? round($item->quantity / $item->pack_size) : 0;
+            }),
+        ];
+
+        return view('reports.current_stock', compact('items', 'warehouses', 'products', 'categories', 'summary'));
+    }
+
+    public function currentStockExport(Request $request)
+    {
+        $query = DB::table('stock_in_items')
+            ->join('products', 'stock_in_items.product_id', '=', 'products.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
+            ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
+            ->leftJoin('product_categories', 'products.product_category_id', '=', 'product_categories.id')
+            ->leftJoin('uoms', 'products.uom_id', '=', 'uoms.id')
+            ->where('stock_in_items.balance_quantity', '>', 0.001)
+            ->select(
+                'stock_in_items.id',
+                'products.item_code',
+                'products.name as product_name',
+                'product_categories.name as category_name',
+                'uoms.name as uom_name',
+                'warehouses.name as warehouse_name',
+                'warehouse_rows.row_name as row_name',
+                'stock_in_items.sap_batch',
+                'stock_in_items.vendor_batch',
+                'stock_in_items.po_no',
+                'stock_in_items.ibd_no',
+                'stock_in_items.mfg_date',
+                'stock_in_items.expiry_date',
+                'stock_in_items.balance_quantity as quantity',
+                'stock_in_items.pack_size_snapshot as pack_size',
+                'stock_in_items.pallet_start',
+                'stock_in_items.pallets_used',
+                'stock_in_items.quality_clearance',
+                'stock_in_items.created_at'
+            );
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('stock_in_items.warehouse_id', $request->warehouse_id);
+        }
+        if ($request->filled('product_id')) {
+            $query->where('stock_in_items.product_id', $request->product_id);
+        }
+        if ($request->filled('category_id')) {
+            $query->where('products.product_category_id', $request->category_id);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('products.item_code', 'like', '%'.$search.'%')
+                  ->orWhere('products.name', 'like', '%'.$search.'%')
+                  ->orWhere('stock_in_items.sap_batch', 'like', '%'.$search.'%')
+                  ->orWhere('stock_in_items.vendor_batch', 'like', '%'.$search.'%');
+            });
+        }
+
+        $items = $query->orderBy('warehouses.name')
+            ->orderBy('warehouse_rows.row_name')
+            ->orderBy('stock_in_items.pallet_start')
+            ->get();
+
+        $rowLetterMap = [];
+        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
+        foreach ($allRows as $whId => $rows) {
+            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            foreach ($rows as $i => $row) {
+                $n = $i + 1;
+                $letter = '';
+                while ($n > 0) {
+                    $n--;
+                    $letter = chr(65 + $n % 26) . $letter;
+                    $n = (int)($n / 26);
+                }
+                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
+            }
+        }
+
+        foreach ($items as $item) {
+            $item->warehouse_display = '—';
+            if ($item->pallet_start !== null && $item->row_name) {
+                $wh = DB::table('warehouses')->where('name', $item->warehouse_name)->first();
+                if ($wh) {
+                    $rowKey = $wh->id . '-' . $item->row_name;
+                    $rowLetter = $rowLetterMap[$rowKey] ?? '';
+                    if ($rowLetter) {
+                        $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($wh->id, 2, '0', STR_PAD_LEFT);
+                        $originalPallets = $item->pallets_used || 1;
+                        $pStart = (int) $item->pallet_start;
+                        $startName = $rowLetter . str_pad($pStart, 3, '0', STR_PAD_LEFT);
+                        if ($originalPallets > 1) {
+                            $endName = $rowLetter . str_pad($pStart + $originalPallets - 1, 3, '0', STR_PAD_LEFT);
+                            $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
+                        } else {
+                            $item->warehouse_display = "{$whPrefix}.{$startName}";
+                        }
+                    }
+                }
+            }
+        }
+
+        $filename = 'current_stock_report_' . date('Y-m-d_His') . '.xls';
+        $headers = [
+            'Content-Type'        => 'application/vnd.ms-excel; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Pragma'              => 'no-cache',
+            'Expires'             => '0',
+        ];
+
+        $callback = function() use ($items) {
+            echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+            echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />';
+            echo '<style>
+                table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 11pt; }
+                th { background-color: #198754; color: #ffffff; font-weight: bold; border: 1px solid #c0c0c0; padding: 6px; text-align: center; }
+                td { border: 1px solid #e0e0e0; padding: 6px; }
+                .text-left { text-align: left; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .bg-light-green { background-color: #e8f5e9; }
+                .bold { font-weight: bold; }
+                .num-fmt { mso-number-format:"\#\,\#\#0\.00"; }
+                .int-fmt { mso-number-format:"\#\,\#\#0"; }
+            </style></head>';
+            echo '<body>';
+            echo '<table>';
+            echo '<thead>';
+            echo '<tr>';
+            echo '<th>Item Code</th>';
+            echo '<th>Product Name</th>';
+            echo '<th>Category</th>';
+            echo '<th>Warehouse</th>';
+            echo '<th>Location / Pallet</th>';
+            echo '<th>SAP Batch</th>';
+            echo '<th>Vendor Batch</th>';
+            echo '<th>PO #</th>';
+            echo '<th>IBD #</th>';
+            echo '<th>MFG Date</th>';
+            echo '<th>Expiry Date</th>';
+            echo '<th>QC Status</th>';
+            echo '<th>Available Units</th>';
+            echo '<th>Balance Stock</th>';
+            echo '</tr>';
+            echo '</thead>';
+            echo '<tbody>';
+
+            foreach ($items as $item) {
+                $units = $item->pack_size > 0 ? round($item->quantity / $item->pack_size) : 0;
+                $mfg = $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '—';
+                $exp = $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '—';
+
+                echo '<tr>';
+                echo '<td class="text-center font-monospace">' . htmlspecialchars($item->item_code) . '</td>';
+                echo '<td class="text-left bold">' . htmlspecialchars($item->product_name) . '</td>';
+                echo '<td class="text-left">' . htmlspecialchars($item->category_name ?? '—') . '</td>';
+                echo '<td class="text-center">' . htmlspecialchars($item->warehouse_name) . '</td>';
+                echo '<td class="text-center bold">' . htmlspecialchars($item->warehouse_display) . '</td>';
+                echo '<td class="text-center font-monospace text-primary">' . htmlspecialchars($item->sap_batch ?? '—') . '</td>';
+                echo '<td class="text-center font-monospace text-secondary">' . htmlspecialchars($item->vendor_batch ?? '—') . '</td>';
+                echo '<td class="text-center">' . htmlspecialchars($item->po_no ?? '—') . '</td>';
+                echo '<td class="text-center">' . htmlspecialchars($item->ibd_no ?? '—') . '</td>';
+                echo '<td class="text-center">' . $mfg . '</td>';
+                echo '<td class="text-center">' . $exp . '</td>';
+                echo '<td class="text-center">' . htmlspecialchars(ucfirst($item->quality_clearance)) . '</td>';
+                echo '<td class="text-right int-fmt bold bg-light-green">' . $units . '</td>';
+                echo '<td class="text-right num-fmt bold bg-light-green">' . $item->quantity . '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody>';
+            echo '</table>';
+            echo '</body>';
+            echo '</html>';
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     public function allStocksExport(Request $request)
     {
         $products = \App\Models\Product::orderBy('name')->get();

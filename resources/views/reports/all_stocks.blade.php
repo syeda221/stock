@@ -27,7 +27,10 @@
         <h5 class="mb-0 fw-bold">All Stocks Report</h5>
         <small class="text-muted">Complete stock overview - Opening, Inbound, Outbound & Balance</small>
     </div>
-    <div>
+    <div class="d-flex gap-2">
+        <a href="{{ route('reports.current-stock') }}" class="btn btn-primary">
+            <i class="bi bi-box-seam me-2"></i>Current Stock Details
+        </a>
         <button type="button" class="btn btn-success" onclick="exportAllStocks()">
             <i class="bi bi-file-earmark-excel me-2"></i>Export to Excel
         </button>

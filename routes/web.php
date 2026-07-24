@@ -228,6 +228,8 @@ Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->n
 
         Route::get('/all-stocks', [ReportController::class, 'allStocks'])->name('all-stocks');
         Route::get('/all-stocks/export', [ReportController::class, 'allStocksExport'])->name('all-stocks.export');
+        Route::get('/current-stock', [ReportController::class, 'currentStock'])->name('current-stock');
+        Route::get('/current-stock/export', [ReportController::class, 'currentStockExport'])->name('current-stock.export');
         Route::get('/stock-ledger', [ReportController::class, 'stockLedger'])->name('stock-ledger');
         Route::get('/stock-ledger/export', [ReportController::class, 'stockLedgerExport'])->name('stock-ledger.export');
         Route::get('/stock-details/{product}', [ReportController::class, 'stockDetails'])->name('stock-details');
