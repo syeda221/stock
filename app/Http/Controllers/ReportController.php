@@ -1951,7 +1951,21 @@ $item->hold_stock ? 'Yes' : 'No',
                     // Cap the displayed pallet number to the physical capacity to prevent fake locations like A011, A012
                     $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
                     $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
-                    $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    if ($rowLetter) {
+                        $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $entry->row_name);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ($displayP - 1);
+                            $clone->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $clone->warehouse_display = $firstPallet . ($displayP > 1 ? ' - P' . $displayP : '');
+                        }
+                    }
                     $expandedInbound->push($clone);
                 }
             } else {
@@ -1962,6 +1976,18 @@ $item->hold_stock ? 'Yes' : 'No',
                         $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                         $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $entry->row_name);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ((int)$entry->pallet_start - 1);
+                            $entry->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $entry->warehouse_display = $firstPallet;
+                        }
                     }
                 }
                 $expandedInbound->push($entry);
@@ -1980,6 +2006,8 @@ $item->hold_stock ? 'Yes' : 'No',
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouses as to_wh', 'stock_outs.to_warehouse_id', '=', 'to_wh.id')
             ->leftJoin('warehouse_rows', 'stock_out_items.warehouse_row_id', '=', 'warehouse_rows.id')
+            ->leftJoin('stock_in_items', 'stock_out_items.stock_in_item_id', '=', 'stock_in_items.id')
+            ->leftJoin('warehouse_rows as in_warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'in_warehouse_rows.id')
             ->select(
                 'stock_out_items.id',
                 'stock_out_items.stock_out_id as transaction_id',
@@ -1994,6 +2022,8 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'in_warehouse_rows.row_name as in_row_name',
+                'stock_in_items.pallet_start as in_pallet_start',
                 'stock_out_items.stock_in_item_id',
                 'stock_out_items.pallet_position',
                 DB::raw('NULL as vendor_name'),
@@ -2066,17 +2096,31 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = collect();
         }
 
-        // Format warehouse_display for outbound entries using database pallet position
+        // Format warehouse_display for outbound entries using database pallet position or fallbacks
         if ($outboundData->isNotEmpty()) {
             foreach ($outboundData as $entry) {
-                if ($entry->pallet_position !== null && $entry->warehouse_id && $entry->row_name) {
-                    $palletNum = $entry->pallet_position;
-                    $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                $effectiveRowName = !empty($entry->row_name) ? $entry->row_name : (!empty($entry->in_row_name) ? $entry->in_row_name : null);
+                $effectivePalletPos = $entry->pallet_position !== null ? (int)$entry->pallet_position : ($entry->in_pallet_start !== null ? (int)$entry->in_pallet_start : 1);
+
+                if (!empty($effectiveRowName) && $entry->warehouse_id) {
+                    $rowKey = $entry->warehouse_id . '-' . $effectiveRowName;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                        $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($effectivePalletPos, 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $effectiveRowName);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ($effectivePalletPos - 1);
+                            $entry->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $entry->warehouse_display = $firstPallet . ($effectivePalletPos > 1 ? ' - P' . $effectivePalletPos : '');
+                        }
                     }
                 }
             }
@@ -2368,7 +2412,21 @@ $item->hold_stock ? 'Yes' : 'No',
                     // Cap the displayed pallet number to the physical capacity
                     $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
                     $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
-                    $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    if ($rowLetter) {
+                        $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $entry->row_name);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ($displayP - 1);
+                            $clone->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $clone->warehouse_display = $firstPallet . ($displayP > 1 ? ' - P' . $displayP : '');
+                        }
+                    }
                     $expandedInbound->push($clone);
                 }
             } else {
@@ -2379,6 +2437,18 @@ $item->hold_stock ? 'Yes' : 'No',
                         $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
                         $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $entry->row_name);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ((int)$entry->pallet_start - 1);
+                            $entry->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $entry->warehouse_display = $firstPallet;
+                        }
                     }
                 }
                 $expandedInbound->push($entry);
@@ -2398,6 +2468,8 @@ $item->hold_stock ? 'Yes' : 'No',
             ->leftJoin('transporters', 'stock_outs.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouses as to_wh', 'stock_outs.to_warehouse_id', '=', 'to_wh.id')
             ->leftJoin('warehouse_rows', 'stock_out_items.warehouse_row_id', '=', 'warehouse_rows.id')
+            ->leftJoin('stock_in_items', 'stock_out_items.stock_in_item_id', '=', 'stock_in_items.id')
+            ->leftJoin('warehouse_rows as in_warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'in_warehouse_rows.id')
             ->select(
                 'stock_out_items.id',
                 'stock_out_items.stock_out_id as transaction_id',
@@ -2413,6 +2485,8 @@ $item->hold_stock ? 'Yes' : 'No',
                 'warehouses.id as warehouse_id',
                 'warehouses.name as warehouse_name',
                 'warehouse_rows.row_name as row_name',
+                'in_warehouse_rows.row_name as in_row_name',
+                'stock_in_items.pallet_start as in_pallet_start',
                 'stock_out_items.stock_in_item_id',
                 'stock_out_items.pallet_position',
                 DB::raw('NULL as vendor_name'),
@@ -2500,17 +2574,31 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = collect();
         }
 
-        // Format warehouse_display for outbound entries using database pallet position
+        // Format warehouse_display for outbound entries using database pallet position or fallbacks
         if ($outboundData->isNotEmpty()) {
             foreach ($outboundData as $entry) {
-                if ($entry->pallet_position !== null && $entry->warehouse_id && $entry->row_name) {
-                    $palletNum = $entry->pallet_position;
-                    $rowKey = $entry->warehouse_id . '-' . $entry->row_name;
+                $effectiveRowName = !empty($entry->row_name) ? $entry->row_name : (!empty($entry->in_row_name) ? $entry->in_row_name : null);
+                $effectivePalletPos = $entry->pallet_position !== null ? (int)$entry->pallet_position : ($entry->in_pallet_start !== null ? (int)$entry->in_pallet_start : 1);
+
+                if (!empty($effectiveRowName) && $entry->warehouse_id) {
+                    $rowKey = $entry->warehouse_id . '-' . $effectiveRowName;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                        $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($effectivePalletPos, 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
+                    } else {
+                        $parts = preg_split('/ to /i', $effectiveRowName);
+                        $firstPallet = trim($parts[0]);
+                        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                            $prefix = $matches[1];
+                            $startNum = (int)$matches[2];
+                            $digits = strlen($matches[2]);
+                            $actualNum = $startNum + ($effectivePalletPos - 1);
+                            $entry->warehouse_display = $prefix . sprintf("%0{$digits}d", $actualNum);
+                        } else {
+                            $entry->warehouse_display = $firstPallet . ($effectivePalletPos > 1 ? ' - P' . $effectivePalletPos : '');
+                        }
                     }
                 }
             }
@@ -2562,7 +2650,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
             foreach ($ledgerEntries as $entry) {
                 $isIn = $entry->direction === 'IN';
-                $warehouseDisplay = !empty($entry->warehouse_display) ? $entry->warehouse_display : (!empty($entry->row_name) ? $entry->row_name : ($entry->warehouse_name ?? '-'));
+                $warehouseDisplay = !empty($entry->warehouse_display)
+                    ? $entry->warehouse_display
+                    : (!empty($entry->row_name) ? trim(preg_split('/ to /i', $entry->row_name)[0]) : ($entry->warehouse_name ?? '-'));
                 $party = $isIn ? ($entry->vendor_name ?? '-') : ($entry->customer_name ?? $entry->to_warehouse_name ?? '-');
                 $arrivedFrom = $isIn ? ($entry->arrived_from_name ?? '-') : ($entry->to_warehouse_name ?? '-');
                 $pallets = $isIn ? ($entry->pallets_used ?? 0) : '-';

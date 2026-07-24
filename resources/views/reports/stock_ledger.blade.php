@@ -479,7 +479,10 @@
                                 @if(!empty($entry->warehouse_display))
                                     <small class="fw-semibold">{{ $entry->warehouse_display }}</small>
                                 @elseif(!empty($entry->row_name))
-                                    <small>{{ $entry->row_name }}</small>
+                                    @php
+                                        $cleanRow = trim(preg_split('/ to /i', $entry->row_name)[0]);
+                                    @endphp
+                                    <small>{{ $cleanRow }}</small>
                                 @else
                                     <span class="text-muted">-</span>
                                 @endif
