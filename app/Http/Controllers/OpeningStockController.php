@@ -266,6 +266,34 @@ class OpeningStockController extends Controller
                     throw new \Exception("Insufficient total warehouse capacity. Need {$totalNeededPallets} pallets, but only {$totalAvailable} available slots across all active warehouses.");
                 }
 
+                // Validate per-row capacity when manual row is selected
+                foreach ($request->items as $item) {
+                    if (!empty($item['product_id']) && !empty($item['units_received']) && !empty($item['warehouse_row_id'])) {
+                        $product = Product::find($item['product_id']);
+                        $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
+                        if ($palletsNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
+                            $palletsNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
+                        }
+
+                        if ($palletsNeeded > 0) {
+                            $rowId = (int) $item['warehouse_row_id'];
+                            $row = WarehouseRow::find($rowId);
+                            if ($row) {
+                                $rowCapacity = (int) $row->pallet_capacity;
+                                $freeBlocks = WarehouseRowFifo::getFreeBlocksForRow($rowId, $rowCapacity);
+                                $totalFreeInRow = array_sum(array_column($freeBlocks, 'length'));
+
+                                if ($palletsNeeded > $totalFreeInRow) {
+                                    throw new \Exception(
+                                        "Row \"{$row->row_name}\" has only {$totalFreeInRow} free pallet(s) but {$palletsNeeded} needed for " .
+                                        ($product->name ?? 'item') . ". Please select a different row or reduce quantity."
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
                 /*
                 |--------------------------------------------------------------------------
                 | 3️⃣ Create Stock In Items (BATCH LEVEL) — Sequential Multi-Warehouse Fill
