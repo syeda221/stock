@@ -176,51 +176,51 @@
 </form>
 
 {{-- ================= BATCH MODAL ================= --}}
-<div class="modal fade" id="batchModal" tabindex="-1">
-<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal fade" id="batchModal" tabindex="-1" data-bs-backdrop="static">
+<div class="modal-dialog modal-md modal-dialog-centered">
 <div class="modal-content">
 
-<div class="modal-header">
-    <h6 class="modal-title fw-bold">Batch Details</h6>
-    <button class="btn-close" data-bs-dismiss="modal"></button>
+<div class="modal-header bg-dark text-white py-2">
+    <h6 class="modal-title fw-bold"><i class="bi bi-tags me-1"></i> Enter Batch &amp; Expiry Details</h6>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 
-<div class="modal-body row g-2">
-    <div class="col-md-4">
-        <label class="form-label small">SAP Batch</label>
-        <input class="form-control form-control-sm modal-sap">
-    </div>
-    <div class="col-md-4">
-        <label class="form-label small">Vendor Batch</label>
-        <input class="form-control form-control-sm modal-vendor">
-    </div>
-    <div class="col-md-4">
-        <label class="form-label small">IBD No</label>
-        <input class="form-control form-control-sm modal-ibd">
-    </div>
-
-    <div class="col-md-4">
-        <label class="form-label small">PO No</label>
-        <input class="form-control form-control-sm modal-po">
-    </div>
-    <div class="col-md-4">
-        <label class="form-label small">MFG Date</label>
-        <input type="date"
-               class="form-control form-control-sm modal-mfg">
-    </div>
-    <div class="col-md-4">
-        <label class="form-label small">Expiry Date</label>
-        <input type="date"
-               class="form-control form-control-sm modal-expiry">
+<div class="modal-body p-3">
+    <div class="row g-2">
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">SAP Batch</label>
+            <input type="text" class="form-control form-control-sm modal-sap" placeholder="Enter SAP batch">
+        </div>
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">Vendor Batch</label>
+            <input type="text" class="form-control form-control-sm modal-vendor" placeholder="Enter vendor batch">
+        </div>
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">IBD No</label>
+            <input type="text" class="form-control form-control-sm modal-ibd" placeholder="Enter inbound delivery no">
+        </div>
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">PO No</label>
+            <input type="text" class="form-control form-control-sm modal-po" placeholder="Enter purchase order no">
+        </div>
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">MFG Date</label>
+            <input type="date" class="form-control form-control-sm modal-mfg">
+        </div>
+        <div class="col-md-6 mb-2">
+            <label class="form-label fw-bold small">Expiry Date</label>
+            <input type="date" class="form-control form-control-sm modal-expiry">
+        </div>
     </div>
 </div>
 
-<div class="modal-footer">
-    <button type="button"
-            class="btn btn-primary btn-sm"
-            id="saveBatchBtn">
-        OK
-    </button>
+<div class="modal-footer bg-light py-2">
+    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-primary btn-sm px-3" id="saveBatchBtn">Save Batch Info</button>
+</div>
+
+</div>
+</div>
 </div>
 
 </div>
@@ -294,6 +294,7 @@
                     <span class="badge bg-success-subtle text-success border border-success">[ ] Empty</span>
                     <span class="badge bg-danger-subtle text-danger border border-danger">[ ] Occupied</span>
                     <span class="badge bg-primary-subtle text-primary border border-primary">[ ] Proposed</span>
+                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning">[ ] Reserved (Other Row)</span>
                 </div>
             </div>
             <div id="modal-pallet-grid" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light" style="max-height: 400px; overflow-y: auto; align-content: flex-start;">
@@ -883,7 +884,17 @@ function fetchPreviewAndRender() {
 
         let summaryHtml = '';
         currentProposedPalletNames = [];
+        currentAllProposedPallets = response.all_proposed_pallets || [];
         let firstAssignedRowId = null;
+        let firstAssignedRowIdx = null;
+
+        if (response.all_proposed_pallets && response.all_proposed_pallets.length > 0) {
+            response.all_proposed_pallets.forEach(function(p) {
+                if (p.is_active) {
+                    currentProposedPalletNames.push(p.name);
+                }
+            });
+        }
 
         if (response.allocations && response.allocations.length > 0) {
             response.allocations.forEach(function(alloc) {
@@ -891,7 +902,6 @@ function fetchPreviewAndRender() {
                 
                 let pNamesStr = '';
                 if (alloc.pallet_names && alloc.pallet_names.length > 0) {
-                    currentProposedPalletNames = currentProposedPalletNames.concat(alloc.pallet_names);
                     if (alloc.pallets_count > 1) {
                         pNamesStr = `<strong class="text-dark">${alloc.pallet_names[0]} to ${alloc.pallet_names[alloc.pallet_names.length - 1]}</strong> (${alloc.pallets_count} pallets contiguous)`;
                     } else {
@@ -900,11 +910,12 @@ function fetchPreviewAndRender() {
                 }
 
                 const rowIdAttr = alloc.row_id ? `data-row-id="${alloc.row_id}"` : '';
+                const rowIdxAttr = alloc.form_row_idx ? `data-row-idx="${alloc.form_row_idx}"` : '';
                 const clickStyle = alloc.row_id ? 'cursor: pointer; transition: all 0.2s;' : '';
                 const clickClass = alloc.row_id ? 'allocation-item-card p-2 mb-2 rounded border hover-shadow bg-white' : 'p-2 mb-2 rounded border bg-light';
 
                 summaryHtml += `
-                    <div class="${clickClass}" ${rowIdAttr} style="${clickStyle}">
+                    <div class="${clickClass}" ${rowIdAttr} ${rowIdxAttr} style="${clickStyle}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="badge ${badgeColor}">${alloc.type.toUpperCase()}</span>
                             <span class="text-muted fw-bold" style="font-size:11px;">${alloc.units} cartons</span>
@@ -918,6 +929,7 @@ function fetchPreviewAndRender() {
 
                 if (!firstAssignedRowId && alloc.row_id) {
                     firstAssignedRowId = alloc.row_id;
+                    firstAssignedRowIdx = alloc.form_row_idx;
                 }
             });
 
@@ -950,7 +962,7 @@ function fetchPreviewAndRender() {
 
         const gridRowId = (isManual && manualRowId) ? manualRowId : (firstAssignedRowId || defaultRowId);
         if (gridRowId) {
-            loadPalletGridWithProposed(gridRowId, currentProposedPalletNames);
+            loadPalletGridWithProposed(gridRowId, currentAllProposedPallets, firstAssignedRowIdx);
             setTimeout(() => {
                 const activeCard = document.querySelector(`.allocation-item-card[data-row-id="${gridRowId}"]`);
                 if (activeCard) {
@@ -967,15 +979,28 @@ function fetchPreviewAndRender() {
     });
 }
 
-function loadPalletGridWithProposed(rowId, proposedNames) {
+function getPalletDisplayName(rowName, palletNumber) {
+    if (!rowName) return 'Pallet ' + palletNumber;
+    const parts = rowName.split(/\s+to\s+/i);
+    const firstPallet = parts[0];
+    const match = firstPallet.match(/^(.*?)(\d+)$/);
+    if (match) {
+        const prefix = match[1];
+        const startNum = parseInt(match[2], 10);
+        const digits = match[2].length;
+        const actualNum = startNum + palletNumber - 1;
+        return prefix + String(actualNum).padStart(digits, '0');
+    }
+    return rowName + ' - P' + palletNumber;
+}
+
+let currentAllProposedPallets = [];
+
+function loadPalletGridWithProposed(rowId, allProposedArray, activeCardRowIdx) {
     const gridContainer = document.getElementById('modal-pallet-grid');
     gridContainer.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Loading pallet grid...</div>';
 
     let rowName = '';
-    let prefix = 'Pallet ';
-    let padLength = 0;
-    let usePrefixLogic = false;
-    let startNum = 1;
 
     warehouses.forEach(wh => {
         if (wh.rows) {
@@ -984,34 +1009,29 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
         }
     });
 
-    if (rowName) {
-        const match = rowName.match(/^(.+?)(\d+)\s+to\s+/i);
-        if (match) {
-            prefix = match[1];
-            padLength = match[2].length;
-            startNum = parseInt(match[2], 10);
-            usePrefixLogic = true;
-        }
-    }
-
     $.get('/warehouses/rows/' + rowId + '/pallets', function(data) {
         gridContainer.innerHTML = '';
-        
         let occupiedProposed = [];
+        let reservedOtherProposed = [];
 
         data.pallets.forEach(function(pallet) {
-            const currentNum = usePrefixLogic ? (startNum + pallet.pallet_number - 1) : pallet.pallet_number;
-            const displayName = usePrefixLogic 
-                ? prefix + String(currentNum).padStart(padLength, '0')
-                : 'Pallet ' + pallet.pallet_number;
+            const displayName = getPalletDisplayName(rowName, pallet.pallet_number);
 
-            const isProposed = proposedNames.some(name => {
-                const cleanName = name.split(' (')[0];
-                return cleanName === displayName;
-            });
+            let proposedItem = null;
+            if (Array.isArray(allProposedArray)) {
+                proposedItem = allProposedArray.find(p => {
+                    const clean = p.name.split(' (')[0];
+                    return p.row_id == rowId && clean === displayName;
+                });
+            }
 
-            if (isProposed && !pallet.is_empty) {
+            const isForActiveCard = proposedItem ? ((activeCardRowIdx && proposedItem.row_idx == activeCardRowIdx) || proposedItem.is_active) : false;
+
+            if (proposedItem && isForActiveCard && !pallet.is_empty) {
                 occupiedProposed.push(displayName);
+            }
+            if (proposedItem && !isForActiveCard && pallet.is_empty) {
+                reservedOtherProposed.push(`${displayName} (Row ${proposedItem.row_idx})`);
             }
 
             const box = document.createElement('div');
@@ -1023,15 +1043,26 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
             box.dataset.isEmpty = pallet.is_empty ? '1' : '0';
             box.dataset.displayName = displayName;
 
-            if (isProposed && pallet.is_empty) {
-                box.style.backgroundColor = '#cfe2ff';
-                box.style.borderColor = '#9ec5fe';
-                box.style.borderWidth = '2px';
-                box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
-                box.innerHTML = `
-                    <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
-                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
-                `;
+            if (proposedItem && pallet.is_empty) {
+                if (isForActiveCard) {
+                    box.style.backgroundColor = '#cfe2ff';
+                    box.style.borderColor = '#9ec5fe';
+                    box.style.borderWidth = '2px';
+                    box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
+                    box.innerHTML = `
+                        <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
+                        <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
+                    `;
+                } else {
+                    box.style.backgroundColor = '#fff3cd';
+                    box.style.borderColor = '#ffe69c';
+                    box.style.borderWidth = '2px';
+                    box.style.boxShadow = '0 0 4px rgba(255, 193, 7, 0.5)';
+                    box.innerHTML = `
+                        <div class="fw-bold text-warning-emphasis" style="font-size:11px;">${displayName}</div>
+                        <div class="text-dark-emphasis fw-bold" style="font-size:9.5px; margin-top: 4px;">[ Reserved (Row ${proposedItem.row_idx}) ]</div>
+                    `;
+                }
             } else if (pallet.is_empty) {
                 box.style.backgroundColor = '#d1e7dd';
                 box.style.borderColor = '#a3cfbb';
@@ -1055,6 +1086,10 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                     Swal.fire('Info', 'Switch to "Manual Override" allocation mode to manually assign pallets.', 'info');
                     return;
                 }
+                if (proposedItem && !isForActiveCard) {
+                    Swal.fire('Reserved Pallet', `Pallet ${displayName} is already reserved by Form Row ${proposedItem.row_idx}. Please select an available (empty) pallet.`, 'warning');
+                    return;
+                }
                 document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
                 fetchPreviewAndRender();
             });
@@ -1064,8 +1099,22 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
 
         const warningDiv = document.querySelector('.manual-warnings');
         if (warningDiv) {
+            const rangeInfoDiv = document.querySelector('.manual-range-info');
             if (occupiedProposed.length > 0) {
                 warningDiv.innerHTML = `⚠️ No Space Available: Pallet(s) ${occupiedProposed.join(', ')} are already occupied. Please select another starting position or row.`;
+                if (rangeInfoDiv) {
+                    rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-danger-subtle text-danger border-danger';
+                }
+            } else if (reservedOtherProposed.length > 0 && document.getElementById('mode_manual').checked) {
+                const isManualRowSelected = document.querySelector('.modal-manual-row').value == rowId;
+                if (isManualRowSelected) {
+                    warningDiv.innerHTML = `⚠️ Reserved Pallets: Pallet(s) ${reservedOtherProposed.join(', ')} are already reserved by previous form rows.`;
+                    if (rangeInfoDiv) {
+                        rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-warning-subtle text-warning-emphasis border-warning';
+                    }
+                } else {
+                    warningDiv.innerHTML = '';
+                }
             } else {
                 warningDiv.innerHTML = '';
             }
@@ -1078,13 +1127,14 @@ document.addEventListener('click', function (e) {
     const card = e.target.closest('.allocation-item-card');
     if (card && card.dataset.rowId) {
         const rowId = card.dataset.rowId;
+        const rowIdx = card.dataset.rowIdx;
         document.querySelectorAll('.allocation-item-card').forEach(c => {
             c.classList.remove('border-primary', 'bg-primary-subtle');
             c.classList.add('bg-white');
         });
         card.classList.remove('bg-white');
         card.classList.add('border-primary', 'bg-primary-subtle');
-        loadPalletGridWithProposed(rowId, currentProposedPalletNames);
+        loadPalletGridWithProposed(rowId, currentAllProposedPallets, rowIdx);
     }
 
     if (e.target.classList.contains('preview-pallets-btn') || e.target.closest('.preview-pallets-btn')) {

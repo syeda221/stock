@@ -103,14 +103,19 @@
 <div class="card border-0 shadow-sm rounded-4 mb-3" style="position: relative; z-index: 1050;">
     <div class="card-body p-3">
         <form id="ledgerFilterForm" method="GET" action="{{ route('reports.stock-ledger') }}">
-            <div class="row g-2">
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Search</label>
-                    <input type="text" name="search" class="form-control form-control-sm" 
-                           value="{{ request('search') }}" placeholder="Product, batch, invoice...">
+            <div class="row g-3">
+                {{-- Column 1: Search & Product --}}
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Search</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                        <input type="text" name="search" class="form-control form-control-sm" 
+                               value="{{ request('search') }}" placeholder="Product, batch, invoice...">
+                    </div>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Product</label>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Product</label>
                     <select name="product_id" class="form-select form-select-sm">
                         <option value="">All Products</option>
                         @foreach($products as $product)
@@ -120,8 +125,9 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Warehouse</label>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Warehouse</label>
                     <select name="warehouse_id" class="form-select form-select-sm">
                         <option value="">All Warehouses</option>
                         @foreach($warehouses as $warehouse)
@@ -131,8 +137,9 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Category</label>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Category</label>
                     <select name="category_id" class="form-select form-select-sm">
                         <option value="">All Categories</option>
                         @foreach($categories as $category)
@@ -142,8 +149,10 @@
                         @endforeach
                     </select>
                 </div>
+
+                {{-- Row 2 --}}
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Type</label>
+                    <label class="form-label fw-semibold small text-secondary">Type</label>
                     <div class="dropdown custom-multiselect">
                         <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
                             <span class="multiselect-label text-truncate" data-default="All Types">All Types</span>
@@ -172,8 +181,9 @@
                         </div>
                     </div>
                 </div>
+
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Vendor</label>
+                    <label class="form-label fw-semibold small text-secondary">Vendor</label>
                     <select name="vendor_id" class="form-select form-select-sm">
                         <option value="">All Vendors</option>
                         @foreach($vendors as $vendor)
@@ -183,10 +193,9 @@
                         @endforeach
                     </select>
                 </div>
-            </div>
-            <div class="row g-2 mt-1">
+
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Customer</label>
+                    <label class="form-label fw-semibold small text-secondary">Customer</label>
                     <select name="customer_id" class="form-select form-select-sm">
                         <option value="">All Customers</option>
                         @foreach($customers as $customer)
@@ -196,36 +205,34 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Date From</label>
-                    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ request('date_from') }}">
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Date Range</label>
+                    <div class="input-group input-group-sm">
+                        <input type="date" name="date_from" class="form-control form-control-sm" value="{{ request('date_from') }}" placeholder="From">
+                        <span class="input-group-text bg-light">-</span>
+                        <input type="date" name="date_to" class="form-control form-control-sm" value="{{ request('date_to') }}" placeholder="To">
+                    </div>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Date To</label>
-                    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ request('date_to') }}">
-                </div>
-                <div class="col-md-1">
-                    <label class="form-label fw-semibold small">Has Stock</label>
-                    <div class="form-check mt-1">
+
+                {{-- Checkbox Toggles Group --}}
+                <div class="col-md-3 d-flex align-items-end gap-3 pb-1">
+                    <div class="form-check form-switch mb-1">
                         <input type="hidden" name="has_stock" value="0">
                         <input type="checkbox" name="has_stock" value="1" class="form-check-input" id="hasStock" {{ request()->boolean('has_stock') ? 'checked' : '' }}>
-                        <label class="form-check-label small" for="hasStock">Active</label>
+                        <label class="form-check-label small fw-semibold text-dark" for="hasStock">Has Stock</label>
+                    </div>
+
+                    <div class="form-check form-switch mb-1">
+                        <input type="hidden" name="near_expiry" value="0">
+                        <input type="checkbox" name="near_expiry" value="1" class="form-check-input" id="nearExpiry" {{ request()->boolean('near_expiry') ? 'checked' : '' }}>
+                        <label class="form-check-label small fw-semibold text-danger" for="nearExpiry">⚠️ Near Expiry</label>
                     </div>
                 </div>
-                <div class="col-md-1">
-                    <label class="form-label fw-semibold small">&nbsp;</label>
-                    <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="bi bi-search"></i> Filter
-                        </button>
-                        <a href="{{ route('reports.stock-ledger') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
-                        </a>
-                    </div>
-                </div>
-            <div class="row g-2 mt-1">
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Inbound Invoice</label>
+
+                {{-- Row 3 --}}
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Inbound Invoice</label>
                     <div class="dropdown custom-multiselect">
                         <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
                             <span class="multiselect-label text-truncate" data-default="All Invoices">All Invoices</span>
@@ -246,8 +253,9 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Record ID</label>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Record ID</label>
                     <div class="dropdown custom-multiselect">
                         <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
                             <span class="multiselect-label text-truncate" data-default="All Record IDs">All Record IDs</span>
@@ -268,8 +276,9 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Dispatch No</label>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small text-secondary">Dispatch No</label>
                     <div class="dropdown custom-multiselect">
                         <button class="btn btn-outline-secondary btn-sm w-100 text-start bg-white d-flex justify-content-between align-items-center border" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
                             <span class="multiselect-label text-truncate" data-default="All Dispatch Nos">All Dispatch Nos</span>
@@ -289,6 +298,16 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {{-- Action Buttons --}}
+                <div class="col-md-3 d-flex align-items-end justify-content-end gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm px-4">
+                        <i class="bi bi-search me-1"></i> Filter
+                    </button>
+                    <a href="{{ route('reports.stock-ledger') }}" class="btn btn-outline-secondary btn-sm px-3">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+                    </a>
                 </div>
             </div>
         </form>

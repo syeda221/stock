@@ -340,25 +340,26 @@
                         </li>
                     </ul>
 
-                    <div class="tab-content border border-top-0 rounded-bottom p-3" id="stockDetailsTabsContent">
+                    <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="stockDetailsTabsContent">
                         {{-- Opening Stock Tab --}}
                         <div class="tab-pane fade show active" id="opening-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                <table class="table table-hover align-middle mb-0" style="font-size:12.5px;">
                                     <thead class="table-dark">
                                         <tr>
                                             <th style="width: 40px;">#</th>
-                                            <th>Location</th>
-                                            <th>Batch Details</th>
-                                            <th>Dates &amp; Duration</th>
-                                            <th>Quantities</th>
-                                            <th>Logistics &amp; References</th>
-                                            <th>QC &amp; Status</th>
-                                            <th style="width: 80px;">Action</th>
+                                            <th>Location / Pallet</th>
+                                            <th>Batch Info</th>
+                                            <th>MFG &amp; Expiry Dates</th>
+                                            <th class="text-end">Units (Pack Size)</th>
+                                            <th class="text-end">Total Qty</th>
+                                            <th class="text-end bg-success bg-opacity-10 text-success">Current Stock</th>
+                                            <th class="text-center">QC &amp; Status</th>
+                                            <th class="text-center" style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="openingTableBody">
-                                        <tr><td colspan="8" class="text-center text-muted py-4">No data</td></tr>
+                                        <tr><td colspan="9" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -367,21 +368,22 @@
                         {{-- Inbound Tab --}}
                         <div class="tab-pane fade" id="inbound-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                <table class="table table-hover align-middle mb-0" style="font-size:12.5px;">
                                     <thead class="table-dark">
                                         <tr>
                                             <th style="width: 40px;">#</th>
-                                            <th>Location</th>
-                                            <th>Batch Details</th>
-                                            <th>Dates &amp; Duration</th>
-                                            <th>Quantities</th>
-                                            <th>Logistics &amp; References</th>
-                                            <th>QC &amp; Status</th>
-                                            <th style="width: 80px;">Action</th>
+                                            <th>Location / Pallet</th>
+                                            <th>Batch Info</th>
+                                            <th>MFG &amp; Expiry Dates</th>
+                                            <th class="text-end">Units (Pack Size)</th>
+                                            <th class="text-end">Total Qty</th>
+                                            <th class="text-end bg-success bg-opacity-10 text-success">Current Stock</th>
+                                            <th class="text-center">QC &amp; Status</th>
+                                            <th class="text-center" style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inboundTableBody">
-                                        <tr><td colspan="8" class="text-center text-muted py-4">No data</td></tr>
+                                        <tr><td colspan="9" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -390,20 +392,21 @@
                         {{-- Outbound Tab --}}
                         <div class="tab-pane fade" id="outbound-content" role="tabpanel">
                             <div class="table-responsive">
-                                <table class="table table-striped table-bordered table-sm table-hover mb-0" style="font-size:0.8rem; vertical-align: middle;">
+                                <table class="table table-hover align-middle mb-0" style="font-size:12.5px;">
                                     <thead class="table-dark">
                                         <tr>
                                             <th style="width: 40px;">#</th>
-                                            <th>Location</th>
-                                            <th>Batch Details</th>
-                                            <th>Date &amp; Duration</th>
-                                            <th>Quantities</th>
-                                            <th>Customer &amp; Logistics</th>
-                                            <th style="width: 80px;">Action</th>
+                                            <th>Location / Pallet</th>
+                                            <th>Batch Info</th>
+                                            <th>Dispatch Date</th>
+                                            <th class="text-end">Units Dispatched</th>
+                                            <th class="text-end">Total Qty Out</th>
+                                            <th>Customer &amp; Reference</th>
+                                            <th class="text-center" style="width: 80px;">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="outboundTableBody">
-                                        <tr><td colspan="7" class="text-center text-muted py-4">No data</td></tr>
+                                        <tr><td colspan="8" class="text-center text-muted py-4">No data</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -570,6 +573,21 @@ $(document).ready(function() {
                             else if (item.hold_stock) statusPill = '<span class="badge bg-warning text-dark">Hold</span>';
                             else if (!item.sound_stock) statusPill = '<span class="badge bg-secondary">Unsound</span>';
 
+                            // Check near expiry
+                            let expColor = 'text-dark';
+                            if (item.expiry_date) {
+                                const exp = new Date(item.expiry_date);
+                                const limit = new Date();
+                                limit.setMonth(limit.getMonth() + 3);
+                                if (exp < new Date()) {
+                                    expColor = 'text-danger fw-bold';
+                                } else if (exp <= limit) {
+                                    expColor = 'text-warning fw-bold';
+                                } else {
+                                    expColor = 'text-success fw-bold';
+                                }
+                            }
+
                             openingHtml += `<tr>
                                 <td class="text-muted fw-bold">${index + 1}</td>
                                 <td>
@@ -577,31 +595,26 @@ $(document).ready(function() {
                                     <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${rowDisplay}</div>
                                 </td>
                                 <td>
-                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
-                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                    <div class="small"><strong>SAP:</strong> <code class="text-primary font-monospace">${item.sap_batch || '—'}</code></div>
+                                    <div class="small"><strong>Vendor:</strong> <code class="text-secondary font-monospace">${item.vendor_batch || '—'}</code></div>
+                                    <div class="small text-muted" style="font-size:11px;">PO: ${item.po_no || '—'} | IBD: ${item.ibd_no || '—'}</div>
                                 </td>
                                 <td>
                                     <div class="small"><strong>MFG:</strong> ${item.mfg_date ? formatDate(item.mfg_date) : '—'}</div>
-                                    <div class="small"><strong>EXP:</strong> <span class="fw-bold">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
+                                    <div class="small"><strong>EXP:</strong> <span class="${expColor}">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
                                     <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
                                 </td>
-                                <td>
-                                    <div class="small"><strong>Units:</strong> <span class="font-monospace fw-bold text-dark">${remainingUnits}</span> <span class="text-muted small">/ ${item.units_received || 0}</span></div>
-                                    <div class="small"><strong>Qty:</strong> <span class="font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</span></div>
-                                    <div class="small"><strong>Balance:</strong> <span class="font-monospace fw-bold text-success">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</span></div>
-                                    <div class="small"><strong>Pallets:</strong> <span class="badge bg-secondary">${originalPallets || 0}</span></div>
+                                <td class="text-end">
+                                    <span class="fw-bold">${remainingUnits}</span>
+                                    <div class="text-muted small" style="font-size:11px;">Pack: ${packSize}</div>
                                 </td>
-                                <td>
-                                    <div class="small"><strong>Vendor:</strong> ${item.vendor_name || '—'}</div>
-                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
-                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'}</div>
-                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
-                                </td>
-                                <td>
+                                <td class="text-end font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</td>
+                                <td class="text-end bg-success bg-opacity-10 fw-bold text-success font-monospace">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</td>
+                                <td class="text-center">
                                     <div class="mb-1">${qcBadge}</div>
                                     <div>${statusPill}</div>
                                 </td>
-                                <td>
+                                <td class="text-center">
                                     <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
                                         <i class="bi bi-file-pdf"></i> PDF
                                     </a>
@@ -609,7 +622,7 @@ $(document).ready(function() {
                             </tr>`;
                         });
                     } else {
-                        openingHtml = '<tr><td colspan="8" class="text-center text-muted py-4">No opening stock</td></tr>';
+                        openingHtml = '<tr><td colspan="9" class="text-center text-muted py-4">No opening stock</td></tr>';
                     }
                     $('#openingTableBody').html(openingHtml);
 
@@ -657,6 +670,21 @@ $(document).ready(function() {
                             else if (item.hold_stock) statusPill = '<span class="badge bg-warning text-dark">Hold</span>';
                             else if (!item.sound_stock) statusPill = '<span class="badge bg-secondary">Unsound</span>';
 
+                            // Check near expiry
+                            let expColor = 'text-dark';
+                            if (item.expiry_date) {
+                                const exp = new Date(item.expiry_date);
+                                const limit = new Date();
+                                limit.setMonth(limit.getMonth() + 3);
+                                if (exp < new Date()) {
+                                    expColor = 'text-danger fw-bold';
+                                } else if (exp <= limit) {
+                                    expColor = 'text-warning fw-bold';
+                                } else {
+                                    expColor = 'text-success fw-bold';
+                                }
+                            }
+
                             inboundHtml += `<tr>
                                 <td class="text-muted fw-bold">${index + 1}</td>
                                 <td>
@@ -664,31 +692,26 @@ $(document).ready(function() {
                                     <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${rowDisplay}</div>
                                 </td>
                                 <td>
-                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
-                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                    <div class="small"><strong>SAP:</strong> <code class="text-primary font-monospace">${item.sap_batch || '—'}</code></div>
+                                    <div class="small"><strong>Vendor:</strong> <code class="text-secondary font-monospace">${item.vendor_batch || '—'}</code></div>
+                                    <div class="small text-muted" style="font-size:11px;">PO: ${item.po_no || '—'} | IBD: ${item.ibd_no || '—'}</div>
                                 </td>
                                 <td>
                                     <div class="small"><strong>MFG:</strong> ${item.mfg_date ? formatDate(item.mfg_date) : '—'}</div>
-                                    <div class="small"><strong>EXP:</strong> <span class="fw-bold">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
+                                    <div class="small"><strong>EXP:</strong> <span class="${expColor}">${item.expiry_date ? formatDate(item.expiry_date) : '—'}</span></div>
                                     <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
                                 </td>
-                                <td>
-                                    <div class="small"><strong>Units:</strong> <span class="font-monospace fw-bold text-dark">${remainingUnits}</span> <span class="text-muted small">/ ${item.units_received || 0}</span></div>
-                                    <div class="small"><strong>Qty:</strong> <span class="font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</span></div>
-                                    <div class="small"><strong>Balance:</strong> <span class="font-monospace fw-bold text-success">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</span></div>
-                                    <div class="small"><strong>Pallets:</strong> <span class="badge bg-secondary">${originalPallets || 0}</span></div>
+                                <td class="text-end">
+                                    <span class="fw-bold">${remainingUnits}</span>
+                                    <div class="text-muted small" style="font-size:11px;">Pack: ${packSize}</div>
                                 </td>
-                                <td>
-                                    <div class="small"><strong>Vendor:</strong> ${item.vendor_name || '—'}</div>
-                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
-                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'}</div>
-                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
-                                </td>
-                                <td>
+                                <td class="text-end font-monospace">${parseFloat(item.total_quantity).toFixed(2)}</td>
+                                <td class="text-end bg-success bg-opacity-10 fw-bold text-success font-monospace">${parseFloat(item.balance_quantity ?? item.total_quantity).toFixed(2)}</td>
+                                <td class="text-center">
                                     <div class="mb-1">${qcBadge}</div>
                                     <div>${statusPill}</div>
                                 </td>
-                                <td>
+                                <td class="text-center">
                                     <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/inbound/${item.stock_in_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
                                         <i class="bi bi-file-pdf"></i> PDF
                                     </a>
@@ -696,7 +719,7 @@ $(document).ready(function() {
                             </tr>`;
                         });
                     } else {
-                        inboundHtml = '<tr><td colspan="8" class="text-center text-muted py-4">No inbound records</td></tr>';
+                        inboundHtml = '<tr><td colspan="9" class="text-center text-muted py-4">No inbound records</td></tr>';
                     }
                     $('#inboundTableBody').html(inboundHtml);
 
@@ -727,24 +750,21 @@ $(document).ready(function() {
                                     <div class="text-muted small"><i class="bi bi-grid-3x3-gap"></i> ${palletPosDisplay !== '-' ? palletPosDisplay : (item.row_name || '-')}</div>
                                 </td>
                                 <td>
-                                    <div class="small"><strong>SAP:</strong> <span class="text-primary font-monospace">${item.sap_batch || '—'}</span></div>
-                                    <div class="small"><strong>Vendor:</strong> <span class="text-secondary font-monospace">${item.vendor_batch || '—'}</span></div>
+                                    <div class="small"><strong>SAP:</strong> <code class="text-primary font-monospace">${item.sap_batch || '—'}</code></div>
+                                    <div class="small"><strong>Vendor:</strong> <code class="text-secondary font-monospace">${item.vendor_batch || '—'}</code></div>
+                                    <div class="small text-muted" style="font-size:11px;">PO: ${item.po_no || '—'} | IBD: ${item.ibd_no || '—'}</div>
                                 </td>
                                 <td>
                                     <div class="small"><strong>Date:</strong> ${formatDate(item.created_at)}</div>
                                     <div class="mt-1">${getStockDurationBadge(item.created_at)}</div>
                                 </td>
+                                <td class="text-end fw-bold text-danger">${item.units_dispatch || 0}</td>
+                                <td class="text-end font-monospace">${parseFloat(item.dispatch_quantity).toFixed(2)}</td>
                                 <td>
-                                    <div class="small"><strong>Dispatch:</strong> <span class="font-monospace fw-bold text-danger">${parseFloat(item.dispatch_quantity).toFixed(2)}</span></div>
-                                    <div class="small"><strong>Units:</strong> <span class="font-monospace">${item.units_dispatch || 0}</span></div>
+                                    <div class="fw-bold">${item.customer_name || 'Warehouse Transfer'}</div>
+                                    <div class="text-muted small" style="font-size:11px;">Vehicle: ${item.vehicle_no || '—'} | Transporter: ${item.transporter_name || '—'}</div>
                                 </td>
-                                <td>
-                                    <div class="small"><strong>Customer:</strong> ${item.customer_name || 'Transfer'}</div>
-                                    <div class="small"><strong>Transporter:</strong> ${item.transporter_name || '—'}</div>
-                                    <div class="small"><strong>Vehicle:</strong> ${item.vehicle_no || '—'} (Driver: ${item.driver_name || '—'})</div>
-                                    <div class="small"><strong>PO:</strong> ${item.po_no || '—'} | <strong>IBD:</strong> ${item.ibd_no || '—'}</div>
-                                </td>
-                                <td>
+                                <td class="text-center">
                                     <a class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" target="_blank" href="${reportsBase}/outbound/${item.stock_out_id}/pdf" style="font-size:11px;padding:3px 8px;border-radius:4px;">
                                         <i class="bi bi-file-pdf"></i> PDF
                                     </a>
@@ -752,7 +772,7 @@ $(document).ready(function() {
                             </tr>`;
                         });
                     } else {
-                        outboundHtml = '<tr><td colspan="7" class="text-center text-muted py-4">No outbound records</td></tr>';
+                        outboundHtml = '<tr><td colspan="8" class="text-center text-muted py-4">No outbound records</td></tr>';
                     }
                     $('#outboundTableBody').html(outboundHtml);
 

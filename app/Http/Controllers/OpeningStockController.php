@@ -731,9 +731,12 @@ class OpeningStockController extends Controller
     public function importStore(Request $request)
     {
         $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt',
+            'csv_file'     => 'required|file|mimes:csv,txt',
             'warehouse_id' => 'nullable|exists:warehouses,id',
+            'import_mode'  => 'nullable|in:full_replace,update_only',
         ]);
+
+        $importMode = $request->input('import_mode', 'full_replace');
 
         $file = $request->file('csv_file');
         $path = $file->getRealPath();
@@ -782,12 +785,13 @@ class OpeningStockController extends Controller
             }
         }
 
-        // Item Code and Units Received are required
+        // Item Code is always required
         if (!isset($headerMap['Item Code'])) {
             fclose($handle);
             return back()->with('error', 'Missing required column "Item Code". Found: ' . implode(', ', $csvHeaders));
         }
-        if (!isset($headerMap['Units Received'])) {
+        // Units Received only required in full_replace mode
+        if ($importMode === 'full_replace' && !isset($headerMap['Units Received'])) {
             fclose($handle);
             return back()->with('error', 'Missing required column "Units Received". Found: ' . implode(', ', $csvHeaders));
         }
@@ -842,11 +846,15 @@ class OpeningStockController extends Controller
             if (count($row) <= 1 && ($row[0] === null || trim($row[0]) === '')) continue;
 
             $itemCode = $getCell($row, 'Item Code');
-            $units = $getCell($row, 'Units Received');
+            $units    = $getCell($row, 'Units Received');
             $rowErrors = [];
 
             if (empty($itemCode)) $rowErrors[] = 'Missing Item Code';
-            if (empty($units) || !is_numeric($units)) $rowErrors[] = 'Invalid Units Received';
+
+            // Units Received only required in full_replace mode
+            if ($importMode === 'full_replace' && (empty($units) || !is_numeric($units))) {
+                $rowErrors[] = 'Invalid Units Received';
+            }
 
             $product = null;
             if (!empty($itemCode)) {
@@ -854,23 +862,25 @@ class OpeningStockController extends Controller
                 if (!$product) {
                     // Excel often strips leading zeros, e.g. '002' becomes '2'. Try to find it.
                     $product = $allProducts->first(function($p) use ($itemCode) {
-                        return ltrim($p->item_code, '0') === ltrim($itemCode, '0') || 
+                        return ltrim($p->item_code, '0') === ltrim($itemCode, '0') ||
                                strtolower(trim($p->item_code)) === strtolower(trim($itemCode));
                     });
                 }
                 if (!$product) $rowErrors[] = "Product '{$itemCode}' not found";
             }
 
-            // Determine warehouse for this row
+            // Warehouse only relevant in full_replace mode
             $rowWarehouse = null;
-            if ($csvHasWarehouse) {
-                $whName = strtolower(trim($getCell($row, 'Warehouse')));
-                if (!empty($whName) && $allWarehouses->has($whName)) {
-                    $rowWarehouse = $allWarehouses[$whName];
+            if ($importMode === 'full_replace') {
+                if ($csvHasWarehouse) {
+                    $whName = strtolower(trim($getCell($row, 'Warehouse')));
+                    if (!empty($whName) && $allWarehouses->has($whName)) {
+                        $rowWarehouse = $allWarehouses[$whName];
+                    }
                 }
-            }
-            if (!$rowWarehouse && $request->warehouse_id) {
-                $rowWarehouse = $targetWarehouse;
+                if (!$rowWarehouse && $request->warehouse_id) {
+                    $rowWarehouse = $targetWarehouse;
+                }
             }
 
             if (!empty($rowErrors)) {
@@ -878,11 +888,6 @@ class OpeningStockController extends Controller
                 $skipped++;
                 continue;
             }
-
-            $qcValue = strtolower($getCell($row, 'Quality Check'));
-            if (in_array($qcValue, ['pass', 'approved'])) $qcValue = 'approved';
-            elseif (in_array($qcValue, ['fail', 'rejected'])) $qcValue = 'rejected';
-            else $qcValue = 'pending';
 
             $parseDate = function($dateStr) {
                 if (empty($dateStr)) return null;
@@ -892,22 +897,27 @@ class OpeningStockController extends Controller
                 return $dateStr;
             };
 
+            $qcRaw = strtolower($getCell($row, 'Quality Check'));
+            if (in_array($qcRaw, ['pass', 'approved'])) $qcValue = 'approved';
+            elseif (in_array($qcRaw, ['fail', 'rejected'])) $qcValue = 'rejected';
+            elseif (!empty($qcRaw)) $qcValue = 'pending';
+            else $qcValue = null; // not provided — don't overwrite
+
             $items[] = [
-                'record_id' => $getCell($row, 'Record ID'),
-                'product' => $product,
-                'units' => (int) $units,
-                'warehouse' => $rowWarehouse,
-                'ibd_no' => $getCell($row, 'IBD'),
-                'po_no' => $getCell($row, 'PO'),
-                'sap_batch' => $getCell($row, 'SAP Batch'),
-                'vendor_batch' => $getCell($row, 'Vendor Batch'),
-                'pallets_used' => '', // auto-calculated below
-                'mfg_date' => $parseDate($getCell($row, 'MFG Date')),
-                'expiry_date' => $parseDate($getCell($row, 'Expiry Date')),
+                'record_id'         => $getCell($row, 'Record ID'),
+                'product'           => $product,
+                'units'             => is_numeric($units) ? (int) $units : null,
+                'warehouse'         => $rowWarehouse,
+                'ibd_no'            => $getCell($row, 'IBD'),
+                'po_no'             => $getCell($row, 'PO'),
+                'sap_batch'         => $getCell($row, 'SAP Batch'),
+                'vendor_batch'      => $getCell($row, 'Vendor Batch'),
+                'mfg_date'          => $parseDate($getCell($row, 'MFG Date')),
+                'expiry_date'       => $parseDate($getCell($row, 'Expiry Date')),
                 'quality_clearance' => $qcValue,
-                'blocked' => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
-                'hold' => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
-                'remarks' => $getCell($row, 'Remarks'),
+                'blocked'           => in_array(strtolower($getCell($row, 'Blocked')), ['yes', '1', 'true']),
+                'hold'              => in_array(strtolower($getCell($row, 'Hold')), ['yes', '1', 'true']),
+                'remarks'           => $getCell($row, 'Remarks'),
             ];
         }
 
@@ -922,8 +932,55 @@ class OpeningStockController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
-                // Delete all existing opening stock records first to allow a clean override / replacement
+            DB::transaction(function () use ($importMode, $warehousePool, $items, $csvHasWarehouse, $request, &$imported, &$skipped, &$errors) {
+
+                // ── UPDATE ONLY MODE ──────────────────────────────────────────────
+                if ($importMode === 'update_only') {
+                    foreach ($items as $item) {
+                        $product = $item['product'];
+
+                        $query = StockInItem::whereHas('stockIn', function ($q) {
+                            $q->where('source_type', 'opening');
+                        })->where('product_id', $product->id);
+
+                        // Narrow to specific record if Record ID was provided
+                        if (!empty($item['record_id']) && is_numeric($item['record_id'])) {
+                            $query->where('id', (int) $item['record_id']);
+                        }
+
+                        $matchingItems = $query->get();
+
+                        if ($matchingItems->isEmpty()) {
+                            $errors[] = "No existing opening stock found for '{$product->item_code}'";
+                            $skipped++;
+                            continue;
+                        }
+
+                        // Build update payload — only update fields that are non-empty in CSV
+                        $updateData = [];
+                        if (!empty($item['ibd_no']))              $updateData['ibd_no']            = $item['ibd_no'];
+                        if (!empty($item['po_no']))               $updateData['po_no']             = $item['po_no'];
+                        if (!empty($item['sap_batch']))           $updateData['sap_batch']         = $item['sap_batch'];
+                        if (!empty($item['vendor_batch']))        $updateData['vendor_batch']      = $item['vendor_batch'];
+                        if (!empty($item['mfg_date']))            $updateData['mfg_date']          = $item['mfg_date'];
+                        if (!empty($item['expiry_date']))         $updateData['expiry_date']       = $item['expiry_date'];
+                        if ($item['quality_clearance'] !== null)  $updateData['quality_clearance'] = $item['quality_clearance'];
+                        if (!empty($item['remarks']))             $updateData['remarks']           = $item['remarks'];
+                        if ($item['blocked'])  $updateData['block_stock'] = true;
+                        if ($item['hold'])     $updateData['hold_stock']  = true;
+
+                        if (!empty($updateData)) {
+                            foreach ($matchingItems as $si) {
+                                $si->update($updateData);
+                            }
+                        }
+                        $imported++;
+                    }
+                    return; // done — no relocation
+                }
+
+                // ── FULL REPLACE MODE ────────────────────────────────────────────
+                // Delete all existing opening stock records first
                 $oldItems = StockInItem::whereHas('stockIn', function ($q) {
                     $q->where('source_type', 'opening');
                 })->get();
@@ -931,14 +988,9 @@ class OpeningStockController extends Controller
                     $oldItem->delete();
                 }
                 StockIn::where('source_type', 'opening')->delete();
-                
-                // We treat all imported items as new on this clean slate
-                $newItems = $items;
-                
 
-
-                // Step 4: Insert new items
-                foreach ($newItems as $item) {
+                // Insert new items
+                foreach ($items as $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
                     $packSize      = (float) $product->pack_size;
@@ -1095,11 +1147,25 @@ class OpeningStockController extends Controller
                 }
             });
 
-            $message = "Imported {$imported} product(s).";
-            if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
-            else $message .= " Auto-assigned to warehouses with available space.";
-            if ($skipped > 0) $message .= " {$skipped} skipped.";
-            if ($errors) $message .= " " . implode(' | ', array_slice($errors, 0, 10));
+            if ($importMode === 'update_only') {
+                $message = "Updated batch info for {$imported} product(s).";
+                if ($skipped > 0) $message .= " {$skipped} row(s) not found / skipped.";
+                if ($errors) $message .= " Details: " . implode(' | ', array_slice($errors, 0, 5));
+            } else {
+                $message = "Imported {$imported} product(s).";
+                if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
+                else $message .= " Auto-assigned to warehouses with available space.";
+                if ($skipped > 0) $message .= " {$skipped} row(s) skipped.";
+                if ($errors) $message .= " Errors: " . implode(' | ', array_slice($errors, 0, 5));
+            }
+
+            if ($skipped > 0 || $errors) {
+                return redirect()->route('opening-stock.import')
+                    ->with('error', $message);
+            }
+
+            return redirect()->route('opening-stock.index')
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             return back()->with('error', 'Import failed: ' . $e->getMessage());
@@ -1131,16 +1197,8 @@ class OpeningStockController extends Controller
         }
 
         $sortedIndices = array_keys($items);
-        usort($sortedIndices, function ($a, $b) use ($items) {
-            $aManual = !empty($items[$a]['warehouse_row_id']);
-            $bManual = !empty($items[$b]['warehouse_row_id']);
 
-            if ($aManual !== $bManual) {
-                return $aManual ? -1 : 1;
-            }
-
-            return $a <=> $b;
-        });
+        $allProposedPallets = [];
 
         foreach ($sortedIndices as $idx) {
             $itemData = $items[$idx];
@@ -1207,11 +1265,19 @@ class OpeningStockController extends Controller
                     if ($row) {
                         $palletNames = [];
                         for ($i = 0; $i < $split['pallets']; $i++) {
-                            $palletNames[] = $getPalletNameLocal($row, $split['pallet_start'], $i);
+                            $pName = $getPalletNameLocal($row, $split['pallet_start'], $i);
+                            $palletNames[] = $pName;
+                            $allProposedPallets[] = [
+                                'name'      => $pName,
+                                'row_idx'   => (int)$idx + 1,
+                                'row_id'    => $row->id,
+                                'is_active' => ($idx == $activeRowIndex),
+                            ];
                         }
 
                         $allocations[] = [
                             'row_id'         => $row->id,
+                            'form_row_idx'   => (int)$idx + 1,
                             'warehouse_name' => $row->warehouse->name,
                             'row_name'       => $row->row_name,
                             'pallet_start'   => $split['pallet_start'],
@@ -1231,7 +1297,6 @@ class OpeningStockController extends Controller
                 }
             }
 
-
             if ($idx == $activeRowIndex) {
                 $activeAllocations = $allocations;
                 $activePalletsUsed = $palletsUsed;
@@ -1240,11 +1305,12 @@ class OpeningStockController extends Controller
         }
 
         return response()->json([
-            'success' => true,
-            'allocations' => $activeAllocations,
-            'units' => $activeUnits,
-            'pallets_used' => $activePalletsUsed,
-            'remaining_units' => 0,
+            'success'              => true,
+            'allocations'          => $activeAllocations,
+            'units'                => $activeUnits,
+            'pallets_used'         => $activePalletsUsed,
+            'remaining_units'      => 0,
+            'all_proposed_pallets' => $allProposedPallets,
         ]);
     }
 

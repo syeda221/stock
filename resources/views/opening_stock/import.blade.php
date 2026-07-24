@@ -55,6 +55,36 @@
                     @csrf
 
                     <div class="mb-3">
+                        <label class="form-label fw-semibold small text-secondary">Import Mode <span class="text-danger">*</span></label>
+                        <div class="d-flex flex-column gap-2 mt-1">
+                            <label class="d-flex align-items-start gap-2 p-3 border rounded-3 cursor-pointer" style="cursor:pointer;" id="mode-update-label">
+                                <input type="radio" name="import_mode" value="update_only" id="mode_update_only" class="form-check-input mt-0 flex-shrink-0" checked>
+                                <div>
+                                    <div class="fw-semibold text-dark" style="font-size:13.5px;">
+                                        <i class="bi bi-pencil-square text-primary me-1"></i> Update Batch Info Only
+                                    </div>
+                                    <div class="text-muted" style="font-size:12px;">
+                                        Match existing stock by Item Code and update only IBD, PO, SAP Batch, Vendor Batch, dates etc.
+                                        <strong class="text-success">Warehouse &amp; pallet locations will NOT change.</strong>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="d-flex align-items-start gap-2 p-3 border rounded-3" style="cursor:pointer;" id="mode-replace-label">
+                                <input type="radio" name="import_mode" value="full_replace" id="mode_full_replace" class="form-check-input mt-0 flex-shrink-0">
+                                <div>
+                                    <div class="fw-semibold text-dark" style="font-size:13.5px;">
+                                        <i class="bi bi-arrow-repeat text-warning me-1"></i> Full Replace
+                                    </div>
+                                    <div class="text-muted" style="font-size:12px;">
+                                        Delete all existing opening stock and re-import from scratch with auto-assigned locations.
+                                        <strong class="text-danger">This will re-assign all pallet locations.</strong>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="warehouse-field">
                         <label class="form-label fw-semibold small text-secondary">Warehouse <small class="text-muted">(leave empty for auto-assignment)</small></label>
                         <select name="warehouse_id" class="form-select rounded-3 py-2">
                             <option value="">Auto-Assign (find available space)</option>
@@ -127,3 +157,57 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ── Import Mode Toggle ────────────────────────────────────────
+    const modeRadios      = document.querySelectorAll('input[name="import_mode"]');
+    const warehouseField  = document.getElementById('warehouse-field');
+    const updateLabel     = document.getElementById('mode-update-label');
+    const replaceLabel    = document.getElementById('mode-replace-label');
+
+    function applyMode() {
+        const selected = document.querySelector('input[name="import_mode"]:checked').value;
+        const isReplace = selected === 'full_replace';
+
+        // Show warehouse only for full replace
+        warehouseField.style.display = isReplace ? '' : 'none';
+
+        // Highlight active card
+        updateLabel.classList.toggle('border-primary', !isReplace);
+        updateLabel.classList.toggle('bg-primary', !isReplace);
+        updateLabel.classList.toggle('bg-opacity-10', !isReplace);
+        replaceLabel.classList.toggle('border-warning', isReplace);
+        replaceLabel.classList.toggle('bg-warning', isReplace);
+        replaceLabel.classList.toggle('bg-opacity-10', isReplace);
+    }
+
+    modeRadios.forEach(r => r.addEventListener('change', applyMode));
+    applyMode(); // init
+
+    @if(session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Import Successful!',
+            html: `{!! addslashes(session('success')) !!}`,
+            confirmButtonColor: '#0d6efd',
+            confirmButtonText: 'View Opening Stock',
+        }).then(function() {
+            window.location.href = '{{ route("opening-stock.index") }}';
+        });
+    @endif
+
+    @if(session('error'))
+        Swal.fire({
+            icon: 'error',
+            title: 'Import Issue',
+            html: `{!! addslashes(session('error')) !!}`,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'OK',
+        });
+    @endif
+});
+</script>
+@endpush

@@ -58,54 +58,30 @@ class OutboundController extends Controller
     private function sortOutboundBatches($batches)
     {
         return $batches->sort(function ($a, $b) {
-            // 1. Expiry Date (FEFO) - Near expiry date comes first
-            $aExp = $a->expiry_date ? (is_object($a->expiry_date) ? $a->expiry_date->format('Y-m-d') : (string)$a->expiry_date) : '9999-12-31';
-            $bExp = $b->expiry_date ? (is_object($b->expiry_date) ? $b->expiry_date->format('Y-m-d') : (string)$b->expiry_date) : '9999-12-31';
+            // 1. FEFO — nearest expiry date first (null expiry treated as far future)
+            $aExp = $a->expiry_date
+                ? (is_object($a->expiry_date) ? $a->expiry_date->format('Y-m-d') : (string)$a->expiry_date)
+                : '9999-12-31';
+            $bExp = $b->expiry_date
+                ? (is_object($b->expiry_date) ? $b->expiry_date->format('Y-m-d') : (string)$b->expiry_date)
+                : '9999-12-31';
+
             if ($aExp !== $bExp) {
-                return strcmp($aExp, $bExp);
+                return strcmp($aExp, $bExp); // earlier expiry first
             }
 
-            // 2. Partial Pallet Consolidation - Smaller remaining quantity comes first when expiry is equal
-            $aCpp  = (int) ($a->product?->cartons_per_pallet ?? 0);
-            $aPack = (float) ($a->pack_size_snapshot > 0 ? $a->pack_size_snapshot : 1);
-            $aCartons = (float) ($a->balance_quantity / $aPack);
-            $aIsPartial = false;
-            if ($aCpp > 0 && $a->pallets_used > 0) {
-                if ($aCartons < ($a->pallets_used * $aCpp)) {
-                    $aIsPartial = true;
-                }
+            // 2. Warehouse order — lower warehouse_id first (Warehouse 1 → Warehouse 2)
+            if ($a->warehouse_id != $b->warehouse_id) {
+                return $a->warehouse_id <=> $b->warehouse_id;
             }
 
-            $bCpp  = (int) ($b->product?->cartons_per_pallet ?? 0);
-            $bPack = (float) ($b->pack_size_snapshot > 0 ? $b->pack_size_snapshot : 1);
-            $bCartons = (float) ($b->balance_quantity / $bPack);
-            $bIsPartial = false;
-            if ($bCpp > 0 && $b->pallets_used > 0) {
-                if ($bCartons < ($b->pallets_used * $bCpp)) {
-                    $bIsPartial = true;
-                }
-            }
-
-            if ($aIsPartial && !$bIsPartial) {
-                return -1;
-            }
-            if (!$aIsPartial && $bIsPartial) {
-                return 1;
-            }
-
-            // If both are partial or both are full, sort by remaining cartons ascending so smaller partials are emptied to 0 first!
-            if (abs($aCartons - $bCartons) > 0.0001) {
-                return $aCartons < $bCartons ? -1 : 1;
-            }
-
-            // 3. Fallback: FIFO order (Created At -> Row ID -> Pallet Start)
-            if ($a->created_at != $b->created_at) {
-                return $a->created_at < $b->created_at ? -1 : 1;
-            }
+            // 3. Row order — lower warehouse_row_id first (Row 1 → Row 2 → ...)
             if ($a->warehouse_row_id != $b->warehouse_row_id) {
-                return $a->warehouse_row_id < $b->warehouse_row_id ? -1 : 1;
+                return ($a->warehouse_row_id ?: 0) <=> ($b->warehouse_row_id ?: 0);
             }
-            return ($a->pallet_start ?: 0) < ($b->pallet_start ?: 0) ? -1 : 1;
+
+            // 4. Pallet start — A001 before A002 etc.
+            return ($a->pallet_start ?: 0) <=> ($b->pallet_start ?: 0);
         });
     }
 
@@ -1662,22 +1638,61 @@ class OutboundController extends Controller
                     $palletNames[] = 'General Pallet';
                 }
 
+                // Determine if this batch has near expiry
+                // (Let's say if expiry date is within 3 months, it is near expiry)
+                $isNearExpiry = false;
+                if ($batch->expiry_date) {
+                    $expiry = \Carbon\Carbon::parse($batch->expiry_date);
+                    if ($expiry->isBefore(now()->addMonths(3))) {
+                        $isNearExpiry = true;
+                    }
+                }
+
                 $allocations[] = [
                     'row_id' => $batch->warehouse_row_id,
                     'warehouse_name' => optional($batch->warehouse)->name ?? 'Unassigned',
                     'row_name' => optional($batch->warehouseRow)->row_name ?? 'Unassigned',
                     'pallet_start' => $batch->pallet_start,
-                    'pallets_count' => count($palletNames),
                     'pallet_names' => $palletNames,
                     'units' => $unitsToTake,
+                    'is_near_expiry' => $isNearExpiry,
                     'type' => ($idx == $activeRowIndex && $manualRowId && $batch->warehouse_row_id == $manualRowId) ? 'manual' : 'new',
                 ];
 
                 $unitsRemaining -= $unitsToTake;
             }
 
+            // ── GROUP ALLOCATIONS BY WAREHOUSE + ROW ────────────────────────
+            // This groups same rows together, summing their units and merging pallet names.
+            $groupedAllocations = [];
+            foreach ($allocations as $alloc) {
+                $key = $alloc['warehouse_name'] . '_' . $alloc['row_id'];
+                if (!isset($groupedAllocations[$key])) {
+                    $groupedAllocations[$key] = [
+                        'row_id' => $alloc['row_id'],
+                        'warehouse_name' => $alloc['warehouse_name'],
+                        'row_name' => $alloc['row_name'],
+                        'pallet_start' => $alloc['pallet_start'],
+                        'pallet_names' => [],
+                        'units' => 0,
+                        'has_near_expiry' => false,
+                        'has_long_expiry' => false,
+                        'type' => $alloc['type']
+                    ];
+                }
+                
+                $groupedAllocations[$key]['units'] += $alloc['units'];
+                $groupedAllocations[$key]['pallet_names'] = array_unique(array_merge($groupedAllocations[$key]['pallet_names'], $alloc['pallet_names']));
+                
+                if ($alloc['is_near_expiry']) {
+                    $groupedAllocations[$key]['has_near_expiry'] = true;
+                } else {
+                    $groupedAllocations[$key]['has_long_expiry'] = true;
+                }
+            }
+
             if ($idx == $activeRowIndex) {
-                $activeAllocations = $allocations;
+                $activeAllocations = array_values($groupedAllocations);
                 $activeUnits = $units;
             }
         }

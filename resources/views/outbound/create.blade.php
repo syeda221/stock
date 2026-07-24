@@ -697,6 +697,78 @@ function fetchPreviewPicks() {
     });
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function getPalletDisplayName(rowName, palletNumber) {
+    if (!rowName) return 'Pallet ' + palletNumber;
+    const parts = rowName.split(/\s+to\s+/i);
+    const firstPallet = parts[0];
+    const match = firstPallet.match(/^(.*?)(\d+)$/);
+    if (match) {
+        const prefix = match[1];
+        const startNum = parseInt(match[2], 10);
+        const digits = match[2].length;
+        const actualNum = startNum + palletNumber - 1;
+        return prefix + String(actualNum).padStart(digits, '0');
+    }
+    return rowName + ' - P' + palletNumber;
+}
+
+function loadOutboundPalletGrid(rowId, rowName, pickedPalletNames) {
+    const gridDiv = document.getElementById('pallet-grid-visualizer');
+    gridDiv.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Loading pallet grid...</div>';
+
+    fetch('/warehouses/rows/' + rowId + '/pallets')
+        .then(r => r.json())
+        .then(data => {
+            gridDiv.innerHTML = '';
+            let gridHtml = '<div class="d-flex flex-wrap gap-2 justify-content-center">';
+            
+            data.pallets.forEach(pallet => {
+                const displayName = getPalletDisplayName(rowName, pallet.pallet_number);
+                const isPicked = pickedPalletNames.includes(displayName);
+                
+                if (isPicked) {
+                    gridHtml += `
+                        <div class="border border-success rounded p-2 text-center text-white shadow-sm d-flex flex-column justify-content-center align-items-center" style="width: 105px; min-height: 75px; background-color: #198754; font-size: 11px; font-weight: bold; position: relative;">
+                            <div class="fw-bold" style="font-size:12px;">${displayName}</div>
+                            <div class="text-white-50 small mt-1" style="font-size:9.5px; font-weight: normal; opacity: 0.95;">[ PICK ]</div>
+                        </div>
+                    `;
+                } else if (!pallet.is_empty) {
+                    gridHtml += `
+                        <div class="border border-danger-subtle rounded p-2 text-center shadow-sm d-flex flex-column justify-content-center align-items-center" style="width: 105px; min-height: 75px; background-color: #f8d7da; border-color: #f5c2c7; font-size: 11px; position: relative;">
+                            <div class="fw-bold text-danger" style="font-size:11px;">${displayName}</div>
+                            <div class="text-truncate text-muted fw-semibold" style="font-size:9px; margin-top: 2px; max-width: 90px;" title="${pallet.product_name || ''}">${pallet.product_name || '[ Occupied ]'}</div>
+                            <div class="text-muted" style="font-size:9px;">${pallet.carton_qty ? 'Qty: ' + pallet.carton_qty : '[ Occupied ]'}</div>
+                        </div>
+                    `;
+                } else {
+                    gridHtml += `
+                        <div class="border border-success-subtle rounded p-2 text-center shadow-sm d-flex flex-column justify-content-center align-items-center" style="width: 105px; min-height: 75px; background-color: #d1e7dd; border-color: #a3cfbb; font-size: 11px; position: relative;">
+                            <div class="fw-bold text-success" style="font-size:11px;">${displayName}</div>
+                            <div class="text-muted" style="font-size:10px; margin-top: 4px;">[ Empty ]</div>
+                        </div>
+                    `;
+                }
+            });
+            
+            gridHtml += '</div>';
+            gridDiv.innerHTML = gridHtml;
+        })
+        .catch(err => {
+            gridDiv.innerHTML = '<div class="text-danger small p-3">Failed to load row layout grid.</div>';
+        });
+}
+
 function renderModalAllocations(allocations) {
     const summaryDiv = document.getElementById('pallet-preview-summary');
     const gridDiv = document.getElementById('pallet-grid-visualizer');
@@ -708,38 +780,71 @@ function renderModalAllocations(allocations) {
     }
 
     let summaryHtml = '';
-    let palletNamesList = [];
 
-    allocations.forEach(alloc => {
+    allocations.forEach((alloc, index) => {
+        const isFirst = index === 0;
+        const activeClass = isFirst ? 'border-primary bg-primary-subtle' : 'bg-white';
+        const clickStyle = alloc.row_id ? 'cursor: pointer; transition: all 0.2s;' : '';
+        const clickClass = alloc.row_id ? `allocation-item-card p-2 mb-2 rounded border hover-shadow ${activeClass}` : 'p-2 mb-2 rounded border bg-light';
+        const rowIdAttr = alloc.row_id ? `data-row-id="${alloc.row_id}"` : '';
+        const rowNameAttr = alloc.row_name ? `data-row-name="${alloc.row_name}"` : '';
+        const palletNamesAttr = alloc.pallet_names ? `data-pallet-names="${escapeHtml(JSON.stringify(alloc.pallet_names))}"` : '';
+
+        // Build expiry indicators
+        let expiryBadges = '';
+        if (alloc.has_near_expiry) {
+            expiryBadges += `<span class="badge bg-danger text-white me-1" style="font-size: 10px;"><i class="bi bi-clock-history"></i> Near Expiry</span>`;
+        }
+        if (alloc.has_long_expiry) {
+            expiryBadges += `<span class="badge bg-success text-white" style="font-size: 10px;"><i class="bi bi-shield-check"></i> Long Expiry</span>`;
+        }
+
         summaryHtml += `
-            <div class="p-2 border rounded mb-2 bg-light">
-                <div class="d-flex justify-content-between font-weight-bold text-dark small">
-                    <span>Row: ${alloc.row_name}</span>
-                    <span class="text-primary">${alloc.units} Units</span>
+            <div class="${clickClass}" ${rowIdAttr} ${rowNameAttr} ${palletNamesAttr} style="${clickStyle}">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold text-dark" style="font-size:12px;">Warehouse: ${alloc.warehouse_name}</span>
+                    <span class="badge bg-primary">${alloc.units} Units</span>
                 </div>
-                <div class="text-muted small mt-1">
-                    Pallets: ${alloc.pallet_names.join(', ')}
+                <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:12px; color:#1e293b;">
+                    <div><strong>Row/Location:</strong> ${alloc.row_name}</div>
+                    <div>${expiryBadges}</div>
                 </div>
+                <div class="text-muted small mt-1" style="font-size:11px;">
+                    <strong>Pallets:</strong> ${alloc.pallet_names.join(', ')}
+                </div>
+                ${alloc.row_id ? '<div class="text-end mt-1"><span class="badge bg-primary-subtle text-primary" style="font-size: 9px;"><i class="bi bi-grid-3x3"></i> Click to View Grid</span></div>' : ''}
             </div>
         `;
-        palletNamesList = palletNamesList.concat(alloc.pallet_names);
     });
 
     summaryDiv.innerHTML = summaryHtml;
 
-    // Render interactive pallet visualizer grid with actual pallet names
-    let gridHtml = '<div class="d-flex flex-wrap gap-2 justify-content-center">';
-    palletNamesList.forEach(name => {
-        gridHtml += `
-            <div class="border rounded p-2 text-center bg-success text-white shadow-sm" style="min-width: 80px; font-size: 12px; font-weight: bold;">
-                ${name}<br>
-                <span style="font-size:9px; font-weight: normal; opacity: 0.95;">PICK</span>
-            </div>
-        `;
-    });
-    gridHtml += '</div>';
-    gridDiv.innerHTML = gridHtml;
+    // Load visual grid for the first allocation
+    const firstAlloc = allocations[0];
+    if (firstAlloc && firstAlloc.row_id) {
+        loadOutboundPalletGrid(firstAlloc.row_id, firstAlloc.row_name, firstAlloc.pallet_names);
+    } else {
+        gridDiv.innerHTML = '<p class="text-muted pt-5">Grid unavailable</p>';
+    }
 }
+
+document.addEventListener('click', function(e) {
+    const card = e.target.closest('.allocation-item-card');
+    if (card) {
+        const rowId = card.dataset.rowId;
+        const rowName = card.dataset.rowName;
+        const palletNames = JSON.parse(card.dataset.palletNames || '[]');
+        
+        document.querySelectorAll('.allocation-item-card').forEach(c => {
+            c.classList.remove('border-primary', 'bg-primary-subtle');
+            c.classList.add('bg-white');
+        });
+        card.classList.remove('bg-white');
+        card.classList.add('border-primary', 'bg-primary-subtle');
+        
+        loadOutboundPalletGrid(rowId, rowName, palletNames);
+    }
+});
 
 // Apply modal decisions back to the form row
 document.getElementById('modalApplyBtn').addEventListener('click', function() {

@@ -188,21 +188,118 @@
   {{-- Tabs Navigation --}}
   <ul class="nav nav-tabs px-3 pt-2 bg-light border-bottom" id="openingStockTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active fw-bold text-uppercase" id="products-tab" data-bs-toggle="tab" data-bs-target="#products-pane" type="button" role="tab" aria-controls="products-pane" aria-selected="true">
-        <i class="bi bi-box-seam me-1"></i> Stock by Product
+      <button class="nav-link active fw-bold text-uppercase" id="transactions-tab" data-bs-toggle="tab" data-bs-target="#transactions-pane" type="button" role="tab" aria-controls="transactions-pane" aria-selected="true">
+        <i class="bi bi-receipt me-1"></i> Opening Stock Sheets / Transactions
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link fw-bold text-uppercase" id="transactions-tab" data-bs-toggle="tab" data-bs-target="#transactions-pane" type="button" role="tab" aria-controls="transactions-pane" aria-selected="false">
-        <i class="bi bi-receipt me-1"></i> Stock Entries / Documents
+      <button class="nav-link fw-bold text-uppercase" id="products-tab" data-bs-toggle="tab" data-bs-target="#products-pane" type="button" role="tab" aria-controls="products-pane" aria-selected="false">
+        <i class="bi bi-box-seam me-1"></i> Stock Summary by Product
       </button>
     </li>
   </ul>
 
   <div class="tab-content" id="openingStockTabContent">
 
-    {{-- ================= TAB 1: PRODUCT LIST ================= --}}
-    <div class="tab-pane fade show active" id="products-pane" role="tabpanel" aria-labelledby="products-tab">
+    {{-- ================= TAB 1: TRANSACTION LIST (PRIMARY DEFAULT VIEW) ================= --}}
+    <div class="tab-pane fade show active" id="transactions-pane" role="tabpanel" aria-labelledby="transactions-tab">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle os-table">
+          <thead>
+            <tr class="table-dark">
+              <th width="46">#</th>
+              <th>Sheet / Doc #</th>
+              <th>Date &amp; Time</th>
+              <th>Warehouse</th>
+              <th>Items Included</th>
+              <th class="text-end">Total Cartons</th>
+              <th class="text-center">Total Pallets</th>
+              <th class="text-end">Total Qty (Weight)</th>
+              <th>Remarks</th>
+              <th class="text-center" width="240">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse($transactions as $tx)
+            <tr>
+              <td class="text-muted" style="font-size:11px;">{{ ($transactions->currentPage()-1)*$transactions->perPage()+$loop->iteration }}</td>
+              <td class="fw-bold" style="color:#1d4ed8; font-size:13px;">
+                <i class="bi bi-file-earmark-text me-1"></i>#OS-{{ $tx->id }}
+              </td>
+              <td style="font-size:11.5px;color:#64748b;">{{ $tx->created_at->format('d.m.Y H:i') }}</td>
+              <td>
+                @php
+                  $whNames = $tx->items->map(fn($i) => $i->warehouse->name ?? $tx->warehouse->name ?? 'Auto')->unique()->filter()->values();
+                @endphp
+                @if($whNames->count() > 1)
+                  <span class="pill-wh" title="{{ $whNames->join(', ') }}">
+                    <i class="bi bi-building"></i> {{ Str::limit($whNames->first(), 15) }} <small style="opacity:0.8;">(+{{ $whNames->count() - 1 }})</small>
+                  </span>
+                @else
+                  <span class="pill-wh"><i class="bi bi-building"></i> {{ $whNames->first() ?? 'Auto' }}</span>
+                @endif
+              </td>
+              <td>
+                @php
+                  $pNames = $tx->items->map(fn($i) => $i->product->name ?? null)->filter()->unique();
+                @endphp
+                <span class="badge bg-secondary" style="font-size:11px;font-weight:700;">{{ $tx->items->count() }} Items</span>
+                @if($pNames->isNotEmpty())
+                  <small class="text-muted ms-1" style="font-size:11px;">({{ Str::limit($pNames->join(', '), 35) }})</small>
+                @endif
+              </td>
+              <td class="text-end fw-bold" style="color:#0f172a;">{{ number_format($tx->items->sum('units_received')) }} ctn</td>
+              <td class="text-center">
+                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" style="font-size:11px;font-weight:700;">
+                  <i class="bi bi-layers me-1"></i>{{ $tx->items->sum('pallets_used') }}
+                </span>
+              </td>
+              <td class="text-end fw-bold" style="color:#059669;">{{ number_format($tx->items->sum('total_quantity'), 2) }}</td>
+              <td style="font-size:12px;color:#64748b;">{{ Str::limit($tx->remarks, 40) ?: '—' }}</td>
+              <td class="text-center">
+                <div class="d-flex gap-1 justify-content-center">
+                  <a href="{{ route('opening-stock.transaction.show', $tx) }}" class="btn btn-sm btn-info text-white fw-bold d-inline-flex align-items-center gap-1 shadow-sm" style="font-size:11px; padding:4px 10px; border-radius:6px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+                    <i class="bi bi-eye"></i> View Sheet
+                  </a>
+                  <a href="{{ route('opening-stock.transaction.edit', $tx) }}" class="btn btn-sm btn-warning text-white fw-bold d-inline-flex align-items-center gap-1 shadow-sm" style="font-size:11px; padding:4px 10px; border-radius:6px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    <i class="bi bi-pencil"></i> Edit Sheet
+                  </a>
+                  <form action="{{ route('opening-stock.transaction.destroy', $tx) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this complete opening stock transaction?');" style="display:inline;">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-sm btn-outline-danger" style="font-size:11px; padding:4px 8px; border-radius:6px;" title="Delete Sheet #OS-{{ $tx->id }}">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            @empty
+            <tr>
+              <td colspan="10" class="text-center py-5 text-muted">
+                <i class="bi bi-receipt" style="font-size:36px;display:block;opacity:.3;margin-bottom:8px;"></i>
+                No stock transactions found
+              </td>
+            </tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
+
+      @if($transactions->hasPages())
+      <div class="card-footer bg-light border-top py-3">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+          <div class="text-muted small">
+            Showing transactions <strong>{{ $transactions->firstItem() }}</strong> to <strong>{{ $transactions->lastItem() }}</strong> of <strong>{{ $transactions->total() }}</strong> entries
+          </div>
+          <div>{{ $transactions->links('pagination::bootstrap-5') }}</div>
+        </div>
+      </div>
+      @endif
+    </div>
+
+    {{-- ================= TAB 2: PRODUCT SUMMARY LIST ================= --}}
+    <div class="tab-pane fade" id="products-pane" role="tabpanel" aria-labelledby="products-tab">
 
       {{-- Filters --}}
       <div class="p-3 bg-light border-bottom">
@@ -272,7 +369,7 @@
               <th class="text-end">Total Units</th>
               <th class="text-center">Pallets</th>
               <th class="text-end">Total Qty</th>
-              <th class="text-center" width="120">Action</th>
+              <th class="text-center" width="280">Action</th>
             </tr>
           </thead>
           <tbody id="openingStockTableBody">
@@ -308,11 +405,12 @@
                 {{ rtrim(rtrim(number_format($item->total_qty,2),'0'),'.') }}
               </td>
               <td class="text-center">
-                <div class="d-flex gap-1 justify-content-center align-items-center">
+                <div class="d-flex gap-1 justify-content-center align-items-center flex-wrap">
                   <button class="os-details-btn view-batches-btn"
                           data-product-id="{{ $item->product_id }}"
-                          data-product-name="{{ $item->product->name }} ({{ $item->product->item_code }})">
-                    <i class="bi bi-list-columns-reverse"></i> Details
+                          data-product-name="{{ $item->product->name }} ({{ $item->product->item_code }})"
+                          title="View All Batches & Inventory Locations">
+                    <i class="bi bi-list-columns-reverse"></i> Batches
                   </button>
 
                   @php
@@ -322,33 +420,51 @@
                   @if($sIds->count() === 1)
                     <a href="{{ route('opening-stock.transaction.show', $sIds->first()) }}"
                        class="btn btn-sm btn-info fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
-                       style="font-size:11px; padding:5px 10px; border-radius:20px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);"
+                       style="font-size:11px; padding:4px 9px; border-radius:15px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);"
                        title="View Document #OS-{{ $sIds->first() }}">
                       <i class="bi bi-file-earmark-text"></i> #OS-{{ $sIds->first() }}
                     </a>
                     <a href="{{ route('opening-stock.transaction.edit', $sIds->first()) }}"
                        class="btn btn-sm btn-warning fw-bold text-white d-inline-flex align-items-center gap-1 shadow-sm"
-                       style="font-size:11px; padding:5px 10px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                       style="font-size:11px; padding:4px 9px; border-radius:15px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
                        title="Edit Sheet #OS-{{ $sIds->first() }}">
                       <i class="bi bi-pencil"></i> Edit
                     </a>
                   @elseif($sIds->count() > 1)
+                    <!-- View Sheet Dropdown -->
+                    <div class="btn-group">
+                      <button type="button" class="btn btn-sm btn-info fw-bold text-white dropdown-toggle d-inline-flex align-items-center gap-1 shadow-sm"
+                              data-bs-toggle="dropdown" aria-expanded="false"
+                              style="font-size:11px; padding:4px 9px; border-radius:15px; border:none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+                        <i class="bi bi-file-earmark-text"></i> View Sheet ({{ $sIds->count() }})
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:12px; border-radius:8px;">
+                        <li class="dropdown-header text-uppercase fw-bold" style="font-size:10px;">Select Sheet to View Details</li>
+                        @foreach($sIds as $sId)
+                          <li>
+                            <a class="dropdown-item d-flex align-items-center py-1 px-3"
+                               href="{{ route('opening-stock.transaction.show', $sId) }}">
+                              <i class="bi bi-file-earmark-text text-info me-2"></i> View Sheet <strong>#OS-{{ $sId }}</strong>
+                            </a>
+                          </li>
+                        @endforeach
+                      </ul>
+                    </div>
+
+                    <!-- Edit Sheet Dropdown -->
                     <div class="btn-group">
                       <button type="button" class="btn btn-sm btn-warning fw-bold text-white dropdown-toggle d-inline-flex align-items-center gap-1 shadow-sm"
                               data-bs-toggle="dropdown" aria-expanded="false"
-                              style="font-size:11px; padding:5px 12px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                              style="font-size:11px; padding:4px 9px; border-radius:15px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
                         <i class="bi bi-pencil-square"></i> Edit Sheet ({{ $sIds->count() }})
                       </button>
                       <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:12px; border-radius:8px;">
                         <li class="dropdown-header text-uppercase fw-bold" style="font-size:10px;">Select Sheet to Edit</li>
                         @foreach($sIds as $sId)
                           <li>
-                            <a class="dropdown-item d-flex justify-content-between align-items-center py-1 px-3"
+                            <a class="dropdown-item d-flex align-items-center py-1 px-3"
                                href="{{ route('opening-stock.transaction.edit', $sId) }}">
-                              <span><i class="bi bi-pencil text-warning me-1"></i> Edit <strong>#OS-{{ $sId }}</strong></span>
-                              <span class="badge bg-info-subtle text-info rounded-pill ms-2"
-                                    onclick="event.preventDefault(); event.stopPropagation(); window.location.href='{{ route('opening-stock.transaction.show', $sId) }}';"
-                                    title="View Sheet #OS-{{ $sId }}">View</span>
+                              <i class="bi bi-pencil text-warning me-2"></i> Edit Sheet <strong>#OS-{{ $sId }}</strong>
                             </a>
                           </li>
                         @endforeach
@@ -382,87 +498,6 @@
       @endif
     </div>
 
-    {{-- ================= TAB 2: TRANSACTION LIST ================= --}}
-    <div class="tab-pane fade" id="transactions-pane" role="tabpanel" aria-labelledby="transactions-tab">
-      <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle os-table">
-          <thead>
-            <tr>
-              <th width="46">#</th>
-              <th>Transaction ID</th>
-              <th>Date</th>
-              <th>Warehouse</th>
-              <th class="text-center">Products Count</th>
-              <th class="text-end">Total Cartons</th>
-              <th class="text-end">Total Weight</th>
-              <th>Remarks</th>
-              <th class="text-center" width="220">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($transactions as $tx)
-            <tr>
-              <td class="text-muted" style="font-size:11px;">{{ ($transactions->currentPage()-1)*$transactions->perPage()+$loop->iteration }}</td>
-              <td class="fw-bold" style="color:#1d4ed8;">#OS-{{ $tx->id }}</td>
-              <td style="font-size:11.5px;color:#64748b;">{{ $tx->created_at->format('d.m.Y H:i') }}</td>
-              <td>
-                @php
-                  $whNames = $tx->items->map(fn($i) => $i->warehouse->name ?? $tx->warehouse->name ?? 'Auto')->unique()->filter()->values();
-                @endphp
-                @if($whNames->count() > 1)
-                  <span class="pill-wh" title="{{ $whNames->join(', ') }}">
-                    <i class="bi bi-building"></i> {{ Str::limit($whNames->first(), 15) }} <small style="opacity:0.8;">(+{{ $whNames->count() - 1 }})</small>
-                  </span>
-                @else
-                  <span class="pill-wh"><i class="bi bi-building"></i> {{ $whNames->first() ?? 'Auto' }}</span>
-                @endif
-              </td>
-              <td class="text-center">
-                <span class="badge bg-secondary" style="font-size:11px;font-weight:700;">{{ $tx->items->count() }} Items</span>
-              </td>
-              <td class="text-end fw-bold">{{ number_format($tx->items->sum('units_received')) }}</td>
-              <td class="text-end fw-bold" style="color:#059669;">{{ number_format($tx->items->sum('total_quantity'), 2) }}</td>
-              <td style="font-size:12px;color:#64748b;">{{ Str::limit($tx->remarks, 50) }}</td>
-              <td class="text-center">
-                <div class="d-flex gap-1 justify-content-center">
-                  <a href="{{ route('opening-stock.transaction.show', $tx) }}" class="btn btn-sm btn-outline-primary" style="font-size:11px;padding:4px 10px;border-radius:6px;">
-                    <i class="bi bi-eye"></i> Details
-                  </a>
-                  <a href="{{ route('opening-stock.transaction.edit', $tx) }}" class="btn btn-sm btn-outline-warning" style="font-size:11px;padding:4px 10px;border-radius:6px;">
-                    <i class="bi bi-pencil"></i> Edit Entire Entry
-                  </a>
-                  <form action="{{ route('opening-stock.transaction.destroy', $tx) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this complete transaction?');" style="display:inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="btn btn-sm btn-outline-danger" style="font-size:11px;padding:4px 10px;border-radius:6px;">
-                      <i class="bi bi-trash"></i> Delete
-                    </button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-            @empty
-            <tr>
-              <td colspan="9" class="text-center py-5 text-muted">
-                <i class="bi bi-receipt" style="font-size:36px;display:block;opacity:.3;margin-bottom:8px;"></i>
-                No stock transactions found
-              </td>
-            </tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-
-      @if($transactions->hasPages())
-      <div class="card-footer bg-light border-top py-3">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-          <div class="text-muted small">
-            Showing transactions <strong>{{ $transactions->firstItem() }}</strong> to <strong>{{ $transactions->lastItem() }}</strong> of <strong>{{ $transactions->total() }}</strong> entries
-          </div>
-          <div>{{ $transactions->links('pagination::bootstrap-5') }}</div>
-        </div>
-      </div>
-      @endif
     </div>
 
   </div>

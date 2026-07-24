@@ -247,9 +247,9 @@ class WarehouseController extends Controller
         return response()->json($rows);
     }
 
-    public function getPallets($rowId, Request $request = null)
+    public function getPallets(Request $request, $rowId)
     {
-        $ignoreStockInId = $request ? $request->input('ignore_stock_in_id') : null;
+        $ignoreStockInId = $request->input('ignore_stock_in_id');
 
         if ($rowId === 'unassigned') {
             $query = StockInItem::with('product')

@@ -224,6 +224,7 @@
                                 <span class="badge bg-success-subtle text-success border border-success">[ ] Empty</span>
                                 <span class="badge bg-danger-subtle text-danger border border-danger">[ ] Occupied</span>
                                 <span class="badge bg-primary-subtle text-primary border border-primary">[ ] Proposed</span>
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning">[ ] Reserved (Other Row)</span>
                             </div>
                         </div>
                         <div id="modal-pallet-grid" class="d-flex flex-wrap gap-2 p-2 border rounded bg-light" style="max-height: 400px; overflow-y: auto; align-content: flex-start;">
@@ -245,9 +246,8 @@
 
 @push('scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-
-let rowIndex = 0;
+function initEditPage() {
+    let rowIndex = 0;
 let activeRow = null;
 let currentProposedPalletNames = [];
 const warehouses = @json($warehouses);
@@ -344,8 +344,26 @@ document.getElementById('openingStockForm').addEventListener('submit', function(
 });
 
 /* ================= ADD ROW ================= */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function addRow(prefilled = null) {
     const globalWarehouseVal = document.getElementById('global_warehouse_id').value;
+
+    let whOptionsHtml = '<option value="auto">Auto</option>';
+    warehouses.forEach(w => {
+        const selected = (prefilled && prefilled.warehouse_id == w.id) ? 'selected' : '';
+        whOptionsHtml += `<option value="${w.id}" ${selected}>${escapeHtml(w.name)}</option>`;
+    });
+
+    const prodTitle = prefilled ? escapeHtml((prefilled.product_name || '') + (prefilled.item_code ? ' (' + prefilled.item_code + ')' : '')) : '';
 
     const rowHtml = `
 <tr data-index="${rowIndex}">
@@ -353,7 +371,7 @@ function addRow(prefilled = null) {
 <div class="product-autocomplete-wrapper">
     <input type="text"
            class="form-control form-control-sm product-input"
-           value="${prefilled ? prefilled.product_name + ' (' + prefilled.item_code + ')' : ''}"
+           value="${prodTitle}"
            placeholder="Search product"
            autocomplete="off">
 </div>
@@ -363,43 +381,40 @@ function addRow(prefilled = null) {
        class="product-id">
 <input type="hidden"
        name="items[${rowIndex}][split_ids]"
-       value="${prefilled ? prefilled.split_ids : ''}">
+       value="${prefilled && prefilled.split_ids ? prefilled.split_ids : ''}">
 </td>
 
 <td>
 <select name="items[${rowIndex}][warehouse_id]" class="form-select form-select-sm warehouse-select">
-    <option value="auto">Auto</option>
-    @foreach($warehouses as $w)
-        <option value="{{ $w->id }}" ${prefilled && prefilled.warehouse_id == {{ $w->id }} ? 'selected' : ''}>{{ $w->name }}</option>
-    @endforeach
+    ${whOptionsHtml}
 </select>
 </td>
 
 <td>
-<input class="form-control form-control-sm product-code" value="${prefilled ? prefilled.item_code : ''}" readonly>
+<input class="form-control form-control-sm product-code" value="${prefilled && prefilled.item_code ? escapeHtml(prefilled.item_code) : ''}" readonly>
 </td>
 
 <td>
 <input type="number" min="1"
        name="items[${rowIndex}][units_received]"
-       value="${prefilled ? prefilled.units_received : ''}"
+       value="${prefilled && prefilled.units_received ? prefilled.units_received : ''}"
        class="form-control form-control-sm units"
        ${prefilled && prefilled.is_dispatched ? 'readonly' : ''}>
 </td>
 
 <td>
-<input class="form-control form-control-sm pack-size" value="${prefilled ? prefilled.pack_size : ''}" readonly>
+<input class="form-control form-control-sm pack-size" value="${prefilled && prefilled.pack_size ? prefilled.pack_size : ''}" readonly>
 </td>
 
 <td>
-<input class="form-control form-control-sm total-qty" value="${prefilled ? prefilled.total_quantity : ''}" readonly>
+<input class="form-control form-control-sm total-qty" value="${prefilled && prefilled.total_quantity ? prefilled.total_quantity : ''}" readonly>
 </td>
 
 <td>
 <div class="input-group input-group-sm">
     <input type="number" min="0"
            name="items[${rowIndex}][pallets_used]"
-           value="${prefilled ? prefilled.pallets_used : ''}"
+           value="${prefilled && prefilled.pallets_used ? prefilled.pallets_used : ''}"
            class="form-control form-control-sm pallets-used"
            placeholder="Auto"
            ${prefilled && prefilled.is_dispatched ? 'readonly' : ''}>
@@ -408,7 +423,7 @@ function addRow(prefilled = null) {
     </button>
 </div>
 <input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
-<input type="hidden" class="pallets-per-packing" value="${prefilled ? prefilled.cartons_per_pallet : ''}">
+<input type="hidden" class="pallets-per-packing" value="${prefilled && prefilled.cartons_per_pallet ? prefilled.cartons_per_pallet : ''}">
 <div class="manual-pallet-info mt-1 small text-primary" style="font-size:10px; font-weight:600; line-height: 1.1;">
     ${prefilled && prefilled.warehouse_row_id ? 'Row: ' + prefilled.warehouse_row_id + ', Start: ' + (prefilled.pallet_start || 'Auto') : ''}
 </div>
@@ -434,14 +449,14 @@ function addRow(prefilled = null) {
         ${prefilled && prefilled.is_dispatched ? 'disabled' : ''}>×</button>
 </td>
 
-<input type="hidden" name="items[${rowIndex}][sap_batch]" value="${prefilled ? prefilled.sap_batch : ''}">
-<input type="hidden" name="items[${rowIndex}][vendor_batch]" value="${prefilled ? prefilled.vendor_batch : ''}">
-<input type="hidden" name="items[${rowIndex}][ibd_no]" value="${prefilled ? prefilled.ibd_no : ''}">
-<input type="hidden" name="items[${rowIndex}][po_no]" value="${prefilled ? prefilled.po_no : ''}">
-<input type="hidden" name="items[${rowIndex}][mfg_date]" value="${prefilled ? prefilled.mfg_date : ''}">
-<input type="hidden" name="items[${rowIndex}][expiry_date]" value="${prefilled ? prefilled.expiry_date : ''}">
-<input type="hidden" name="items[${rowIndex}][warehouse_row_id]" class="manual-row-id" value="${prefilled ? prefilled.warehouse_row_id : ''}">
-<input type="hidden" name="items[${rowIndex}][pallet_start]" class="manual-pallet-start" value="${prefilled ? prefilled.pallet_start : ''}">
+<input type="hidden" name="items[${rowIndex}][sap_batch]" value="${prefilled && prefilled.sap_batch ? escapeHtml(prefilled.sap_batch) : ''}">
+<input type="hidden" name="items[${rowIndex}][vendor_batch]" value="${prefilled && prefilled.vendor_batch ? escapeHtml(prefilled.vendor_batch) : ''}">
+<input type="hidden" name="items[${rowIndex}][ibd_no]" value="${prefilled && prefilled.ibd_no ? escapeHtml(prefilled.ibd_no) : ''}">
+<input type="hidden" name="items[${rowIndex}][po_no]" value="${prefilled && prefilled.po_no ? escapeHtml(prefilled.po_no) : ''}">
+<input type="hidden" name="items[${rowIndex}][mfg_date]" value="${prefilled && prefilled.mfg_date ? prefilled.mfg_date : ''}">
+<input type="hidden" name="items[${rowIndex}][expiry_date]" value="${prefilled && prefilled.expiry_date ? prefilled.expiry_date : ''}">
+<input type="hidden" name="items[${rowIndex}][warehouse_row_id]" class="manual-row-id" value="${prefilled && prefilled.warehouse_row_id ? prefilled.warehouse_row_id : ''}">
+<input type="hidden" name="items[${rowIndex}][pallet_start]" class="manual-pallet-start" value="${prefilled && prefilled.pallet_start ? prefilled.pallet_start : ''}">
 </tr>
 `;
 
@@ -739,10 +754,19 @@ function fetchPreviewAndRender() {
             document.getElementById('pallet-preview-summary').innerHTML = `<div class="text-danger small">${response.message}</div>`;
             return;
         }
-
         let summaryHtml = '';
         currentProposedPalletNames = [];
+        currentAllProposedPallets = response.all_proposed_pallets || [];
         let firstAssignedRowId = null;
+        let firstAssignedRowIdx = null;
+
+        if (response.all_proposed_pallets && response.all_proposed_pallets.length > 0) {
+            response.all_proposed_pallets.forEach(function(p) {
+                if (p.is_active) {
+                    currentProposedPalletNames.push(p.name);
+                }
+            });
+        }
 
         if (response.allocations && response.allocations.length > 0) {
             response.allocations.forEach(function(alloc) {
@@ -750,7 +774,6 @@ function fetchPreviewAndRender() {
                 
                 let pNamesStr = '';
                 if (alloc.pallet_names && alloc.pallet_names.length > 0) {
-                    currentProposedPalletNames = currentProposedPalletNames.concat(alloc.pallet_names);
                     if (alloc.pallets_count > 1) {
                         pNamesStr = `<strong class="text-dark">${alloc.pallet_names[0]} to ${alloc.pallet_names[alloc.pallet_names.length - 1]}</strong> (${alloc.pallets_count} pallets contiguous)`;
                     } else {
@@ -759,11 +782,12 @@ function fetchPreviewAndRender() {
                 }
 
                 const rowIdAttr = alloc.row_id ? `data-row-id="${alloc.row_id}"` : '';
+                const rowIdxAttr = alloc.form_row_idx ? `data-row-idx="${alloc.form_row_idx}"` : '';
                 const clickStyle = alloc.row_id ? 'cursor: pointer; transition: all 0.2s;' : '';
                 const clickClass = alloc.row_id ? 'allocation-item-card p-2 mb-2 rounded border hover-shadow bg-white' : 'p-2 mb-2 rounded border bg-light';
 
                 summaryHtml += `
-                    <div class="${clickClass}" ${rowIdAttr} style="${clickStyle}">
+                    <div class="${clickClass}" ${rowIdAttr} ${rowIdxAttr} style="${clickStyle}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="badge ${badgeColor}">${alloc.type.toUpperCase()}</span>
                             <span class="text-muted fw-bold" style="font-size:11px;">${alloc.units} cartons</span>
@@ -775,16 +799,9 @@ function fetchPreviewAndRender() {
                     </div>
                 `;
 
-                if (!firstAssignedRowId && alloc.type !== 'partial') {
-                    if (isManual) {
-                        firstAssignedRowId = manualRowId;
-                    } else {
-                        const whObj = warehouses.find(w => w.name === alloc.warehouse_name);
-                        if (whObj && whObj.rows) {
-                            const rowObj = whObj.rows.find(r => r.row_name === alloc.row_name);
-                            if (rowObj) firstAssignedRowId = rowObj.id;
-                        }
-                    }
+                if (!firstAssignedRowId && alloc.row_id) {
+                    firstAssignedRowId = alloc.row_id;
+                    firstAssignedRowIdx = alloc.form_row_idx;
                 }
             });
 
@@ -817,7 +834,7 @@ function fetchPreviewAndRender() {
 
         const gridRowId = isManual ? manualRowId : firstAssignedRowId;
         if (gridRowId) {
-            loadPalletGridWithProposed(gridRowId, currentProposedPalletNames);
+            loadPalletGridWithProposed(gridRowId, currentAllProposedPallets, firstAssignedRowIdx);
             setTimeout(() => {
                 const activeCard = document.querySelector(`.allocation-item-card[data-row-id="${gridRowId}"]`);
                 if (activeCard) {
@@ -834,15 +851,28 @@ function fetchPreviewAndRender() {
     });
 }
 
-function loadPalletGridWithProposed(rowId, proposedNames) {
+function getPalletDisplayName(rowName, palletNumber) {
+    if (!rowName) return 'Pallet ' + palletNumber;
+    const parts = rowName.split(/\s+to\s+/i);
+    const firstPallet = parts[0];
+    const match = firstPallet.match(/^(.*?)(\d+)$/);
+    if (match) {
+        const prefix = match[1];
+        const startNum = parseInt(match[2], 10);
+        const digits = match[2].length;
+        const actualNum = startNum + palletNumber - 1;
+        return prefix + String(actualNum).padStart(digits, '0');
+    }
+    return rowName + ' - P' + palletNumber;
+}
+
+let currentAllProposedPallets = [];
+
+function loadPalletGridWithProposed(rowId, allProposedArray, activeCardRowIdx) {
     const gridContainer = document.getElementById('modal-pallet-grid');
     gridContainer.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border spinner-border-sm text-primary"></div> Loading pallet grid...</div>';
 
     let rowName = '';
-    let prefix = 'Pallet ';
-    let padLength = 0;
-    let usePrefixLogic = false;
-    let startNum = 1;
 
     warehouses.forEach(wh => {
         if (wh.rows) {
@@ -851,35 +881,30 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
         }
     });
 
-    if (rowName) {
-        const match = rowName.match(/^(.+?)(\d+)\s+to\s+/i);
-        if (match) {
-            prefix = match[1];
-            padLength = match[2].length;
-            startNum = parseInt(match[2], 10);
-            usePrefixLogic = true;
-        }
-    }
-
     $.get('/warehouses/rows/' + rowId + '/pallets?ignore_stock_in_id={{ $stockIn->id }}', function(data) {
 
         gridContainer.innerHTML = '';
-        
         let occupiedProposed = [];
+        let reservedOtherProposed = [];
 
         data.pallets.forEach(function(pallet) {
-            const currentNum = usePrefixLogic ? (startNum + pallet.pallet_number - 1) : pallet.pallet_number;
-            const displayName = usePrefixLogic 
-                ? prefix + String(currentNum).padStart(padLength, '0')
-                : 'Pallet ' + pallet.pallet_number;
+            const displayName = getPalletDisplayName(rowName, pallet.pallet_number);
 
-            const isProposed = proposedNames.some(name => {
-                const cleanName = name.split(' (')[0];
-                return cleanName === displayName;
-            });
+            let proposedItem = null;
+            if (Array.isArray(allProposedArray)) {
+                proposedItem = allProposedArray.find(p => {
+                    const clean = p.name.split(' (')[0];
+                    return p.row_id == rowId && clean === displayName;
+                });
+            }
 
-            if (isProposed && !pallet.is_empty) {
+            const isForActiveCard = proposedItem ? ((activeCardRowIdx && proposedItem.row_idx == activeCardRowIdx) || proposedItem.is_active) : false;
+
+            if (proposedItem && isForActiveCard && !pallet.is_empty) {
                 occupiedProposed.push(displayName);
+            }
+            if (proposedItem && !isForActiveCard && pallet.is_empty) {
+                reservedOtherProposed.push(`${displayName} (Row ${proposedItem.row_idx})`);
             }
 
             const box = document.createElement('div');
@@ -891,15 +916,26 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
             box.dataset.isEmpty = pallet.is_empty ? '1' : '0';
             box.dataset.displayName = displayName;
 
-            if (isProposed && pallet.is_empty) {
-                box.style.backgroundColor = '#cfe2ff';
-                box.style.borderColor = '#9ec5fe';
-                box.style.borderWidth = '2px';
-                box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
-                box.innerHTML = `
-                    <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
-                    <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
-                `;
+            if (proposedItem && pallet.is_empty) {
+                if (isForActiveCard) {
+                    box.style.backgroundColor = '#cfe2ff';
+                    box.style.borderColor = '#9ec5fe';
+                    box.style.borderWidth = '2px';
+                    box.style.boxShadow = '0 0 5px rgba(13, 110, 253, 0.5)';
+                    box.innerHTML = `
+                        <div class="fw-bold text-primary" style="font-size:11px;">${displayName}</div>
+                        <div class="text-muted fw-semibold" style="font-size:10px; margin-top: 4px;">[ Proposed ]</div>
+                    `;
+                } else {
+                    box.style.backgroundColor = '#fff3cd';
+                    box.style.borderColor = '#ffe69c';
+                    box.style.borderWidth = '2px';
+                    box.style.boxShadow = '0 0 4px rgba(255, 193, 7, 0.5)';
+                    box.innerHTML = `
+                        <div class="fw-bold text-warning-emphasis" style="font-size:11px;">${displayName}</div>
+                        <div class="text-dark-emphasis fw-bold" style="font-size:9.5px; margin-top: 4px;">[ Reserved (Row ${proposedItem.row_idx}) ]</div>
+                    `;
+                }
             } else if (pallet.is_empty) {
                 box.style.backgroundColor = '#d1e7dd';
                 box.style.borderColor = '#a3cfbb';
@@ -917,19 +953,46 @@ function loadPalletGridWithProposed(rowId, proposedNames) {
                 `;
             }
 
+            box.addEventListener('click', function() {
+                if (!pallet.is_empty) return;
+                if (!document.getElementById('mode_manual').checked) {
+                    Swal.fire('Info', 'Switch to "Manual Override" allocation mode to manually assign pallets.', 'info');
+                    return;
+                }
+                if (proposedItem && !isForActiveCard) {
+                    Swal.fire('Reserved Pallet', `Pallet ${displayName} is already reserved by Form Row ${proposedItem.row_idx}. Please select an available (empty) pallet.`, 'warning');
+                    return;
+                }
+                document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
+                fetchPreviewAndRender();
+            });
+
             gridContainer.appendChild(box);
         });
 
         const warningDiv = document.querySelector('.manual-warnings');
         if (warningDiv) {
+            const rangeInfoDiv = document.querySelector('.manual-range-info');
             if (occupiedProposed.length > 0) {
                 warningDiv.innerHTML = `⚠️ No Space Available: Pallet(s) ${occupiedProposed.join(', ')} are already occupied. Please select another starting position or row.`;
+                if (rangeInfoDiv) {
+                    rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-danger-subtle text-danger border-danger';
+                }
+            } else if (reservedOtherProposed.length > 0 && document.getElementById('mode_manual').checked) {
+                const isManualRowSelected = document.querySelector('.modal-manual-row').value == rowId;
+                if (isManualRowSelected) {
+                    warningDiv.innerHTML = `⚠️ Reserved Pallets: Pallet(s) ${reservedOtherProposed.join(', ')} are already reserved by previous form rows.`;
+                    if (rangeInfoDiv) {
+                        rangeInfoDiv.className = 'manual-range-info p-2 mb-2 border rounded small bg-warning-subtle text-warning-emphasis border-warning';
+                    }
+                } else {
+                    warningDiv.innerHTML = '';
+                }
             } else {
                 warningDiv.innerHTML = '';
             }
         }
     });
-
 }
 
 /* ================= MANUAL PALLET ALLOCATION MODAL EVENTS ================= */
@@ -1030,6 +1093,23 @@ document.getElementById('clearManualPalletBtn').addEventListener('click', functi
     bootstrap.Modal.getInstance(document.getElementById('palletManualModal')).hide();
 });
 
+document.addEventListener('click', function (e) {
+    const card = e.target.closest('.allocation-item-card');
+    if (card) {
+        const rowId = card.dataset.rowId;
+        const rowIdx = card.dataset.rowIdx;
+        if (rowId) {
+            document.querySelectorAll('.allocation-item-card').forEach(c => {
+                c.classList.add('bg-white');
+                c.classList.remove('border-primary', 'bg-primary-subtle');
+            });
+            card.classList.remove('bg-white');
+            card.classList.add('border-primary', 'bg-primary-subtle');
+            loadPalletGridWithProposed(rowId, currentAllProposedPallets, rowIdx);
+        }
+    }
+});
+
 /* ================= REMOVE ROW ================= */
 document.addEventListener('click', function (e) {
     if (e.target.classList.contains('removeRow')) {
@@ -1050,6 +1130,12 @@ if (groupedItems && groupedItems.length > 0) {
     }
 }
 
-});
+} // Close initEditPage
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEditPage);
+} else {
+    initEditPage();
+}
 </script>
 @endpush

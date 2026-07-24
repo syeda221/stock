@@ -1165,16 +1165,50 @@ $item->hold_stock ? 'Yes' : 'No',
             });
         }
 
-        $filename = 'all_stocks_report_' . date('Y-m-d_His') . '.csv';
+        $filename = 'all_stocks_report_' . date('Y-m-d_His') . '.xls';
         $headers = [
-            'Content-Type' => 'text/csv',
+            'Content-Type'        => 'application/vnd.ms-excel; charset=utf-8',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Pragma'              => 'no-cache',
+            'Expires'             => '0',
         ];
 
         $callback = function() use ($products, $request) {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, ['Item Code', 'Product Name', 'Category', 'UOM', 'Packing', 'Pack Size',
-                'Opening Stock', 'Inbound Stock', 'Available Units', 'Inbound Units', 'Outbound Stock', 'Balance Stock', 'Days in Warehouse']);
+            echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+            echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />';
+            echo '<style>
+                table { border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 11pt; }
+                th { background-color: #0d6efd; color: #ffffff; font-weight: bold; border: 1px solid #c0c0c0; padding: 6px; text-align: center; }
+                td { border: 1px solid #e0e0e0; padding: 6px; }
+                .text-left { text-align: left; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .bg-light-blue { background-color: #f0f8ff; }
+                .bg-light-green { background-color: #e8f5e9; }
+                .bg-light-yellow { background-color: #fffde7; }
+                .bold { font-weight: bold; }
+                .num-fmt { mso-number-format:"\#\,\#\#0\.00"; }
+                .int-fmt { mso-number-format:"\#\,\#\#0"; }
+            </style></head>';
+            echo '<body>';
+            echo '<table>';
+            echo '<thead>';
+            echo '<tr>';
+            echo '<th>Item Code</th>';
+            echo '<th>Product Name</th>';
+            echo '<th>Category</th>';
+            echo '<th>UOM</th>';
+            echo '<th>Packing</th>';
+            echo '<th>Pack Size</th>';
+            echo '<th style="background-color: #6c757d;">Opening Stock</th>';
+            echo '<th style="background-color: #0dcaf0; color: #000;">Inbound Stock</th>';
+            echo '<th style="background-color: #31d2f2; color: #000;">Available Units</th>';
+            echo '<th style="background-color: #ffc107; color: #000;">Outbound Stock</th>';
+            echo '<th style="background-color: #198754;">Balance Stock</th>';
+            echo '<th>Days in WH</th>';
+            echo '</tr>';
+            echo '</thead>';
+            echo '<tbody>';
 
             foreach ($products as $product) {
                 $openingQuery = DB::table('stock_in_items')
@@ -1217,9 +1251,6 @@ $item->hold_stock ? 'Yes' : 'No',
                 $balance = $balanceQuery->sum('stock_in_items.balance_quantity');
 
                 if ($opening > 0 || $inbound > 0 || $outbound > 0 || $balance > 0) {
-                    $inboundUnits = $product->pack_size > 0
-                        ? round($inbound / $product->pack_size)
-                        : 0;
                     $currentUnits = $product->pack_size > 0
                         ? round($balance / $product->pack_size)
                         : 0;
@@ -1230,26 +1261,29 @@ $item->hold_stock ? 'Yes' : 'No',
                         ->min('created_at');
                     $daysInWarehouse = $firstStockDate
                         ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($firstStockDate)->startOfDay())
-                        : '';
+                        : '—';
 
-                    fputcsv($file, [
-                        $product->item_code,
-                        $product->name,
-                        $product->category?->name ?? '-',
-                        $product->uom?->name ?? '-',
-                        $product->packingType?->name ?? '-',
-                        $product->pack_size,
-                        $opening,
-                        $inbound,
-                        $currentUnits,
-                        $inboundUnits,
-                        $outbound,
-                        $balance,
-                        $daysInWarehouse,
-                    ]);
+                    echo '<tr>';
+                    echo '<td class="text-center font-monospace">' . htmlspecialchars($product->item_code) . '</td>';
+                    echo '<td class="text-left bold">' . htmlspecialchars($product->name) . '</td>';
+                    echo '<td class="text-left">' . htmlspecialchars($product->category?->name ?? '—') . '</td>';
+                    echo '<td class="text-center">' . htmlspecialchars($product->uom?->name ?? '—') . '</td>';
+                    echo '<td class="text-center">' . htmlspecialchars($product->packingType?->name ?? '—') . '</td>';
+                    echo '<td class="text-center int-fmt">' . htmlspecialchars($product->pack_size) . '</td>';
+                    echo '<td class="text-right num-fmt bg-light-blue">' . $opening . '</td>';
+                    echo '<td class="text-right num-fmt bg-light-blue">' . $inbound . '</td>';
+                    echo '<td class="text-right int-fmt bg-light-yellow bold">' . $currentUnits . '</td>';
+                    echo '<td class="text-right num-fmt bg-light-yellow">' . $outbound . '</td>';
+                    echo '<td class="text-right num-fmt bg-light-green bold">' . $balance . '</td>';
+                    echo '<td class="text-center">' . $daysInWarehouse . '</td>';
+                    echo '</tr>';
                 }
             }
-            fclose($file);
+
+            echo '</tbody>';
+            echo '</table>';
+            echo '</body>';
+            echo '</html>';
         };
 
         return response()->stream($callback, 200, $headers);
@@ -1265,7 +1299,7 @@ $item->hold_stock ? 'Yes' : 'No',
         // Get opening stock batches with vendor, transporter, vehicle, etc.
         $openingBatches = DB::table('stock_in_items')
             ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
-            ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
@@ -1306,7 +1340,7 @@ $item->hold_stock ? 'Yes' : 'No',
         // Get inbound batches with vendor, transporter, vehicle, etc.
         $inboundBatches = DB::table('stock_in_items')
             ->join('stock_ins', 'stock_in_items.stock_in_id', '=', 'stock_ins.id')
-            ->join('warehouses', 'stock_ins.warehouse_id', '=', 'warehouses.id')
+            ->join('warehouses', 'stock_in_items.warehouse_id', '=', 'warehouses.id')
             ->leftJoin('vendors', 'stock_ins.vendor_id', '=', 'vendors.id')
             ->leftJoin('transporters', 'stock_ins.transporter_id', '=', 'transporters.id')
             ->leftJoin('warehouse_rows', 'stock_in_items.warehouse_row_id', '=', 'warehouse_rows.id')
@@ -1487,6 +1521,11 @@ $item->hold_stock ? 'Yes' : 'No',
         }
         if ($request->filled('date_to')) {
             $inboundQuery->whereDate('stock_in_items.created_at', '<=', $request->date_to);
+        }
+        if ($request->boolean('near_expiry')) {
+            $inboundQuery->whereNotNull('stock_in_items.expiry_date')
+                         ->where('stock_in_items.expiry_date', '>=', now()->toDateString())
+                         ->where('stock_in_items.expiry_date', '<=', now()->addMonths(3)->toDateString());
         }
         if ($request->filled('source_type')) {
             $inboundQuery->whereIn('stock_ins.source_type', (array)$request->source_type);

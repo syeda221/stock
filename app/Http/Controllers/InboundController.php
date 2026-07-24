@@ -232,16 +232,8 @@ class InboundController extends Controller
         }
 
         $sortedIndices = array_keys($items);
-        usort($sortedIndices, function ($a, $b) use ($items) {
-            $aManual = !empty($items[$a]['warehouse_row_id']);
-            $bManual = !empty($items[$b]['warehouse_row_id']);
 
-            if ($aManual !== $bManual) {
-                return $aManual ? -1 : 1;
-            }
-
-            return $a <=> $b;
-        });
+        $allProposedPallets = [];
 
         foreach ($sortedIndices as $idx) {
             $itemData = $items[$idx];
@@ -251,7 +243,6 @@ class InboundController extends Controller
             $palletsUsed = isset($itemData['pallets_used']) ? (int) $itemData['pallets_used'] : 0;
             $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
             $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
-
 
             $splitIdsStr = $itemData['split_ids'] ?? '';
             $ignoreItemIds = array_filter(array_map('intval', explode(',', $splitIdsStr)));
@@ -320,7 +311,14 @@ class InboundController extends Controller
                     if ($row) {
                         $palletNames = [];
                         for ($i = 0; $i < $split['pallets']; $i++) {
-                            $palletNames[] = $getPalletNameLocal($row, $split['pallet_start'], $i);
+                            $pName = $getPalletNameLocal($row, $split['pallet_start'], $i);
+                            $palletNames[] = $pName;
+                            $allProposedPallets[] = [
+                                'name'      => $pName,
+                                'row_idx'   => (int)$idx + 1,
+                                'row_id'    => $row->id,
+                                'is_active' => ($idx == $activeRowIndex),
+                            ];
                         }
 
                         $allocations[] = [
@@ -328,6 +326,7 @@ class InboundController extends Controller
                             'warehouse_name' => $row->warehouse->name,
                             'row_name'       => $row->row_name,
                             'row_id'         => $row->id,
+                            'form_row_idx'   => (int)$idx + 1,
                             'pallets_count'  => $split['pallets'],
                             'pallet_names'   => $palletNames,
                             'units'          => $split['units'],
@@ -350,8 +349,9 @@ class InboundController extends Controller
         }
 
         return response()->json([
-            'success' => true,
-            'allocations' => $activeAllocations,
+            'success'              => true,
+            'allocations'          => $activeAllocations,
+            'all_proposed_pallets' => $allProposedPallets,
         ]);
     }
 
