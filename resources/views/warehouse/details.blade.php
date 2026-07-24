@@ -103,6 +103,8 @@
                             <th>Product</th>
                             <th>SAP Batch</th>
                             <th>Vendor Batch</th>
+                            <th class="text-center">MFG Date</th>
+                            <th class="text-center">Expiry Date</th>
                             <th class="text-end">Cartons</th>
                             <th class="text-end">Max Cartons/Pallet</th>
                             <th>Status</th>
@@ -235,6 +237,9 @@ $(document).ready(function() {
                     ? prefix + String(currentNum).padStart(padLength, '0')
                     : 'Pallet ' + pallet.pallet_number;
 
+                const mfgDate = pallet.is_empty ? '—' : (pallet.mfg_date || '—');
+                const expiryDate = pallet.is_empty ? '—' : (pallet.expiry_date || '—');
+
                 html += `
                     <tr class="${pallet.is_empty ? 'table-light' : (overCapacity ? 'table-danger' : '')}">
                         <td class="text-muted">${pallet.pallet_number}</td>
@@ -243,6 +248,8 @@ $(document).ready(function() {
                         <td>${productName}</td>
                         <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">${sapBatch}</span></td>
                         <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25">${vendorBatch}</span></td>
+                        <td class="text-center"><small class="text-muted">${mfgDate}</small></td>
+                        <td class="text-center"><small class="fw-bold">${expiryDate}</small></td>
                         <td class="text-end ${cartonClass}">${cartons}${overBadge}</td>
                         <td class="text-end">${maxCartons}</td>
                         <td>${statusBadge}</td>

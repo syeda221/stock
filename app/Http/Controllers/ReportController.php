@@ -1220,7 +1220,7 @@ $item->hold_stock ? 'Yes' : 'No',
             }
         }
 
-        // Format warehouse display
+        // Format warehouse display using actual pallet balances (FIFO-aware)
         foreach ($items as $item) {
             $item->warehouse_display = '—';
             if ($item->pallet_start !== null && $item->row_name) {
@@ -1230,28 +1230,27 @@ $item->hold_stock ? 'Yes' : 'No',
                 if ($rowLetter) {
                     $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($whId, 2, '0', STR_PAD_LEFT);
                     
-                    // Retrieve product cartons_per_pallet to calculate actual active pallets dynamically
-                    $product = DB::table('products')->where('item_code', $item->item_code)->first();
-                    $cpp = $product && $product->cartons_per_pallet > 0 ? (int)$product->cartons_per_pallet : 0;
-                    
-                    $packSize = $item->pack_size > 0 ? $item->pack_size : 1;
-                    $remainingUnits = ceil($item->quantity / $packSize);
-                    
-                    $activePallets = 1;
-                    if ($cpp > 0 && $remainingUnits > 0) {
-                        $activePallets = ceil($remainingUnits / $cpp);
-                    }
-                    if ($activePallets > $item->pallets_used) {
-                        $activePallets = $item->pallets_used;
-                    }
-
-                    $pStart = (int) $item->pallet_start;
-                    $startName = $rowLetter . str_pad($pStart, 3, '0', STR_PAD_LEFT);
-                    if ($activePallets > 1) {
-                        $endName = $rowLetter . str_pad($pStart + $activePallets - 1, 3, '0', STR_PAD_LEFT);
-                        $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
-                    } else {
-                        $item->warehouse_display = "{$whPrefix}.{$startName}";
+                    // Use StockInItem model to get actual per-pallet balances (FIFO drain aware)
+                    $stockInItem = \App\Models\StockInItem::with('product')->find($item->id);
+                    if ($stockInItem) {
+                        $palletBalances = $stockInItem->getPalletBalances();
+                        // Keys are 0-based pallet indices relative to pallet_start
+                        $activeIndices = array_keys($palletBalances);
+                        if (!empty($activeIndices)) {
+                            $firstActiveIdx = min($activeIndices);
+                            $lastActiveIdx = max($activeIndices);
+                            $pStart = (int) $item->pallet_start;
+                            $actualStart = $pStart + $firstActiveIdx;
+                            $actualEnd = $pStart + $lastActiveIdx;
+                            
+                            $startName = $rowLetter . str_pad($actualStart, 3, '0', STR_PAD_LEFT);
+                            if ($actualStart < $actualEnd) {
+                                $endName = $rowLetter . str_pad($actualEnd, 3, '0', STR_PAD_LEFT);
+                                $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
+                            } else {
+                                $item->warehouse_display = "{$whPrefix}.{$startName}";
+                            }
+                        }
                     }
                 }
             }

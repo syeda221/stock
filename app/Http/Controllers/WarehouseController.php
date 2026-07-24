@@ -321,6 +321,8 @@ class WarehouseController extends Controller
                     'carton_capacity' => $maxPerPallet,
                     'is_empty' => false,
                     'is_over_capacity' => $itemIsOverCapacity,
+                    'mfg_date' => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '—',
+                    'expiry_date' => $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '—',
                 ];
             }
 
