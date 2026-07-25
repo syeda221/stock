@@ -164,13 +164,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/qc-status/bulk-update', [QcStatusController::class, 'bulkUpdate'])->name('qc.bulk.update');
     Route::post('/qc-management/auto-reject-expired', [QcStatusController::class, 'autoRejectExpired'])->name('qc.auto.reject');
 
-    // Pallet Transfers (Pending Controller Implementation)
-    // Route::get('/pallet-transfers', [PalletTransferController::class, 'index'])->name('pallet-transfers.index');
-    // Route::get('/pallet-transfers/create', [PalletTransferController::class, 'create'])->name('pallet-transfers.create');
-    // Route::post('/pallet-transfers', [PalletTransferController::class, 'store'])->name('pallet-transfers.store');
-    // Route::get('/pallet-transfers/api/occupied-pallets', [PalletTransferController::class, 'getOccupiedPallets'])->name('pallet-transfers.occupied');
-    // Route::get('/pallet-transfers/api/free-pallets', [PalletTransferController::class, 'getFreePallets'])->name('pallet-transfers.free');
-    // Route::get('/pallet-transfers/{id}/pdf', [PalletTransferController::class, 'pdf'])->name('pallet-transfers.pdf');
+    // Stock Relocation & Pallet Transfers
+    Route::get('/stock-transfers', [\App\Http\Controllers\StockTransferController::class, 'index'])->name('stock-transfers.index');
+    Route::post('/stock-transfers', [\App\Http\Controllers\StockTransferController::class, 'store'])->name('stock-transfers.store');
+    Route::get('/stock-transfers/product-locations/{product}', [\App\Http\Controllers\StockTransferController::class, 'getProductLocations'])->name('stock-transfers.product-locations');
 
     // Outbound Routes
    // ================= OUTBOUND =================
@@ -235,7 +232,9 @@ Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->n
         Route::get('/stock-details/{product}', [ReportController::class, 'stockDetails'])->name('stock-details');
         // PDF endpoints for individual entries
         Route::get('/inbound/{stockIn}/pdf', [ReportController::class, 'inboundPdf'])->name('inbound.pdf');
+        Route::get('/inbound/pdf/{stockIn}', [ReportController::class, 'inboundPdf']);
         Route::get('/outbound/{stockOut}/pdf', [ReportController::class, 'outboundPdf'])->name('outbound.pdf');
+        Route::get('/outbound/pdf/{stockOut}', [ReportController::class, 'outboundPdf']);
     });
 
     // Roles & Permissions

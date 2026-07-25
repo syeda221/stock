@@ -367,7 +367,7 @@
                             <td class="text-nowrap">
                                 <small class="text-muted">{{ \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y') }}</small>
                                 <br>
-                                <small class="text-muted opacity-75">{{ \Carbon\Carbon::parse($entry->created_at)->format('H:i') }}</small>
+                                <small class="text-muted opacity-75">{{ \Carbon\Carbon::parse($entry->created_at)->format('h:i A') }}</small>
                             </td>
                             <td class="text-center">
                                 @if($isIn)

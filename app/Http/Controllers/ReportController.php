@@ -32,11 +32,30 @@ class ReportController extends Controller
             $query->where('warehouse_id', $request->warehouse_id);
         }
 
-        if ($request->filled('invoice_no')) {
-            $query->where(function($q) use ($request) {
-                $q->where('inbound_invoice_no', 'like', '%' . $request->invoice_no . '%')
-                  ->orWhere('dispatched_invoice_no', 'like', '%' . $request->invoice_no . '%');
-            });
+        // Multiple invoice filter (handles array, comma-separated string, or single string)
+        if ($request->filled('inbound_invoice') || $request->filled('invoice_no')) {
+            $rawInvoices = (array) ($request->inbound_invoice ?? $request->invoice_no);
+            $cleanInvoices = [];
+            foreach ($rawInvoices as $item) {
+                if (is_string($item)) {
+                    foreach (explode(',', $item) as $part) {
+                        $trimmed = trim($part);
+                        if ($trimmed !== '') {
+                            $cleanInvoices[] = $trimmed;
+                        }
+                    }
+                }
+            }
+            if (!empty($cleanInvoices)) {
+                $query->where(function($q) use ($cleanInvoices) {
+                    $q->whereIn('inbound_invoice_no', $cleanInvoices)
+                      ->orWhereIn('dispatched_invoice_no', $cleanInvoices);
+                    foreach ($cleanInvoices as $inv) {
+                        $q->orWhere('inbound_invoice_no', 'like', '%' . $inv . '%')
+                          ->orWhere('dispatched_invoice_no', 'like', '%' . $inv . '%');
+                    }
+                });
+            }
         }
 
         // Filter by QC status (quality_clearance)
@@ -67,11 +86,29 @@ class ReportController extends Controller
         if ($request->filled('warehouse_id')) {
             $baseQuery->where('warehouse_id', $request->warehouse_id);
         }
-        if ($request->filled('invoice_no')) {
-            $baseQuery->where(function($q) use ($request) {
-                $q->where('inbound_invoice_no', 'like', '%' . $request->invoice_no . '%')
-                  ->orWhere('dispatched_invoice_no', 'like', '%' . $request->invoice_no . '%');
-            });
+        if ($request->filled('inbound_invoice') || $request->filled('invoice_no')) {
+            $rawInvoices = (array) ($request->inbound_invoice ?? $request->invoice_no);
+            $cleanInvoices = [];
+            foreach ($rawInvoices as $item) {
+                if (is_string($item)) {
+                    foreach (explode(',', $item) as $part) {
+                        $trimmed = trim($part);
+                        if ($trimmed !== '') {
+                            $cleanInvoices[] = $trimmed;
+                        }
+                    }
+                }
+            }
+            if (!empty($cleanInvoices)) {
+                $baseQuery->where(function($q) use ($cleanInvoices) {
+                    $q->whereIn('inbound_invoice_no', $cleanInvoices)
+                      ->orWhereIn('dispatched_invoice_no', $cleanInvoices);
+                    foreach ($cleanInvoices as $inv) {
+                        $q->orWhere('inbound_invoice_no', 'like', '%' . $inv . '%')
+                          ->orWhere('dispatched_invoice_no', 'like', '%' . $inv . '%');
+                    }
+                });
+            }
         }
         if ($request->filled('qc_status')) {
             $baseQuery->whereHas('items', function($q) use ($request) {
@@ -110,7 +147,23 @@ class ReportController extends Controller
         $vendors = \App\Models\Vendor::orderBy('name', 'asc')->get();
         $warehouses = \App\Models\Warehouse::orderBy('name', 'asc')->get();
 
-        return view('reports.inbound', compact('stockIns', 'summary', 'vendors', 'warehouses'));
+        $inboundInvoicesList = DB::table('stock_ins')
+            ->whereNotNull('inbound_invoice_no')
+            ->where('inbound_invoice_no', '!=', '')
+            ->whereIn('source_type', ['inbound'])
+            ->pluck('inbound_invoice_no')
+            ->concat(
+                DB::table('stock_ins')
+                    ->whereNotNull('dispatched_invoice_no')
+                    ->where('dispatched_invoice_no', '!=', '')
+                    ->whereIn('source_type', ['inbound'])
+                    ->pluck('dispatched_invoice_no')
+            )
+            ->unique()
+            ->sort()
+            ->values();
+
+        return view('reports.inbound', compact('stockIns', 'summary', 'vendors', 'warehouses', 'inboundInvoicesList'));
     }
 
     public function outbound(Request $request)
@@ -206,11 +259,29 @@ class ReportController extends Controller
         if ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
         }
-        if ($request->filled('invoice_no')) {
-            $query->where(function($q) use ($request) {
-                $q->where('inbound_invoice_no', 'like', '%' . $request->invoice_no . '%')
-                  ->orWhere('dispatched_invoice_no', 'like', '%' . $request->invoice_no . '%');
-            });
+        if ($request->filled('inbound_invoice') || $request->filled('invoice_no')) {
+            $rawInvoices = (array) ($request->inbound_invoice ?? $request->invoice_no);
+            $cleanInvoices = [];
+            foreach ($rawInvoices as $item) {
+                if (is_string($item)) {
+                    foreach (explode(',', $item) as $part) {
+                        $trimmed = trim($part);
+                        if ($trimmed !== '') {
+                            $cleanInvoices[] = $trimmed;
+                        }
+                    }
+                }
+            }
+            if (!empty($cleanInvoices)) {
+                $query->where(function($q) use ($cleanInvoices) {
+                    $q->whereIn('inbound_invoice_no', $cleanInvoices)
+                      ->orWhereIn('dispatched_invoice_no', $cleanInvoices);
+                    foreach ($cleanInvoices as $inv) {
+                        $q->orWhere('inbound_invoice_no', 'like', '%' . $inv . '%')
+                          ->orWhere('dispatched_invoice_no', 'like', '%' . $inv . '%');
+                    }
+                });
+            }
         }
         if ($request->filled('qc_status')) {
             $query->whereHas('items', function($q) use ($request) {
@@ -364,7 +435,7 @@ class ReportController extends Controller
                             $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
-                                $stockIn->created_at->format('d.m.Y H:i'),
+                                $stockIn->created_at->format('d.m.Y h:i A'),
                                 $item->product?->item_code ?? '',
                                 $item->product?->name ?? '',
                                 $warehouseDisplay,
@@ -412,7 +483,7 @@ class ReportController extends Controller
                         }
                     } else {
                         fputcsv($file, [
-                            $stockIn->created_at->format('d.m.Y H:i'),
+                            $stockIn->created_at->format('d.m.Y h:i A'),
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
                             $warehouseDisplay,
@@ -606,7 +677,7 @@ $item->hold_stock ? 'Yes' : 'No',
                             $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
 
                             fputcsv($file, [
-                                $stockOut->created_at->format('d.m.Y H:i'),
+                                $stockOut->created_at->format('d.m.Y h:i A'),
                                 $item->product?->item_code ?? '',
                                 $item->product?->name ?? '',
                                 $warehouseDisplay,
@@ -652,7 +723,7 @@ $item->hold_stock ? 'Yes' : 'No',
                         }
                     } else {
                         fputcsv($file, [
-                            $stockOut->created_at->format('d.m.Y H:i'),
+                            $stockOut->created_at->format('d.m.Y h:i A'),
                             $item->product?->item_code ?? '',
                             $item->product?->name ?? '',
                             $warehouseDisplay,
@@ -2672,7 +2743,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 $days = $entry->created_at ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($entry->created_at)->startOfDay()) : '';
 
                 fputcsv($file, [
-                    \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y H:i'),
+                    \Carbon\Carbon::parse($entry->created_at)->format('d.m.Y h:i A'),
                     $entry->item_code ?? '',
                     $entry->product_name ?? '',
                     $warehouseDisplay,

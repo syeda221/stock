@@ -613,7 +613,7 @@ class OpeningStockController extends Controller
                 }
                 $palletsVal = $originalPallets;
                 
-                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
+                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y h:i A') : $item->created_at) : '';
 
                 if ($item->warehouse_row_id) {
                     $pStart = (int) $item->pallet_start;

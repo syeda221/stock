@@ -27,10 +27,7 @@
            style="background:#134e26; color:#4ade80; border:1px solid #166534; border-radius:8px; font-size:11px; padding:6px 14px;">
             <i class="bi bi-download me-1"></i>Export CSV
         </a>
-        <a href="{{ route('outbound.import') }}" class="btn btn-sm fw-semibold"
-           style="background:#172554; color:#60a5fa; border:1px solid #1e40af; border-radius:8px; font-size:11px; padding:6px 14px;">
-            <i class="bi bi-upload me-1"></i>Import CSV
-        </a>
+        {{-- Import CSV button hidden as per request --}}
         <a href="{{ route('outbound.create') }}" class="btn btn-sm fw-bold"
            style="background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; border:none; border-radius:8px; font-size:11px; padding:6px 16px;">
             <i class="bi bi-plus-lg me-1"></i>New Outbound
@@ -258,8 +255,8 @@
                             'Shipment Type'     => strtoupper($out->shipment_type ?? 'MANUAL'),
                             'Vehicle No'        => $out->vehicle_no ?? '-',
                             'Vehicle Size'      => $out->vehicle_size ?? '-',
-                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d.m.Y H:i') : '-',
-                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d.m.Y H:i') : '-',
+                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d.m.Y h:i A') : '-',
+                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d.m.Y h:i A') : '-',
                             'Driver Name'       => $out->driver_name ?? '-',
                             'Driver Mobile'     => $out->driver_mobile ?? '-',
                             'Dispatched Invoice No' => $out->dispatched_invoice_no ?? '-',
@@ -366,7 +363,7 @@
 
                         <td class="small fw-semibold text-nowrap">{{ $out->dispatched_invoice_no ?? '-' }}</td>
 
-                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y H:i') }}</td>
+                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y h:i A') }}</td>
 
                         {{-- ACTIONS --}}
                         <td class="text-center text-nowrap">

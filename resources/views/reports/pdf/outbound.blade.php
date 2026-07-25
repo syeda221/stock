@@ -138,7 +138,7 @@
             </div>
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
-                <span class="info-value">{{ optional($stockOut->created_at)->format('d.m.Y H:i') }}</span>
+                <span class="info-value">{{ optional($stockOut->created_at)->format('d.m.Y h:i A') }}</span>
             </div>
         </div>
         <div class="info-row">
@@ -234,11 +234,11 @@
         <div class="info-row">
             <div class="info-cell">
                 <span class="info-label">Vehicle In Time:</span>
-                <span class="info-value">{{ $stockOut->vehicle_in_time ? \Carbon\Carbon::parse($stockOut->vehicle_in_time)->format('d.m.Y H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockOut->vehicle_in_time ? \Carbon\Carbon::parse($stockOut->vehicle_in_time)->format('d.m.Y h:i A') : '-' }}</span>
             </div>
             <div class="info-cell">
                 <span class="info-label">Vehicle Out Time:</span>
-                <span class="info-value">{{ $stockOut->vehicle_out_time ? \Carbon\Carbon::parse($stockOut->vehicle_out_time)->format('d.m.Y H:i') : '-' }}</span>
+                <span class="info-value">{{ $stockOut->vehicle_out_time ? \Carbon\Carbon::parse($stockOut->vehicle_out_time)->format('d.m.Y h:i A') : '-' }}</span>
             </div>
         </div>
     </div>

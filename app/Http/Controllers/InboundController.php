@@ -1142,7 +1142,7 @@ class InboundController extends Controller
                 $qtyVal = $item->total_quantity;
                 $balVal = $item->balance_quantity;
                 $palletsVal = $item->pallets_used ?? 0;
-                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
+                $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y h:i A') : $item->created_at) : '';
 
                 $pos = $inboundPositions[$item->id] ?? null;
 
@@ -1840,10 +1840,10 @@ class InboundController extends Controller
             $location = $stockIn->warehouse->name ?? '';
 
             $vehicleIn = $stockIn->vehicle_in_time
-                ? ($stockIn->vehicle_in_time instanceof \Carbon\Carbon ? $stockIn->vehicle_in_time->format('d.m.Y H:i') : $stockIn->vehicle_in_time)
+                ? ($stockIn->vehicle_in_time instanceof \Carbon\Carbon ? $stockIn->vehicle_in_time->format('d.m.Y h:i A') : $stockIn->vehicle_in_time)
                 : '';
             $vehicleOut = $stockIn->vehicle_out_time
-                ? ($stockIn->vehicle_out_time instanceof \Carbon\Carbon ? $stockIn->vehicle_out_time->format('d.m.Y H:i') : $stockIn->vehicle_out_time)
+                ? ($stockIn->vehicle_out_time instanceof \Carbon\Carbon ? $stockIn->vehicle_out_time->format('d.m.Y h:i A') : $stockIn->vehicle_out_time)
                 : '';
             $mfgDate = $item->mfg_date
                 ? (method_exists($item->mfg_date, 'format') ? $item->mfg_date->format('d.m.Y') : $item->mfg_date)

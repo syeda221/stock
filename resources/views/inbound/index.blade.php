@@ -68,10 +68,7 @@
          style="background:#134e26; color:#4ade80; border:1px solid #166534; border-radius:8px; font-size:11px; padding:6px 14px;">
         <i class="bi bi-download me-1"></i>Export CSV
       </a>
-      <a href="{{ route('inbound.import') }}" class="btn btn-sm fw-semibold"
-         style="background:#172554; color:#60a5fa; border:1px solid #1e40af; border-radius:8px; font-size:11px; padding:6px 14px;">
-        <i class="bi bi-upload me-1"></i>Import CSV
-      </a>
+      {{-- Import CSV button hidden as per request --}}
       <a href="{{ route('inbound.create') }}" class="btn btn-sm fw-bold"
          style="background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; border:none; border-radius:8px; font-size:11px; padding:6px 16px;">
         <i class="bi bi-plus-lg me-1"></i>New Inbound
@@ -185,7 +182,7 @@
           </td>
 
           <td style="font-size:11.5px; color:#64748b;">
-            {{ $tx->created_at->format('d.m.Y H:i') }}
+            {{ $tx->created_at->format('d.m.Y h:i A') }}
           </td>
 
           <td>

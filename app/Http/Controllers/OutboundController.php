@@ -890,6 +890,29 @@ class OutboundController extends Controller
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
+
+    public function destroy(StockOut $stockOut)
+    {
+        try {
+            DB::transaction(function () use ($stockOut) {
+                // Revert stock balance to original stock_in_items location
+                foreach ($stockOut->items as $item) {
+                    $sourceBatch = StockInItem::lockForUpdate()->find($item->stock_in_item_id);
+                    if ($sourceBatch) {
+                        $sourceBatch->increment('balance_quantity', $item->dispatch_quantity);
+                    }
+                }
+                $stockOut->items()->delete();
+                $stockOut->delete();
+            });
+
+            return redirect()
+                ->route('outbound.index')
+                ->with('success', 'Outbound dispatch deleted and stock restored to original pallet location.');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error deleting dispatch: ' . $e->getMessage());
+        }
+    }
     public function print(StockOut $stockOut)
     {
         $stockOut->load([
@@ -1069,7 +1092,7 @@ class OutboundController extends Controller
         ]);
 
         foreach ($items as $item) {
-            $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y H:i') : $item->created_at) : '';
+            $dateVal = $item->created_at ? (method_exists($item->created_at, 'format') ? $item->created_at->format('d.m.Y h:i A') : $item->created_at) : '';
             $type = optional($item->stockOut)->source_type === 'sale' ? 'Sale' : (optional($item->stockOut)->source_type === 'transfer' ? 'Transfer' : '');
 
             $sourceItem = $item->sourceStockInItem;
@@ -1110,8 +1133,8 @@ class OutboundController extends Controller
                 optional($item->stockOut->transporter)->name ?? '',
                 optional($item->stockOut)->vehicle_no ?? '',
                 optional($item->stockOut)->driver_name ?? '',
-                optional($item->stockOut)->vehicle_in_time ? (method_exists(optional($item->stockOut)->vehicle_in_time, 'format') ? optional($item->stockOut)->vehicle_in_time->format('d.m.Y H:i') : date('d.m.Y H:i', strtotime(optional($item->stockOut)->vehicle_in_time))) : '',
-                optional($item->stockOut)->vehicle_out_time ? (method_exists(optional($item->stockOut)->vehicle_out_time, 'format') ? optional($item->stockOut)->vehicle_out_time->format('d.m.Y H:i') : date('d.m.Y H:i', strtotime(optional($item->stockOut)->vehicle_out_time))) : '',
+                optional($item->stockOut)->vehicle_in_time ? (method_exists(optional($item->stockOut)->vehicle_in_time, 'format') ? optional($item->stockOut)->vehicle_in_time->format('d.m.Y h:i A') : date('d.m.Y h:i A', strtotime(optional($item->stockOut)->vehicle_in_time))) : '',
+                optional($item->stockOut)->vehicle_out_time ? (method_exists(optional($item->stockOut)->vehicle_out_time, 'format') ? optional($item->stockOut)->vehicle_out_time->format('d.m.Y h:i A') : date('d.m.Y h:i A', strtotime(optional($item->stockOut)->vehicle_out_time))) : '',
                 optional($item->stockOut)->dispatched_invoice_no ?? '',
                 $item->po_no ?? optional($item->sourceStockInItem)->po_no ?? '',
                 $item->ibd_no ?? optional($item->sourceStockInItem)->ibd_no ?? '',

@@ -46,7 +46,7 @@
                 </td>
                 <td width="40%" class="text-end">
                     <strong>Pick List</strong><br>
-                    Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}
+                    Date: {{ $stockOut->created_at->format('d.m.Y h:i A') }}
                 </td>
             </tr>
         </table>
@@ -55,7 +55,7 @@
         <table class="table table-bordered table-sm mb-3">
             <tr>
                 <th>Date</th>
-                <td>{{ $stockOut->created_at->format('d.m.Y H:i') }}</td>
+                <td>{{ $stockOut->created_at->format('d.m.Y h:i A') }}</td>
 
                 <th>Dispatched Invoice #</th>
                 <td>{{ $stockOut->dispatched_invoice_no ?? '-' }}</td>

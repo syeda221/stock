@@ -123,6 +123,13 @@
         </a>
     </li>
     @endcan
+    <li class="nav-item">
+        <a href="{{ route('stock-transfers.index') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('stock-transfers.*') ? 'active' : '' }}">
+            <i class="bi bi-arrow-left-right me-2 text-info"></i>
+            <span>Stock Relocation</span>
+        </a>
+    </li>
     @endcanany
 
     {{-- Expiry Management --}}

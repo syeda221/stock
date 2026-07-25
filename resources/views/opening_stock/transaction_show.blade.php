@@ -109,7 +109,7 @@
         <tbody>
           <tr>
             <th>Document Date</th>
-            <td>{{ $stockIn->created_at->format('d M Y, H:i') }}</td>
+            <td>{{ $stockIn->created_at->format('d M Y, h:i A') }}</td>
             <th>Total Products</th>
             <td>{{ $stockIn->items->pluck('product_id')->unique()->count() }} items</td>
           </tr>

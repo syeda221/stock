@@ -226,7 +226,7 @@
               <td class="fw-bold" style="color:#1d4ed8; font-size:13px;">
                 <i class="bi bi-file-earmark-text me-1"></i>#OS-{{ $tx->id }}
               </td>
-              <td style="font-size:11.5px;color:#64748b;">{{ $tx->created_at->format('d.m.Y H:i') }}</td>
+              <td style="font-size:11.5px;color:#64748b;">{{ $tx->created_at->format('d.m.Y h:i A') }}</td>
               <td>
                 @php
                   $whNames = $tx->items->map(fn($i) => $i->warehouse->name ?? $tx->warehouse->name ?? 'Auto')->unique()->filter()->values();
@@ -384,7 +384,7 @@
                 </span>
               </td>
               <td style="font-size:11.5px;color:#64748b;">
-                {{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d.m.Y H:i') : '—' }}
+                {{ $item->latest_date ? \Carbon\Carbon::parse($item->latest_date)->format('d.m.Y h:i A') : '—' }}
               </td>
               <td class="text-center">
                 <span style="background:#f1f5f9;color:#475569;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #e2e8f0;">

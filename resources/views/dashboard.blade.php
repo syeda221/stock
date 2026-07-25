@@ -491,7 +491,7 @@
                                     </td>
                                     <td style="padding: 0.5rem 0.75rem;">{{ $feed['ref'] }}</td>
                                     <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['location'] }}</td>
-                                    <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['date']->format('d.m.Y H:i') }}</td>
+                                    <td style="padding: 0.5rem 0.75rem; color: #64748b;">{{ $feed['date']->format('d.m.Y h:i A') }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>

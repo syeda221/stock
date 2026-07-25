@@ -61,7 +61,7 @@
                 </td>
                 <td width="40%" class="text-end align-bottom">
                     <h2 class="mb-1 fw-bold text-uppercase" style="color: #444;">Dispatch Details</h2>
-                    <div>Date: {{ $stockOut->created_at->format('d.m.Y H:i') }}</div>
+                    <div>Date: {{ $stockOut->created_at->format('d.m.Y h:i A') }}</div>
                 </td>
             </tr>
         </table>
@@ -80,11 +80,11 @@
                     </tr>
                     <tr>
                         <th>Vehicle In Time:</th>
-                        <td>{{ optional($stockOut->vehicle_in_time)->format('d.m.Y H:i') ?? '-' }}</td>
+                        <td>{{ optional($stockOut->vehicle_in_time)->format('d.m.Y h:i A') ?? '-' }}</td>
                     </tr>
                     <tr>
                         <th>Vehicle Out Time:</th>
-                        <td>{{ optional($stockOut->vehicle_out_time)->format('d.m.Y H:i') ?? '-' }}</td>
+                        <td>{{ optional($stockOut->vehicle_out_time)->format('d.m.Y h:i A') ?? '-' }}</td>
                     </tr>
                 </table>
             </div>
@@ -92,7 +92,7 @@
                 <table class="table table-sm table-borderless text-end">
                     <tr>
                         <th>Date:</th>
-                        <td>{{ $stockOut->created_at->format('d.m.Y H:i') }}</td>
+                        <td>{{ $stockOut->created_at->format('d.m.Y h:i A') }}</td>
                     </tr>
                     <tr>
                         <th>Dispatched Invoice #:</th>

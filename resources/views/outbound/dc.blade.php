@@ -31,7 +31,7 @@
                 <table class="table table-sm table-borderless mb-0" style="font-size: 14px;">
                     <tr>
                         <td style="width: 140px; font-weight: 600; color: #555;">Date & Time:</td>
-                        <td>{{ $stockOut->created_at->format('d-m-Y H:i') }}</td>
+                        <td>{{ $stockOut->created_at->format('d-m-Y h:i A') }}</td>
                     </tr>
                     <tr>
                         <td style="font-weight: 600; color: #555;">Outbound Invoice #:</td>

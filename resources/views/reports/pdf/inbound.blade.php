@@ -154,7 +154,7 @@
             
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
-                <span class="info-value">{{ optional($stockIn->created_at)->format('d.m.Y H:i') }}</span>
+                <span class="info-value">{{ optional($stockIn->created_at)->format('d.m.Y h:i A') }}</span>
             </div>
         </div>
         <div class="info-row">

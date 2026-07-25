@@ -289,7 +289,9 @@ class WarehouseRowFifo
                 foreach ($freeBlocks as $block) {
                     if ($remaining <= 0) break;
 
-                    $palletsHere = min($remaining, $block['length']);
+                    $pStart = $block['start'];
+                    $maxPalletsInThisRow = max(0, (int)$row->pallet_capacity - $pStart + 1);
+                    $palletsHere = min($remaining, $block['length'], $maxPalletsInThisRow);
                     if ($palletsHere <= 0) continue;
 
                     if ($palletsHere >= $remaining) {

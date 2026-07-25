@@ -336,7 +336,7 @@ class WarehouseController extends Controller
         }
 
         $palletData = [];
-        $maxRenderPallet = max($totalCapacity, max(array_keys($occupied) ?: [0]));
+        $maxRenderPallet = (int) $totalCapacity;
         
         for ($i = 1; $i <= $maxRenderPallet; $i++) {
             if (isset($occupied[$i])) {
