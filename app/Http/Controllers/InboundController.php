@@ -103,7 +103,7 @@ class InboundController extends Controller
     public function getItems(StockIn $stockIn)
     {
         $items = $stockIn->items()
-            ->with(['product.category', 'product.group', 'warehouseRow', 'stockIn.warehouse'])
+            ->with(['product.category', 'product.group', 'warehouse', 'warehouseRow', 'stockIn.warehouse'])
             ->get()
             ->map(function ($item) {
                 // Resolve pallet range display
@@ -272,7 +272,13 @@ class InboundController extends Controller
                 continue;
             }
 
-            $targetWhId = ($warehouseId === 'auto') ? $activeWarehouses->first()->id : (int) $warehouseId;
+            $targetWhId = ($warehouseId === 'auto' || empty($warehouseId)) ? $activeWarehouses->first()->id : (int) $warehouseId;
+            if ($manualRowId) {
+                $rowObj = WarehouseRow::find($manualRowId);
+                if ($rowObj) {
+                    $targetWhId = $rowObj->warehouse_id;
+                }
+            }
 
             // Helper to get pallet name
             $getPalletNameLocal = function($row, $palletStart, $offsetIndex) {
@@ -572,8 +578,19 @@ class InboundController extends Controller
                     $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
                 }
 
+                $itemWhId = !empty($item['warehouse_id']) && $item['warehouse_id'] !== 'auto'
+                    ? (int) $item['warehouse_id']
+                    : ($primaryWarehouse ? $primaryWarehouse->id : $activeWarehouses->first()->id);
+
+                if ($manualRowId) {
+                    $rowObj = WarehouseRow::find($manualRowId);
+                    if ($rowObj) {
+                        $itemWhId = $rowObj->warehouse_id;
+                    }
+                }
+
                 $splits = WarehouseRowFifo::assign(
-                    $primaryWarehouse->id,
+                    $itemWhId,
                     $palletsNeeded,
                     $units,
                     $packSize,
@@ -951,11 +968,22 @@ class InboundController extends Controller
             $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
         }
 
+        $itemWhId = !empty($itemData['warehouse_id']) && $itemData['warehouse_id'] !== 'auto'
+            ? (int) $itemData['warehouse_id']
+            : ($primaryWarehouse ? $primaryWarehouse->id : Warehouse::where('status', 1)->value('id'));
+
+        if ($manualRowId) {
+            $rowObj = WarehouseRow::find($manualRowId);
+            if ($rowObj) {
+                $itemWhId = $rowObj->warehouse_id;
+            }
+        }
+
         $simulatedOccupied = [];
         $ignoreStockInId = $stockIn ? (int)$stockIn->id : null;
 
         $splits = \App\Services\WarehouseRowFifo::assign(
-            $primaryWarehouse->id,
+            $itemWhId,
             $palletsNeeded,
             $units,
             $packSize,

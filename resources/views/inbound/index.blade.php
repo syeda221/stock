@@ -388,7 +388,7 @@ document.addEventListener('click', function(e) {
             if (item.block_stock) sHtml = '<span style="background:#fee2e2;color:#b91c1c;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Blocked</span>';
             else if (item.hold_stock) sHtml = '<span style="background:#fef9c3;color:#92400e;font-size:10px;padding:3px 9px;border-radius:12px;font-weight:700;">Hold</span>';
 
-            var wh      = (item.stock_in && item.stock_in.warehouse) ? item.stock_in.warehouse.name : '—';
+            var wh      = item.warehouse ? item.warehouse.name : ((item.stock_in && item.stock_in.warehouse) ? item.stock_in.warehouse.name : '—');
             var rowName = (item.warehouse_row) ? item.warehouse_row.row_name : '—';
             var loc     = item.pallet_range_display || rowName;
 
