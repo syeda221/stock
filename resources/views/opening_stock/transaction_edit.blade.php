@@ -963,6 +963,9 @@ function loadPalletGridWithProposed(rowId, allProposedArray, activeCardRowIdx) {
                     Swal.fire('Reserved Pallet', `Pallet ${displayName} is already reserved by Form Row ${proposedItem.row_idx}. Please select an available (empty) pallet.`, 'warning');
                     return;
                 }
+                if (rowId) {
+                    document.querySelector('.modal-manual-row').value = rowId;
+                }
                 document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
                 fetchPreviewAndRender();
             });
@@ -1032,8 +1035,6 @@ document.querySelector('.modal-manual-warehouse').addEventListener('change', fun
             });
         }
     }
-    rowSelect.value = '';
-    document.querySelector('.modal-manual-pallet-start').value = '';
     fetchPreviewAndRender();
 });
 
@@ -1055,17 +1056,32 @@ document.getElementById('saveManualPalletBtn').addEventListener('click', functio
     const rowId = document.querySelector('.modal-manual-row').value;
     const palletStart = document.querySelector('.modal-manual-pallet-start').value;
 
-    if (isManual && manualWhId && rowId) {
+    if (isManual) {
+        if (!manualWhId) {
+            Swal.fire('Warning', 'Please select a Warehouse for manual assignment.', 'warning');
+            return;
+        }
+
         const whSelect = activeRow.querySelector('.warehouse-select');
-        if (whSelect) {
+        if (whSelect && manualWhId) {
             whSelect.value = manualWhId;
             whSelect.dispatchEvent(new Event('change'));
         }
 
-        const rowText = document.querySelector('.modal-manual-row option:checked').text;
-        activeRow.querySelector('.manual-row-id').value = rowId;
-        activeRow.querySelector('.manual-pallet-start').value = palletStart;
-        activeRow.querySelector('.manual-pallet-info').innerHTML = `Row: ${rowText.split(' (')[0]}, Start: ${palletStart || 'Auto'}`;
+        const rowText = rowId ? document.querySelector('.modal-manual-row option:checked')?.text?.split(' (')[0] : '';
+        let displayRow = rowText || '';
+        if (!displayRow) {
+            const firstCard = document.querySelector('#pallet-preview-summary .allocation-item-card');
+            if (firstCard) {
+                displayRow = firstCard.querySelector('div:nth-child(3)')?.textContent?.replace('Row/Location:', '')?.trim() || 'Auto Row';
+            } else {
+                displayRow = 'Auto Row';
+            }
+        }
+
+        activeRow.querySelector('.manual-row-id').value = rowId || '';
+        activeRow.querySelector('.manual-pallet-start').value = palletStart || '';
+        activeRow.querySelector('.manual-pallet-info').innerHTML = `Row: ${displayRow}, Start: ${palletStart || 'Auto'}`;
     } else {
         activeRow.querySelector('.manual-row-id').value = '';
         activeRow.querySelector('.manual-pallet-start').value = '';

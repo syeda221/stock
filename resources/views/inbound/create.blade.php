@@ -1090,6 +1090,9 @@ function loadPalletGridWithProposed(rowId, allProposedArray, activeCardRowIdx) {
                     Swal.fire('Reserved Pallet', `Pallet ${displayName} is already reserved by Form Row ${proposedItem.row_idx}. Please select an available (empty) pallet.`, 'warning');
                     return;
                 }
+                if (rowId) {
+                    document.querySelector('.modal-manual-row').value = rowId;
+                }
                 document.querySelector('.modal-manual-pallet-start').value = pallet.pallet_number;
                 fetchPreviewAndRender();
             });
@@ -1188,18 +1191,33 @@ document.getElementById('saveManualPalletBtn').addEventListener('click', functio
     const infoDiv = activeRow.querySelector('.manual-pallet-info');
 
     if (isManual) {
-        if (!manualWhId || !manualRowId) {
-            Swal.fire('Warning', 'Please select both Warehouse and Row for manual assignment.', 'warning');
+        if (!manualWhId) {
+            Swal.fire('Warning', 'Please select a Warehouse for manual assignment.', 'warning');
             return;
         }
 
-        activeRow.querySelector('.manual-row-id').value = manualRowId;
-        activeRow.querySelector('.manual-pallet-start').value = manualPalletStart;
+        const whSelect = activeRow.querySelector('.warehouse-select');
+        if (whSelect && manualWhId) {
+            whSelect.value = manualWhId;
+        }
+
+        activeRow.querySelector('.manual-row-id').value = manualRowId || '';
+        activeRow.querySelector('.manual-pallet-start').value = manualPalletStart || '';
 
         const whObj = warehouses.find(w => w.id == manualWhId);
         const whName = whObj ? whObj.name : 'Warehouse';
         const rowObj = whObj && whObj.rows ? whObj.rows.find(r => r.id == manualRowId) : null;
-        const rowName = rowObj ? rowObj.row_name : 'Row';
+        
+        let rowName = rowObj ? rowObj.row_name : '';
+        if (!rowName) {
+            const firstCard = document.querySelector('#pallet-preview-summary .allocation-item-card');
+            if (firstCard) {
+                rowName = firstCard.querySelector('div:nth-child(3)')?.textContent?.replace('Row/Location:', '')?.trim() || 'Auto Row';
+            } else {
+                rowName = 'Auto Row';
+            }
+        }
+        
         const startText = manualPalletStart ? `, Start: P${manualPalletStart}` : '';
 
         if (infoDiv) {
