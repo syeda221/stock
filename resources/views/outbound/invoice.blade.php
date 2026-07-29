@@ -111,7 +111,14 @@
                         <td class="text-center">{{ optional(optional($item->product)->packingType)->name ?? '-' }}</td>
                         <td class="text-end">{{ $item->pack_size_snapshot }}</td>
                         <td class="text-center">{{ $item->uom_resolved ?? '-' }}</td>
-                        <td class="text-center">{{ $item->specific_pallet }}</td>
+                        <td class="text-center">
+                            @php
+                                $whFull = optional(optional($item->sourceStockInItem)->warehouse)->name ?? optional($stockOut->warehouse)->name ?? 'WH';
+                                $whShort = preg_replace('/^warehouse\s*/i', 'WH', $whFull);
+                            @endphp
+                            <strong>{{ $whShort }}</strong>
+                            {{ $item->specific_pallet }}
+                        </td>
                         <td class="text-end">{{ $item->units_dispatch }}</td>
                         <td class="text-end fw-bold">{{ $item->dispatch_quantity }}</td>
                         <td>{{ optional($item->mfg_date)->format('d.m.Y') ?? '-' }}</td>

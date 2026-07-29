@@ -196,12 +196,41 @@
                             </td>
                             <td class="text-end fw-semibold">{{ number_format($stockOut->items->sum('dispatch_quantity'), 2) }}</td>
                             <td class="text-center">
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <a href="{{ route('outbound.invoice', $stockOut->id) }}" class="btn btn-outline-primary" title="View Invoice">
-                                        <i class="bi bi-eye"></i>
+                                <div class="d-flex align-items-center justify-content-center gap-1">
+                                    <!-- QUICK VIEW MODAL BUTTON -->
+                                    <button type="button" 
+                                            class="btn btn-sm btn-outline-primary action-btn p-1 px-2" 
+                                            title="Quick View Details"
+                                            onclick="openOutboundModal({{ json_encode($stockOut->load(['items.product', 'customer', 'toWarehouse', 'warehouse', 'transporter'])) }})">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </button>
+                                    <!-- PICK LIST / INVOICE -->
+                                    <a href="{{ route('outbound.invoice', $stockOut->id) }}" 
+                                       class="btn btn-sm btn-outline-secondary action-btn p-1 px-2" 
+                                       title="Pick List / Invoice" 
+                                       target="_blank">
+                                        <i class="bi bi-file-earmark-text-fill"></i>
                                     </a>
-                                    <a href="{{ route('reports.outbound.pdf', $stockOut->id) }}" class="btn btn-outline-danger" title="Download PDF" target="_blank">
-                                        <i class="bi bi-file-pdf"></i>
+                                    <!-- DISPATCH DETAILS -->
+                                    <a href="{{ route('outbound.dispatch_details', $stockOut->id) }}" 
+                                       class="btn btn-sm btn-outline-info action-btn p-1 px-2" 
+                                       title="Dispatch Details" 
+                                       target="_blank">
+                                        <i class="bi bi-truck"></i>
+                                    </a>
+                                    <!-- GATE PASS DC -->
+                                    <a href="{{ route('outbound.dc', $stockOut->id) }}" 
+                                       class="btn btn-sm btn-outline-warning action-btn p-1 px-2" 
+                                       title="Gate Pass DC" 
+                                       target="_blank">
+                                        <i class="bi bi-receipt"></i>
+                                    </a>
+                                    <!-- DOWNLOAD PDF -->
+                                    <a href="{{ route('reports.outbound.pdf', $stockOut->id) }}" 
+                                       class="btn btn-sm btn-outline-danger action-btn p-1 px-2" 
+                                       title="Download PDF" 
+                                       target="_blank">
+                                        <i class="bi bi-file-pdf-fill"></i>
                                     </a>
                                 </div>
                             </td>
@@ -393,8 +422,189 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+function openOutboundModal(data) {
+    const invNo = data.dispatched_invoice_no || data.delivery_no || data.gatepass_no || ('#OUT-' + data.id);
+    document.getElementById('ob_modalSubHeader').innerText = 'Invoice #' + invNo;
+    document.getElementById('ob_invoice_no').innerText = invNo;
+    
+    const dateObj = new Date(data.created_at);
+    document.getElementById('ob_date').innerText = dateObj.toLocaleString('en-GB', { 
+        day: '2-digit', month: '2-digit', year: 'numeric', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+    });
+
+    const targetName = data.customer ? data.customer.name : (data.to_warehouse ? 'Transfer: ' + data.to_warehouse.name : 'N/A');
+    document.getElementById('ob_target').innerText = targetName;
+    document.getElementById('ob_warehouse').innerText = data.warehouse ? data.warehouse.name : 'N/A';
+    document.getElementById('ob_transporter').innerText = data.transporter ? data.transporter.name : '-';
+    
+    const vehNo = data.vehicle_no || '-';
+    const driver = data.driver_name ? ` (${data.driver_name})` : '';
+    document.getElementById('ob_vehicle').innerText = vehNo + driver;
+
+    // Action URLs
+    const baseInvoiceUrl = "{{ url('/outbound') }}/" + data.id + "/invoice";
+    const baseDetailsUrl = "{{ url('/outbound') }}/" + data.id + "/dispatch-details";
+    const baseDcUrl = "{{ url('/outbound') }}/" + data.id + "/dc";
+    const basePdfUrl = "{{ url('/reports/outbound') }}/" + data.id + "/pdf";
+
+    document.getElementById('ob_invoice_btn').href = baseInvoiceUrl;
+    document.getElementById('ob_details_btn').href = baseDetailsUrl;
+    document.getElementById('ob_dc_btn').href = baseDcUrl;
+    document.getElementById('ob_pdf_btn').href = basePdfUrl;
+
+    // Populate items
+    const items = data.items || [];
+    document.getElementById('ob_batch_count').innerText = items.length + ' Batches';
+
+    let tbodyHtml = '';
+    let totalUnits = 0;
+    let totalQty = 0;
+
+    items.forEach(item => {
+        const prodCode = item.product ? item.product.item_code : '-';
+        const prodName = item.product ? item.product.name : '-';
+        const sapBatch = item.sap_batch || '-';
+        const vendorBatch = item.vendor_batch || '-';
+        const units = parseFloat(item.units_dispatch || 0);
+        const qty = parseFloat(item.dispatch_quantity || 0);
+
+        totalUnits += units;
+        totalQty += qty;
+
+        tbodyHtml += `
+            <tr>
+                <td class="ps-3 fw-bold text-primary">${prodCode}</td>
+                <td><div class="fw-semibold text-dark">${prodName}</div></td>
+                <td><span class="badge bg-light text-dark border">${sapBatch}</span></td>
+                <td><span class="badge bg-light text-dark border">${vendorBatch}</span></td>
+                <td class="text-end fw-bold">${units}</td>
+                <td class="text-end fw-bold text-dark">${qty.toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    tbodyHtml += `
+        <tr class="fw-bold bg-light">
+            <td colspan="4" class="text-end pe-3">TOTAL</td>
+            <td class="text-end text-primary fs-6">${totalUnits}</td>
+            <td class="text-end text-dark fs-6">${totalQty.toFixed(2)}</td>
+        </tr>
+    `;
+
+    document.getElementById('ob_items_body').innerHTML = tbodyHtml;
+
+    const modal = new bootstrap.Modal(document.getElementById('outboundDetailsModal'));
+    modal.show();
+}
 </script>
 @endpush
 
+{{-- OUTBOUND QUICK VIEW MODAL --}}
+<div class="modal fade" id="outboundDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);">
+                <div>
+                    <h5 class="modal-title fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-box-arrow-up-right text-warning fs-5"></i> Outbound Transaction Details
+                    </h5>
+                    <small class="text-white-50" id="ob_modalSubHeader">Invoice # -</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" style="background: #f8fafc;">
+                
+                {{-- HEADER SUMMARY CARDS --}}
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Outbound Invoice #</small>
+                            <div class="fw-bold text-primary fs-6 mt-1" id="ob_invoice_no">-</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Date & Time</small>
+                            <div class="fw-semibold text-dark small mt-1" id="ob_date">-</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Dispatch To / Customer</small>
+                            <div class="fw-semibold text-dark small mt-1" id="ob_target">-</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Dispatch Warehouse</small>
+                            <div class="fw-semibold text-dark small mt-1" id="ob_warehouse">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- SECONDARY INFO ROW --}}
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-6">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Transporter</small>
+                            <div class="fw-semibold text-dark small mt-1" id="ob_transporter">-</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-6">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100">
+                            <small class="text-muted fw-bold text-uppercase" style="font-size: 10px;">Vehicle & Driver</small>
+                            <div class="fw-semibold text-dark small mt-1" id="ob_vehicle">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- ITEMS TABLE CARD --}}
+                <div class="card border-0 shadow-sm rounded-3 bg-white overflow-hidden">
+                    <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-boxes text-primary me-2"></i>Outbound Item Batches List</h6>
+                        <span class="badge bg-warning text-dark rounded-pill px-3 py-1" id="ob_batch_count">0 Batches</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">Item Code</th>
+                                    <th>Product Name</th>
+                                    <th>SAP Batch</th>
+                                    <th>Vendor Batch</th>
+                                    <th class="text-end">Cartons/Units</th>
+                                    <th class="text-end">Dispatch Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ob_items_body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer bg-white py-3 px-4 border-top d-flex justify-content-between flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary border rounded-3 px-4 font-semibold" data-bs-dismiss="modal">Close</button>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a id="ob_pdf_btn" href="#" class="btn btn-outline-danger rounded-3 font-semibold px-3" target="_blank">
+                        <i class="bi bi-file-pdf-fill me-1"></i>Download PDF
+                    </a>
+                    <a id="ob_dc_btn" href="#" class="btn btn-outline-warning text-dark rounded-3 font-semibold px-3" target="_blank">
+                        <i class="bi bi-receipt me-1"></i>Gate Pass DC
+                    </a>
+                    <a id="ob_details_btn" href="#" class="btn btn-outline-info rounded-3 font-semibold px-3" target="_blank">
+                        <i class="bi bi-truck me-1"></i>Dispatch Details
+                    </a>
+                    <a id="ob_invoice_btn" href="#" class="btn btn-primary rounded-3 font-semibold px-3" target="_blank">
+                        <i class="bi bi-file-earmark-text-fill me-1"></i>Pick List / Invoice
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 

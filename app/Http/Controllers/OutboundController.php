@@ -948,6 +948,7 @@ class OutboundController extends Controller
             'transporter',
             'items.product',
             'items.sourceStockInItem',
+            'items.sourceStockInItem.warehouse',
             'items.product.uom',
             'items.warehouseRow',
         ]);
