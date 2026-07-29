@@ -3,27 +3,33 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 
 class AdminUserSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
-        $user = User::updateOrCreate(
+        // 1. Ensure Super Admin Role exists with ALL permissions
+        $role = Role::firstOrCreate(['name' => 'Super Admin']);
+        $permissions = Permission::all();
+        $role->syncPermissions($permissions);
+
+        // 2. Create/Update Super Admin User
+        $admin = User::firstOrCreate(
             ['email' => 'admin@admin.com'],
-            [
-                'name' => 'Admin',
-                'password' => Hash::make('admin'),
-            ]
+            ['name' => 'Super Admin']
         );
 
-        // Assign the Super Admin role if the package is installed and role exists
-        if (class_exists(\Spatie\Permission\Models\Role::class)) {
-            $role = \Spatie\Permission\Models\Role::where('name', 'Super Admin')->first();
-            if ($role) {
-                $user->assignRole($role);
-            }
-        }
+        $admin->update([
+            'name' => 'Super Admin',
+            'password' => Hash::make('admin'),
+            'is_active' => true,
+            'shift_id' => null, // 24/7 access
+        ]);
+
+        $admin->syncRoles(['Super Admin']);
     }
 }

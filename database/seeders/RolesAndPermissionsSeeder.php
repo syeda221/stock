@@ -122,7 +122,22 @@ class RolesAndPermissionsSeeder extends Seeder
         Shift::firstOrCreate(['name' => 'Night Shift'], ['start_time' => '00:00:00', 'end_time' => '08:00:00']);
         Shift::firstOrCreate(['name' => 'Full Day (24/7)'], ['start_time' => '00:00:00', 'end_time' => '23:59:59']);
 
-        // Ensure default users exist with Super Admin role
+        // Create or Update Super Admin Account
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@admin.com'],
+            ['name' => 'Super Admin']
+        );
+
+        $admin->update([
+            'name' => 'Super Admin',
+            'password' => Hash::make('admin'),
+            'is_active' => true,
+            'shift_id' => null, // 24/7 Unlimited Access
+        ]);
+
+        $admin->syncRoles(['Super Admin']);
+
+        // Ensure all other existing users have a role assigned
         $users = User::all();
         foreach ($users as $user) {
             if ($user->roles->isEmpty()) {
