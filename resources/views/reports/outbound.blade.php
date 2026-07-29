@@ -149,7 +149,6 @@
                             <th class="text-nowrap">Date</th>
                             <th class="text-nowrap">Invoice No</th>
                             <th class="text-nowrap">Customer</th>
-                            <th class="text-nowrap">Warehouse</th>
                             <th class="text-nowrap">Item Code</th>
                             <th class="text-nowrap">Description</th>
                             <th class="text-nowrap">Total Items</th>
@@ -188,7 +187,6 @@
                                     <span class="text-muted">N/A</span>
                                 @endif
                             </td>
-                            <td>{{ $stockOut->warehouse->name ?? 'N/A' }}</td>
                             <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $itemCodes }}">{{ $itemCodes ?: '-' }}</td>
                             <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ $productNames }}">{{ $productNames ?: '-' }}</td>
                             <td>
@@ -236,7 +234,7 @@
                             </td>
                         </tr>
                         <tr id="oitems-{{ $stockOut->id }}" class="d-none">
-                            <td colspan="10" class="p-0">
+                            <td colspan="9" class="p-0">
                                 <table class="table table-sm table-striped mb-0">
                                     <thead class="table-secondary">
                                         <tr>
@@ -267,7 +265,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="10" class="text-center py-5 text-muted">
+                            <td colspan="9" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                 <p class="mb-0">No outbound records found</p>
                             </td>
