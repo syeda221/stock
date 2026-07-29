@@ -16,104 +16,96 @@ class RolesAndPermissionsSeeder extends Seeder
         // Reset cached roles and permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Permissions list by module
+        // Standardized Permissions matching sidebar and controllers
         $permissions = [
             // Dashboard
-            'view-dashboard',
-            
-            // Inbound
-            'view-inbound',
-            'create-inbound',
-            'edit-inbound',
-            'delete-inbound',
-            
-            // Outbound
-            'view-outbound',
-            'create-outbound',
-            'edit-outbound',
-            'delete-outbound',
-            
-            // Stock Transfer
-            'view-stock-transfers',
-            'create-stock-transfers',
-            
-            // QC Management
-            'view-qc',
-            'manage-qc',
+            'dashboard-view',
 
-            // Expiry & Sales Toggle
-            'view-expiry',
-            'toggle-expiry-sale',
-            
-            // Reports
-            'view-reports',
-            'export-reports',
-            
-            // Products & Masters
-            'view-products',
-            'create-products',
-            'edit-products',
-            'delete-products',
-            'view-masters',
-            'manage-masters',
-            
-            // Warehouses
-            'view-warehouses',
-            'manage-warehouses',
-            
+            // Masters
+            'uom-list', 'uom-create', 'uom-edit', 'uom-delete',
+            'packing-type-list', 'packing-type-create', 'packing-type-edit', 'packing-type-delete',
+            'product-category-list', 'product-category-create', 'product-category-edit', 'product-category-delete',
+            'product-group-list', 'product-group-create', 'product-group-edit', 'product-group-delete',
+            'product-list', 'product-create', 'product-edit', 'product-delete',
+
+            // Inventory
+            'warehouse-list', 'warehouse-create', 'warehouse-edit', 'warehouse-delete',
+            'opening-stock-list', 'opening-stock-create', 'opening-stock-edit', 'opening-stock-delete',
+            'inbound-list', 'inbound-create', 'inbound-edit', 'inbound-delete',
+            'outbound-list', 'outbound-create', 'outbound-edit', 'outbound-delete',
+            'stock-transfer-list', 'stock-transfer-create',
+
+            // Expiry & QC
+            'expiry-list', 'expiry-toggle',
+            'qc-list', 'qc-manage',
+
+            // Parties / Logistics
+            'vendor-list', 'vendor-create', 'vendor-edit', 'vendor-delete',
+            'customer-list', 'customer-create', 'customer-edit', 'customer-delete',
+            'transporter-list', 'transporter-create', 'transporter-edit', 'transporter-delete',
+            'arrived-from-list', 'arrived-from-create', 'arrived-from-edit', 'arrived-from-delete',
+
             // User & Security Management
-            'view-users',
-            'manage-users',
-            'view-roles',
-            'manage-roles',
-            'view-shifts',
-            'manage-shifts',
-            'view-login-logs',
+            'user-list', 'user-create', 'user-edit', 'user-delete',
+            'role-list', 'role-create', 'role-edit', 'role-delete',
+            'shift-list', 'shift-create', 'shift-edit', 'shift-delete',
+            'login-log-list',
+
+            // Reports
+            'report-inbound',
+            'report-outbound',
+            'report-warehouse-stock',
+            'report-warehouse-capacity',
+            'report-all-stocks',
+            'report-stock-ledger',
         ];
 
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);
         }
 
-        // Roles definition
+        // 1. Super Admin Role
         $superAdmin = Role::firstOrCreate(['name' => 'Super Admin']);
         $superAdmin->syncPermissions(Permission::all());
 
+        // 2. Manager Role
         $manager = Role::firstOrCreate(['name' => 'Manager']);
         $manager->syncPermissions([
-            'view-dashboard',
-            'view-inbound', 'create-inbound', 'edit-inbound',
-            'view-outbound', 'create-outbound', 'edit-outbound',
-            'view-stock-transfers', 'create-stock-transfers',
-            'view-qc', 'manage-qc',
-            'view-expiry', 'toggle-expiry-sale',
-            'view-reports', 'export-reports',
-            'view-products', 'create-products', 'edit-products',
-            'view-masters', 'view-warehouses'
+            'dashboard-view',
+            'inbound-list', 'inbound-create', 'inbound-edit',
+            'outbound-list', 'outbound-create', 'outbound-edit',
+            'stock-transfer-list', 'stock-transfer-create',
+            'qc-list', 'qc-manage',
+            'expiry-list', 'expiry-toggle',
+            'report-inbound', 'report-outbound', 'report-warehouse-stock', 'report-warehouse-capacity', 'report-all-stocks', 'report-stock-ledger',
+            'product-list', 'product-create', 'product-edit',
+            'uom-list', 'packing-type-list', 'product-category-list', 'product-group-list',
+            'warehouse-list', 'vendor-list', 'customer-list', 'transporter-list', 'arrived-from-list'
         ]);
 
+        // 3. Warehouse Staff Role
         $warehouseStaff = Role::firstOrCreate(['name' => 'Warehouse Staff']);
         $warehouseStaff->syncPermissions([
-            'view-dashboard',
-            'view-inbound', 'create-inbound',
-            'view-stock-transfers', 'create-stock-transfers',
-            'view-products', 'view-warehouses'
+            'dashboard-view',
+            'inbound-list', 'inbound-create',
+            'stock-transfer-list', 'stock-transfer-create',
+            'product-list', 'warehouse-list'
         ]);
 
+        // 4. Dispatcher Role
         $dispatcher = Role::firstOrCreate(['name' => 'Dispatcher']);
         $dispatcher->syncPermissions([
-            'view-dashboard',
-            'view-outbound', 'create-outbound',
-            'view-products'
+            'dashboard-view',
+            'outbound-list', 'outbound-create',
+            'product-list'
         ]);
 
+        // 5. Viewer / Auditor Role
         $viewer = Role::firstOrCreate(['name' => 'Viewer / Auditor']);
         $viewer->syncPermissions([
-            'view-dashboard',
-            'view-reports',
-            'view-products',
-            'view-warehouses',
-            'view-expiry'
+            'dashboard-view',
+            'report-inbound', 'report-outbound', 'report-warehouse-stock', 'report-warehouse-capacity', 'report-all-stocks', 'report-stock-ledger',
+            'product-list', 'warehouse-list', 'expiry-list'
         ]);
 
         // Default Shifts

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,5 +21,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         \Illuminate\Pagination\Paginator::useBootstrapFive();
+
+        // Implicitly grant "Super Admin" role all permissions
+        Gate::before(function ($user, $ability) {
+            return $user->hasRole('Super Admin') ? true : null;
+        });
     }
 }
