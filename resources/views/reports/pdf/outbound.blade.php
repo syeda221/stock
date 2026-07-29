@@ -147,8 +147,8 @@
                 <span class="info-value">{{ ucfirst($stockOut->source_type ?? 'N/A') }}</span>
             </div>
             <div class="info-cell">
-                <span class="info-label">Warehouse (From):</span>
-                <span class="info-value">{{ $stockOut->warehouse->name ?? 'N/A' }}</span>
+                <span class="info-label">Created By:</span>
+                <span class="info-value">{{ $stockOut->user->name ?? 'System' }}</span>
             </div>
         </div>
     </div>

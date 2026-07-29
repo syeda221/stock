@@ -120,7 +120,14 @@
                             <td>{{ optional($item->mfg_date)->format('d.m.Y') }} / {{ optional($item->expiry_date)->format('d.m.Y') }}</td>
                             <td class="text-end">{{ optional($item->product->packingType)->name ?? '-' }}</td>
                             <td class="text-end">{{ $item->pack_size_snapshot }}</td>
-                            <td class="text-center">{{ $item->getPalletName($pIdx) }}</td>
+                            <td class="text-center">
+                                @php
+                                    $whFull = $item->warehouse->name ?? ($stockIn->warehouse->name ?? 'WH');
+                                    $whShort = preg_replace('/^warehouse\s*/i', 'WH', $whFull);
+                                @endphp
+                                <strong>{{ $whShort }}</strong>
+                                {{ $item->getPalletName($pIdx) }}
+                            </td>
                             <td class="text-end">{{ $palletData['units'] ?? 0 }}</td>
                             <td class="text-end fw-bold">{{ $palletData['qty'] ?? 0 }}</td>
                             <td class="text-center">{{ strtoupper($item->quality_clearance ?? 'PENDING') }}</td>

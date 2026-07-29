@@ -151,10 +151,13 @@
     <!-- Basic Information -->
     <div class="info-grid">
         <div class="info-row">
-            
             <div class="info-cell">
                 <span class="info-label">Date & Time:</span>
                 <span class="info-value">{{ optional($stockIn->created_at)->format('d.m.Y h:i A') }}</span>
+            </div>
+            <div class="info-cell">
+                <span class="info-label">Created By:</span>
+                <span class="info-value">{{ $stockIn->user->name ?? 'System' }}</span>
             </div>
         </div>
         <div class="info-row">

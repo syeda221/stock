@@ -220,6 +220,7 @@
                         <th width="46">#</th>
                         <th>Invoice No</th>
                         <th>Outbound Date</th>
+                        <th>Created By</th>
                         <th>Warehouse</th>
                         <th>To / Customer</th>
                         <th>Transporter</th>
@@ -254,6 +255,12 @@
 
                         <td style="font-size:11.5px; color:#64748b;">
                             {{ $tx->created_at->format('d.m.Y h:i A') }}
+                        </td>
+
+                        <td>
+                            <span class="badge bg-light text-dark border px-2 py-1" style="font-size:11px;">
+                                <i class="bi bi-person-fill text-primary me-1"></i>{{ $tx->user->name ?? 'System' }}
+                            </span>
                         </td>
 
                         <td>

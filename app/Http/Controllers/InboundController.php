@@ -467,6 +467,7 @@ class InboundController extends Controller
                  *  1️⃣ Inbound Header
                  * ----------------------------- */
                 $stockIn = StockIn::create([
+                    'user_id' => auth()->id(),
                     'source_type' => 'inbound',
                     'warehouse_id' => $primaryWarehouse->id,
                     'inbound_invoice_no' => $this->generateDispatchedInvoiceNo(),
@@ -538,33 +539,7 @@ class InboundController extends Controller
                 }
             }
 
-            // Validate per-row capacity when manual row is selected
-            foreach ($request->items as $idx => $item) {
-                if (!empty($item['product_id']) && !empty($item['units_received']) && !empty($item['warehouse_row_id'])) {
-                    $product = Product::find($item['product_id']);
-                    $palletsNeeded = (int) ($item['pallets_used'] ?? 0);
-                    if ($palletsNeeded === 0 && $product && $product->cartons_per_pallet > 0) {
-                        $palletsNeeded = (int) ceil((int) $item['units_received'] / $product->cartons_per_pallet);
-                    }
-
-                    if ($palletsNeeded > 0) {
-                        $rowId = (int) $item['warehouse_row_id'];
-                        $row = WarehouseRow::find($rowId);
-                        if ($row) {
-                            $rowCapacity = (int) $row->pallet_capacity;
-                            $freeBlocks = WarehouseRowFifo::getFreeBlocksForRow($rowId, $rowCapacity);
-                            $totalFreeInRow = array_sum(array_column($freeBlocks, 'length'));
-
-                            if ($palletsNeeded > $totalFreeInRow) {
-                                throw new \Exception(
-                                    "Row \"{$row->row_name}\" has only {$totalFreeInRow} free pallet(s) but {$palletsNeeded} needed for " .
-                                    ($product->name ?? 'item') . ". Please select a different row or reduce quantity."
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            // Capacity validation handled dynamically by WarehouseRowFifo (fills target row up to capacity, then automatically forwards overflow to next row/warehouse)
             /** -----------------------------
              *  3️⃣ Stock Items — Sequential Multi-Warehouse Fill
              * ----------------------------- */
@@ -706,6 +681,7 @@ class InboundController extends Controller
             'vendor',
             'transporter',
             'arrivedFrom',
+            'items.warehouse',
             'items.product',
             'items.product.uom',
         ]);
@@ -1743,6 +1719,7 @@ class InboundController extends Controller
                         if (!$stockIn) {
                             $generatedInvoiceNo = $this->generateDispatchedInvoiceNo();
                             $stockIn = StockIn::create([
+                                'user_id'                => auth()->id(),
                                 'source_type'            => 'inbound',
                                 'warehouse_id'           => $item['warehouse'] ? $item['warehouse']->id : ($request->warehouse_id ?: ($warehousePool->first()->id ?? 1)),
                                 'inbound_invoice_no'     => $generatedInvoiceNo,

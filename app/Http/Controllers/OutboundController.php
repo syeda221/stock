@@ -339,6 +339,7 @@ class OutboundController extends Controller
                     : Warehouse::where('status', 1)->value('id');
 
                 $stockOut = StockOut::create([
+                    'user_id'              => auth()->id(),
                     'source_type'          => $request->outbound_type === 'customer' ? 'sale' : 'transfer',
                     'warehouse_id'         => $headerWarehouseId, // Representative WH
                     'to_warehouse_id'      => $request->to_warehouse_id,
@@ -1430,6 +1431,7 @@ class OutboundController extends Controller
                         if (!$stockOut) {
                             $invoiceNo = $this->generateDispatchedInvoiceNo();
                             $stockOut = StockOut::create([
+                                'user_id'               => auth()->id(),
                                 'source_type'           => $type === 'sale' ? 'sale' : 'transfer',
                                 'customer_id'           => $customerId,
                                 'transporter_id'        => $transporterId,

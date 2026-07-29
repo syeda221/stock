@@ -34,6 +34,10 @@
                         <td>{{ $stockOut->created_at->format('d-m-Y h:i A') }}</td>
                     </tr>
                     <tr>
+                        <td style="font-weight: 600; color: #555;">Prepared By:</td>
+                        <td><strong>{{ $stockOut->user->name ?? 'System' }}</strong></td>
+                    </tr>
+                    <tr>
                         <td style="font-weight: 600; color: #555;">Outbound Invoice #:</td>
                         <td><span class="badge bg-light text-dark border">{{ $stockOut->dispatched_invoice_no ?? '-' }}</span></td>
                     </tr>

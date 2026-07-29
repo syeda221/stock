@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class StockIn extends Model
 {
     protected $fillable = [
+        'user_id',
         'source_type',
         'warehouse_id',
         'inbound_invoice_no',
@@ -33,6 +34,11 @@ class StockIn extends Model
     ];
 
     /* ================= RELATIONSHIPS ================= */
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function warehouse()
     {

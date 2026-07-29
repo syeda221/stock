@@ -95,6 +95,10 @@
                         <td>{{ $stockOut->created_at->format('d.m.Y h:i A') }}</td>
                     </tr>
                     <tr>
+                        <th>Prepared By:</th>
+                        <td><strong>{{ $stockOut->user->name ?? 'System' }}</strong></td>
+                    </tr>
+                    <tr>
                         <th>Dispatched Invoice #:</th>
                         <td>{{ $stockOut->dispatched_invoice_no ?? '-' }}</td>
                     </tr>
