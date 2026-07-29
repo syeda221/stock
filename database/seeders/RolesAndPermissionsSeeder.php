@@ -125,14 +125,19 @@ class RolesAndPermissionsSeeder extends Seeder
         // Create or Update Super Admin Account
         $admin = User::firstOrCreate(
             ['email' => 'admin@admin.com'],
-            ['name' => 'Super Admin']
+            [
+                'name' => 'Super Admin',
+                'password' => Hash::make('admin'),
+                'is_active' => true,
+                'shift_id' => null,
+            ]
         );
 
         $admin->update([
             'name' => 'Super Admin',
             'password' => Hash::make('admin'),
             'is_active' => true,
-            'shift_id' => null, // 24/7 Unlimited Access
+            'shift_id' => null,
         ]);
 
         $admin->syncRoles(['Super Admin']);
