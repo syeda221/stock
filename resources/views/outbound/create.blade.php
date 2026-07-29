@@ -206,17 +206,15 @@
             <table class="table table-sm table-bordered mb-0" id="itemsTable">
                 <thead class="table-light text-center">
                     <tr>
-                        <th width="240">Product Search</th>
-                        <th width="160">Source Warehouse</th>
-                        <th width="120">PO #</th>
-                        <th width="120">IBD #</th>
-                        <th class="text-end" width="90">Avail</th>
-                        <th class="text-end" width="70">Pack</th>
-                        <th class="text-end" width="95">Units</th>
-                        <th class="text-end" width="100">STO #</th>
-                        <th class="text-end" width="95">Qty</th>
-                        <th class="text-center" width="160">Locations / Pallets</th>
-                        <th width="35"></th>
+                        <th width="260">Product Search</th>
+                        <th width="180">Source Warehouse</th>
+                        <th class="text-end" width="100">Avail</th>
+                        <th class="text-end" width="80">Pack</th>
+                        <th class="text-end" width="100">Units</th>
+                        <th class="text-end" width="110">STO #</th>
+                        <th class="text-end" width="100">Qty</th>
+                        <th class="text-center" width="180">Locations / Pallets / Batch Details (👁)</th>
+                        <th width="40"></th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -338,8 +336,6 @@ function addRow() {
                 <option value="">Select Warehouse</option>
             </select>
         </td>
-        <td><input name="items[${rowIndex}][po_no]" class="form-control form-control-sm po_no"></td>
-        <td><input name="items[${rowIndex}][ibd_no]" class="form-control form-control-sm ibd_no"></td>
         <td><input class="form-control form-control-sm text-end avail bg-light" readonly></td>
         <td><input class="form-control form-control-sm text-end pack bg-light" readonly></td>
         <td>
@@ -429,6 +425,49 @@ function renderAutocompleteItems(query) {
     `).join('');
 }
 
+function updateRowPoIbdDetails(row) {
+    const data = row.productStockData;
+    const poInput = row.querySelector('.po_no');
+    const ibdInput = row.querySelector('.ibd_no');
+
+    if (!data || data.length === 0) {
+        if (poInput) poInput.value = '-';
+        if (ibdInput) ibdInput.value = '-';
+        return;
+    }
+
+    const selectedWhId = row.querySelector('.warehouse-select')?.value;
+
+    let relevantBatches = [];
+    if (selectedWhId && selectedWhId !== 'auto') {
+        const whObj = data.find(w => w.warehouse_id == selectedWhId);
+        if (whObj && whObj.batches) {
+            relevantBatches = whObj.batches;
+        }
+    } else {
+        data.forEach(whObj => {
+            if (whObj.batches) {
+                relevantBatches = relevantBatches.concat(whObj.batches);
+            }
+        });
+    }
+
+    relevantBatches = relevantBatches.filter(b => parseFloat(b.available || 0) > 0);
+
+    if (relevantBatches.length > 0) {
+        const firstBatch = relevantBatches[0];
+        if (poInput) {
+            poInput.value = (firstBatch.po_no && firstBatch.po_no.trim() !== '') ? firstBatch.po_no : '-';
+        }
+        if (ibdInput) {
+            ibdInput.value = (firstBatch.ibd_no && firstBatch.ibd_no.trim() !== '') ? firstBatch.ibd_no : '-';
+        }
+    } else {
+        if (poInput) poInput.value = '-';
+        if (ibdInput) ibdInput.value = '-';
+    }
+}
+
 // Select item from dropdown
 autocompleteList.addEventListener('click', function(e) {
     const item = e.target.closest('.autocomplete-item');
@@ -458,6 +497,7 @@ autocompleteList.addEventListener('click', function(e) {
     fetch(`/outbound/product-stock/${pId}?t=${new Date().getTime()}${otParam}`)
         .then(r => r.json())
         .then(data => {
+            row.productStockData = data;
             if (data.length > 0) {
                 let totalAllStock = 0;
                 data.forEach(wh => {
@@ -500,6 +540,8 @@ document.addEventListener('change', e => {
         row.querySelector('.avail').value = '';
         row.querySelector('.pack').value = '';
     }
+
+    updateRowPoIbdDetails(row);
 });
 
 // Units and quantity calculation
@@ -773,8 +815,8 @@ function renderModalAllocations(allocations) {
     const summaryDiv = document.getElementById('pallet-preview-summary');
     const gridDiv = document.getElementById('pallet-grid-visualizer');
 
-    if (allocations.length === 0) {
-        summaryDiv.innerHTML = '<div class="text-warning small">No stock matched. Verify units and availability.</div>';
+    if (!allocations || allocations.length === 0) {
+        summaryDiv.innerHTML = '<div class="text-warning p-3 rounded bg-warning-subtle small font-weight-bold">No stock matched. Verify units and availability.</div>';
         gridDiv.innerHTML = '<p class="text-muted pt-5">Grid unavailable</p>';
         return;
     }
@@ -785,33 +827,46 @@ function renderModalAllocations(allocations) {
         const isFirst = index === 0;
         const activeClass = isFirst ? 'border-primary bg-primary-subtle' : 'bg-white';
         const clickStyle = alloc.row_id ? 'cursor: pointer; transition: all 0.2s;' : '';
-        const clickClass = alloc.row_id ? `allocation-item-card p-2 mb-2 rounded border hover-shadow ${activeClass}` : 'p-2 mb-2 rounded border bg-light';
+        const clickClass = alloc.row_id ? `allocation-item-card p-3 mb-2 rounded border hover-shadow ${activeClass}` : 'p-3 mb-2 rounded border bg-light';
         const rowIdAttr = alloc.row_id ? `data-row-id="${alloc.row_id}"` : '';
         const rowNameAttr = alloc.row_name ? `data-row-name="${alloc.row_name}"` : '';
         const palletNamesAttr = alloc.pallet_names ? `data-pallet-names="${escapeHtml(JSON.stringify(alloc.pallet_names))}"` : '';
 
-        // Build expiry indicators
         let expiryBadges = '';
         if (alloc.has_near_expiry) {
             expiryBadges += `<span class="badge bg-danger text-white me-1" style="font-size: 10px;"><i class="bi bi-clock-history"></i> Near Expiry</span>`;
         }
         if (alloc.has_long_expiry) {
-            expiryBadges += `<span class="badge bg-success text-white" style="font-size: 10px;"><i class="bi bi-shield-check"></i> Long Expiry</span>`;
+            expiryBadges += `<span class="badge bg-success text-white" style="font-size: 10px;"><i class="bi bi-shield-check"></i> Good Expiry</span>`;
         }
 
         summaryHtml += `
             <div class="${clickClass}" ${rowIdAttr} ${rowNameAttr} ${palletNamesAttr} style="${clickStyle}">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fw-bold text-dark" style="font-size:12px;">Warehouse: ${alloc.warehouse_name}</span>
-                    <span class="badge bg-primary">${alloc.units} Units</span>
+                    <span class="fw-bold text-dark fs-6"><i class="bi bi-building me-1"></i> WH: ${escapeHtml(alloc.warehouse_name)}</span>
+                    <span class="badge bg-primary fs-6">${alloc.units} Units (${alloc.qty} Qty)</span>
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:12px; color:#1e293b;">
-                    <div><strong>Row/Location:</strong> ${alloc.row_name}</div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:12px; color:#1e293b;">
+                    <div><i class="bi bi-geo-alt me-1 text-danger"></i><strong>Row/Location:</strong> ${escapeHtml(alloc.row_name)}</div>
                     <div>${expiryBadges}</div>
                 </div>
-                <div class="text-muted small mt-1" style="font-size:11px;">
-                    <strong>Pallets:</strong> ${alloc.pallet_names.join(', ')}
+
+                <div class="bg-white p-2 rounded border mb-2 small text-dark" style="font-size: 11px;">
+                    <div class="row g-1">
+                        <div class="col-6"><strong>PO #:</strong> <span class="text-primary font-monospace">${escapeHtml(alloc.po_no || '-')}</span></div>
+                        <div class="col-6"><strong>IBD #:</strong> <span class="text-primary font-monospace">${escapeHtml(alloc.ibd_no || '-')}</span></div>
+                        <div class="col-6"><strong>SAP Batch:</strong> <span class="font-monospace">${escapeHtml(alloc.sap_batch || '-')}</span></div>
+                        <div class="col-6"><strong>Vendor Batch:</strong> <span class="font-monospace">${escapeHtml(alloc.vendor_batch || '-')}</span></div>
+                        <div class="col-6"><strong>MFG Date:</strong> <span>${escapeHtml(alloc.mfg_date || '-')}</span></div>
+                        <div class="col-6"><strong>Expiry Date:</strong> <span class="fw-bold text-danger">${escapeHtml(alloc.expiry_date || '-')}</span></div>
+                    </div>
                 </div>
+
+                <div class="text-muted small" style="font-size:11px;">
+                    <i class="bi bi-box-seam me-1"></i><strong>Pallet Locations:</strong> ${escapeHtml(alloc.pallet_names.join(', '))}
+                </div>
+
                 ${alloc.row_id ? '<div class="text-end mt-1"><span class="badge bg-primary-subtle text-primary" style="font-size: 9px;"><i class="bi bi-grid-3x3"></i> Click to View Grid</span></div>' : ''}
             </div>
         `;

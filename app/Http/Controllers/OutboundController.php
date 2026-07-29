@@ -55,9 +55,23 @@ class OutboundController extends Controller
         return $candidate;
     }
 
-    private function sortOutboundBatches($batches)
+    private function sortOutboundBatches($batches, ?string $userPo = null, ?string $userIbd = null)
     {
-        return $batches->sort(function ($a, $b) {
+        return $batches->sort(function ($a, $b) use ($userPo, $userIbd) {
+            // 0. If user provided PO or IBD, prioritize batches matching PO or IBD
+            $aPoMatch = (!empty($userPo) && strtolower(trim($a->po_no ?? '')) === strtolower(trim($userPo))) ? 1 : 0;
+            $bPoMatch = (!empty($userPo) && strtolower(trim($b->po_no ?? '')) === strtolower(trim($userPo))) ? 1 : 0;
+
+            $aIbdMatch = (!empty($userIbd) && strtolower(trim($a->ibd_no ?? '')) === strtolower(trim($userIbd))) ? 1 : 0;
+            $bIbdMatch = (!empty($userIbd) && strtolower(trim($b->ibd_no ?? '')) === strtolower(trim($userIbd))) ? 1 : 0;
+
+            $aScore = $aPoMatch + $aIbdMatch;
+            $bScore = $bPoMatch + $bIbdMatch;
+
+            if ($aScore !== $bScore) {
+                return $bScore <=> $aScore; // higher score first
+            }
+
             // 1. FEFO — nearest expiry date first (null expiry treated as far future)
             $aExp = $a->expiry_date
                 ? (is_object($a->expiry_date) ? $a->expiry_date->format('Y-m-d') : (string)$a->expiry_date)
@@ -88,53 +102,48 @@ class OutboundController extends Controller
     /* ================= LIST ================= */
     public function index(Request $request)
     {
-        $query = StockOutItem::with([
-            'stockOut.warehouse',
-            'stockOut.customer',
-            'stockOut.toWarehouse',
-            'stockOut.transporter',
-            'product.group',
+        $query = StockOut::with([
+            'warehouse',
+            'customer',
+            'toWarehouse',
+            'transporter',
+            'items.product.group',
         ]);
 
         // Apply source type filter
         if ($request->filled('source_type')) {
-            $query->whereHas('stockOut', function ($q) use ($request) {
-                $q->where('source_type', $request->source_type);
-            });
+            $query->where('source_type', $request->source_type);
         }
 
         // Apply warehouse filter
         if ($request->filled('warehouse_id')) {
-            $query->whereHas('stockOut', function ($q) use ($request) {
-                $q->where('warehouse_id', $request->warehouse_id);
-            });
+            $query->where('warehouse_id', $request->warehouse_id);
         }
 
         // Apply customer filter
         if ($request->filled('customer_id')) {
-            $query->whereHas('stockOut', function ($q) use ($request) {
-                $q->where('customer_id', $request->customer_id);
-            });
+            $query->where('customer_id', $request->customer_id);
         }
 
         // Apply product filter
         if ($request->filled('product_id')) {
-            $query->where('product_id', $request->product_id);
+            $productId = $request->product_id;
+            $query->whereHas('items', function ($q) use ($productId) {
+                $q->where('product_id', $productId);
+            });
         }
 
         // Apply product group filter
         if ($request->filled('product_group_id')) {
             $groupId = $request->product_group_id;
-            $query->whereHas('product', function ($q) use ($groupId) {
+            $query->whereHas('items.product', function ($q) use ($groupId) {
                 $q->where('product_group_id', $groupId);
             });
         }
 
         if ($request->filled('dispatch_no')) {
             $dispatchNos = (array) $request->dispatch_no;
-            $query->whereHas('stockOut', function ($q) use ($dispatchNos) {
-                $q->whereIn('dispatched_invoice_no', $dispatchNos);
-            });
+            $query->whereIn('dispatched_invoice_no', $dispatchNos);
         }
 
         // Apply date filter
@@ -150,42 +159,27 @@ class OutboundController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->whereHas('stockOut', function ($sq) use ($search) {
-                    $sq->where('vehicle_no', 'like', "%{$search}%")
-                        ->orWhere('vehicle_size', 'like', "%{$search}%")
-                        ->orWhere('driver_name', 'like', "%{$search}%")
-                        ->orWhere('driver_mobile', 'like', "%{$search}%")
-                        ->orWhere('dispatched_invoice_no', 'like', "%{$search}%")
-                        ->orWhere('delivery_no', 'like', "%{$search}%")
-                        ->orWhere('gatepass_no', 'like', "%{$search}%")
-                        ->orWhere('remarks', 'like', "%{$search}%")
-                        ->orWhereHas('customer', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
-                        ->orWhereHas('transporter', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
-                        ->orWhereHas('toWarehouse', fn($wq) => $wq->where('name', 'like', "%{$search}%"));
-                })->orWhere('sap_batch', 'like', "%{$search}%")
-                  ->orWhere('vendor_batch', 'like', "%{$search}%")
-                  ->orWhereHas('product', fn($pq) => $pq->where('item_code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+                $q->where('vehicle_no', 'like', "%{$search}%")
+                    ->orWhere('vehicle_size', 'like', "%{$search}%")
+                    ->orWhere('driver_name', 'like', "%{$search}%")
+                    ->orWhere('driver_mobile', 'like', "%{$search}%")
+                    ->orWhere('dispatched_invoice_no', 'like', "%{$search}%")
+                    ->orWhere('delivery_no', 'like', "%{$search}%")
+                    ->orWhere('gatepass_no', 'like', "%{$search}%")
+                    ->orWhere('remarks', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('transporter', fn($tq) => $tq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('toWarehouse', fn($wq) => $wq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('items', function($iq) use ($search) {
+                        $iq->where('sap_batch', 'like', "%{$search}%")
+                           ->orWhere('vendor_batch', 'like', "%{$search}%")
+                           ->orWhereHas('product', fn($pq) => $pq->where('item_code', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+                    });
             });
         }
 
-        $items = $query->latest()->paginate(20);
+        $transactions = $query->latest()->paginate(25);
 
-        // Calculate free pallets for warehouses in the current result set
-        $warehouseIds = $items->pluck('warehouse_id')->unique()->filter();
-        $warehouseCapacities = [];
-        
-        foreach ($warehouseIds as $wid) {
-            $wh = Warehouse::find($wid);
-            if ($wh) {
-                $totalCapacity = $wh->total_capacity ?: $wh->rows()->sum('pallet_capacity');
-                $usedPallets = StockInItem::with('product')
-                    ->where('warehouse_id', $wid)
-                    ->where('balance_quantity', '>', 0)
-                    ->get()
-                    ->sum(fn($i) => StockInItem::computeActivePallets($i));
-                $warehouseCapacities[$wid] = max(0, $totalCapacity - $usedPallets);
-            }
-        }
         $warehouses = Warehouse::orderBy('name')->get();
         $customers = Customer::where('status', 1)->orderBy('name')->get();
         $productGroups = ProductGroup::where('status', 1)->orderBy('name')->get();
@@ -196,7 +190,7 @@ class OutboundController extends Controller
             ->orderBy('dispatched_invoice_no', 'asc')
             ->pluck('dispatched_invoice_no');
 
-        return view('outbound.index', compact('items', 'warehouses', 'customers', 'productGroups', 'warehouseCapacities', 'dispatchNos'));
+        return view('outbound.index', compact('transactions', 'warehouses', 'customers', 'productGroups', 'dispatchNos'));
     }
 
     /* ================= CREATE ================= */
@@ -372,8 +366,8 @@ class OutboundController extends Controller
                     $unitsRemaining = (int) $it['units_dispatch'];
                     
                     // User provided hints
-                    $userPo = $it['po_no'] ?? null;
-                    $userIbd = $it['ibd_no'] ?? null;
+                    $userPo = isset($it['po_no']) && $it['po_no'] !== '-' && trim($it['po_no']) !== '' ? trim($it['po_no']) : null;
+                    $userIbd = isset($it['ibd_no']) && $it['ibd_no'] !== '-' && trim($it['ibd_no']) !== '' ? trim($it['ibd_no']) : null;
                     $stoNo = $it['sto_no'] ?? null;
 
                     // Find batches for this product
@@ -399,7 +393,7 @@ class OutboundController extends Controller
                     }
 
                     $batches = $batchQuery->lockForUpdate()->get();
-                    $batches = $this->sortOutboundBatches($batches);
+                    $batches = $this->sortOutboundBatches($batches, $userPo, $userIbd);
 
                     // If manual override is selected (warehouse_row_id hint)
                     $manualRowId = !empty($it['warehouse_row_id']) ? (int) $it['warehouse_row_id'] : null;
@@ -732,8 +726,8 @@ class OutboundController extends Controller
                     $itWarehouseId = $it['warehouse_id'];
                     $unitsRemaining = (int) $it['units_dispatch'];
                     
-                    $userPo = $it['po_no'] ?? null;
-                    $userIbd = $it['ibd_no'] ?? null;
+                    $userPo = isset($it['po_no']) && $it['po_no'] !== '-' && trim($it['po_no']) !== '' ? trim($it['po_no']) : null;
+                    $userIbd = isset($it['ibd_no']) && $it['ibd_no'] !== '-' && trim($it['ibd_no']) !== '' ? trim($it['ibd_no']) : null;
                     $stoNo = $it['sto_no'] ?? null;
 
                     $batchQuery = StockInItem::where('product_id', $productId)
@@ -756,7 +750,7 @@ class OutboundController extends Controller
                     }
 
                     $batches = $batchQuery->lockForUpdate()->get();
-                    $batches = $this->sortOutboundBatches($batches);
+                    $batches = $this->sortOutboundBatches($batches, $userPo, $userIbd);
 
                     // If manual override is selected (warehouse_row_id hint)
                     $manualRowId = !empty($it['warehouse_row_id']) ? (int) $it['warehouse_row_id'] : null;
@@ -1405,7 +1399,7 @@ class OutboundController extends Controller
                     }
 
                     $batches = $batchQuery->lockForUpdate()->get();
-                    $batches = $this->sortOutboundBatches($batches);
+                    $batches = $this->sortOutboundBatches($batches, $item['po_no'] ?? null, $item['ibd_no'] ?? null);
 
                     if ($batches->isEmpty()) {
                         $errors[] = "No available stock for '{$product->name}'";
@@ -1587,7 +1581,9 @@ class OutboundController extends Controller
             if ($batches->isEmpty()) continue;
 
             // Sort batches using optimized helper
-            $batches = $this->sortOutboundBatches($batches);
+            $userPo = $itemData['po_no'] ?? null;
+            $userIbd = $itemData['ibd_no'] ?? null;
+            $batches = $this->sortOutboundBatches($batches, $userPo, $userIbd);
 
             // If manual override is set, prioritize batches in that row
             if ($idx == $activeRowIndex && $manualRowId) {
@@ -1661,8 +1657,6 @@ class OutboundController extends Controller
                     $palletNames[] = 'General Pallet';
                 }
 
-                // Determine if this batch has near expiry
-                // (Let's say if expiry date is within 3 months, it is near expiry)
                 $isNearExpiry = false;
                 if ($batch->expiry_date) {
                     $expiry = \Carbon\Carbon::parse($batch->expiry_date);
@@ -1672,39 +1666,53 @@ class OutboundController extends Controller
                 }
 
                 $allocations[] = [
-                    'row_id' => $batch->warehouse_row_id,
+                    'row_id'         => $batch->warehouse_row_id,
                     'warehouse_name' => optional($batch->warehouse)->name ?? 'Unassigned',
-                    'row_name' => optional($batch->warehouseRow)->row_name ?? 'Unassigned',
-                    'pallet_start' => $batch->pallet_start,
-                    'pallet_names' => $palletNames,
-                    'units' => $unitsToTake,
+                    'row_name'       => optional($batch->warehouseRow)->row_name ?? 'Unassigned',
+                    'pallet_start'   => $batch->pallet_start,
+                    'pallet_names'   => $palletNames,
+                    'units'          => $unitsToTake,
+                    'qty'            => round($unitsToTake * $pack, 2),
+                    'po_no'          => $batch->po_no ?: '-',
+                    'ibd_no'         => $batch->ibd_no ?: '-',
+                    'sap_batch'      => $batch->sap_batch ?: '-',
+                    'vendor_batch'   => $batch->vendor_batch ?: '-',
+                    'mfg_date'       => $batch->mfg_date ? (is_object($batch->mfg_date) ? $batch->mfg_date->format('d.m.Y') : (string)$batch->mfg_date) : '-',
+                    'expiry_date'    => $batch->expiry_date ? (is_object($batch->expiry_date) ? $batch->expiry_date->format('d.m.Y') : (string)$batch->expiry_date) : '-',
                     'is_near_expiry' => $isNearExpiry,
-                    'type' => ($idx == $activeRowIndex && $manualRowId && $batch->warehouse_row_id == $manualRowId) ? 'manual' : 'new',
+                    'type'           => ($idx == $activeRowIndex && $manualRowId && $batch->warehouse_row_id == $manualRowId) ? 'manual' : 'new',
                 ];
 
                 $unitsRemaining -= $unitsToTake;
             }
 
-            // ── GROUP ALLOCATIONS BY WAREHOUSE + ROW ────────────────────────
-            // This groups same rows together, summing their units and merging pallet names.
+            // ── GROUP ALLOCATIONS BY WAREHOUSE + ROW + PO + IBD + BATCH ──────
             $groupedAllocations = [];
             foreach ($allocations as $alloc) {
-                $key = $alloc['warehouse_name'] . '_' . $alloc['row_id'];
+                $key = $alloc['warehouse_name'] . '_' . $alloc['row_id'] . '_' . $alloc['po_no'] . '_' . $alloc['ibd_no'] . '_' . $alloc['sap_batch'] . '_' . $alloc['vendor_batch'];
                 if (!isset($groupedAllocations[$key])) {
                     $groupedAllocations[$key] = [
-                        'row_id' => $alloc['row_id'],
-                        'warehouse_name' => $alloc['warehouse_name'],
-                        'row_name' => $alloc['row_name'],
-                        'pallet_start' => $alloc['pallet_start'],
-                        'pallet_names' => [],
-                        'units' => 0,
+                        'row_id'          => $alloc['row_id'],
+                        'warehouse_name'  => $alloc['warehouse_name'],
+                        'row_name'        => $alloc['row_name'],
+                        'pallet_start'    => $alloc['pallet_start'],
+                        'pallet_names'    => [],
+                        'units'           => 0,
+                        'qty'             => 0,
+                        'po_no'           => $alloc['po_no'],
+                        'ibd_no'          => $alloc['ibd_no'],
+                        'sap_batch'       => $alloc['sap_batch'],
+                        'vendor_batch'    => $alloc['vendor_batch'],
+                        'mfg_date'        => $alloc['mfg_date'],
+                        'expiry_date'     => $alloc['expiry_date'],
                         'has_near_expiry' => false,
                         'has_long_expiry' => false,
-                        'type' => $alloc['type']
+                        'type'            => $alloc['type']
                     ];
                 }
                 
                 $groupedAllocations[$key]['units'] += $alloc['units'];
+                $groupedAllocations[$key]['qty'] += $alloc['qty'];
                 $groupedAllocations[$key]['pallet_names'] = array_unique(array_merge($groupedAllocations[$key]['pallet_names'], $alloc['pallet_names']));
                 
                 if ($alloc['is_near_expiry']) {
@@ -1725,5 +1733,45 @@ class OutboundController extends Controller
             'allocations' => $activeAllocations,
             'units' => $activeUnits,
         ]);
+    }
+
+    public function getItems($stockOutId)
+    {
+        $stockOut = StockOut::with([
+            'items.product.category',
+            'items.product.uom',
+            'items.product.packingType',
+            'items.warehouse',
+            'items.warehouseRow',
+            'customer',
+            'warehouse',
+            'transporter'
+        ])->findOrFail($stockOutId);
+
+        $getPalletCode = function($row, $palletPos) {
+            if (!$row) return 'Unassigned';
+            $rowName = $row->row_name;
+            if (!$palletPos) return $rowName;
+
+            // Extract first part of row name e.g. "Row A001 to A010" -> "Row A001" or "A001 to A010" -> "A001"
+            $parts = preg_split('/ to /i', $rowName);
+            $firstPallet = trim($parts[0]);
+
+            if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $matches)) {
+                $prefix = $matches[1];
+                $startNum = (int)$matches[2];
+                $actualNum = $startNum + (int)$palletPos - 1;
+                $digits = strlen($matches[2]);
+                return $prefix . sprintf("%0{$digits}d", $actualNum);
+            }
+            return 'Pallet ' . $palletPos;
+        };
+
+        $items = $stockOut->items->map(function($item) use ($getPalletCode) {
+            $item->pallet_code_display = $getPalletCode($item->warehouseRow, $item->pallet_position);
+            return $item;
+        });
+
+        return response()->json($items);
     }
 }

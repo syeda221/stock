@@ -65,7 +65,22 @@ Route::middleware('auth')->group(function () {
     Route::put('/product-groups/{productGroup}', [ProductGroupController::class, 'update'])->name('product-group.update');
     Route::delete('/product-groups/{productGroup}', [ProductGroupController::class, 'destroy'])->name('product-group.destroy');
 
-    // Product Routes
+    // Product Routes & Master Wizard
+    Route::get('/products/wizard', [\App\Http\Controllers\ProductWizardController::class, 'index'])->name('product.wizard');
+    Route::post('/products/wizard/category', [\App\Http\Controllers\ProductWizardController::class, 'storeCategory'])->name('product.wizard.category');
+    Route::delete('/products/wizard/category/{category}', [\App\Http\Controllers\ProductWizardController::class, 'deleteCategory'])->name('product.wizard.category.delete');
+
+    Route::post('/products/wizard/group', [\App\Http\Controllers\ProductWizardController::class, 'storeGroup'])->name('product.wizard.group');
+    Route::delete('/products/wizard/group/{group}', [\App\Http\Controllers\ProductWizardController::class, 'deleteGroup'])->name('product.wizard.group.delete');
+
+    Route::post('/products/wizard/uom', [\App\Http\Controllers\ProductWizardController::class, 'storeUom'])->name('product.wizard.uom');
+    Route::delete('/products/wizard/uom/{uom}', [\App\Http\Controllers\ProductWizardController::class, 'deleteUom'])->name('product.wizard.uom.delete');
+
+    Route::post('/products/wizard/packing-type', [\App\Http\Controllers\ProductWizardController::class, 'storePackingType'])->name('product.wizard.packing-type');
+    Route::delete('/products/wizard/packing-type/{packingType}', [\App\Http\Controllers\ProductWizardController::class, 'deletePackingType'])->name('product.wizard.packing-type.delete');
+
+    Route::post('/products/wizard/product', [\App\Http\Controllers\ProductWizardController::class, 'storeProduct'])->name('product.wizard.product');
+
     Route::get('/products', [ProductController::class, 'index'])->name('product.index');
     Route::get('/products/create', [ProductController::class, 'create'])->name('product.create');
     Route::post('/products', [ProductController::class, 'store'])->name('product.store');
@@ -166,8 +181,12 @@ Route::middleware('auth')->group(function () {
 
     // Stock Relocation & Pallet Transfers
     Route::get('/stock-transfers', [\App\Http\Controllers\StockTransferController::class, 'index'])->name('stock-transfers.index');
+    Route::get('/stock-transfers/log', [\App\Http\Controllers\StockTransferController::class, 'log'])->name('stock-transfers.log');
     Route::post('/stock-transfers', [\App\Http\Controllers\StockTransferController::class, 'store'])->name('stock-transfers.store');
     Route::get('/stock-transfers/product-locations/{product}', [\App\Http\Controllers\StockTransferController::class, 'getProductLocations'])->name('stock-transfers.product-locations');
+    Route::get('/stock-transfers/available-spaces', [\App\Http\Controllers\StockTransferController::class, 'getAvailableSpaces'])->name('stock-transfers.available-spaces');
+    Route::post('/stock-transfers/store-multi', [\App\Http\Controllers\StockTransferController::class, 'storeMulti'])->name('stock-transfers.store-multi');
+
 
     // Outbound Routes
    // ================= OUTBOUND =================
@@ -191,6 +210,8 @@ Route::post('/outbound/preview-picks', [OutboundController::class, 'previewPicks
 // QUICK VIEW (modal / page)
 Route::get('/outbound/{stockOut}', [OutboundController::class, 'show'])
     ->name('outbound.show');
+
+Route::get('/outbound/{stockOut}/items', [OutboundController::class, 'getItems'])->name('outbound.items');
 
 // FULL INVOICE VIEW + PRINT
 Route::get('/outbound/{stockOut}/invoice', [OutboundController::class, 'invoice'])

@@ -145,10 +145,47 @@
 
 <style>
 @media print {
-    .no-print { display:none }
-    body { background:#fff }
-    .card { border:none }
-    table { font-size:12px }
+    header, nav, .top-header, #notificationBar, #sidebar, .sidebar, #sidebarBackdrop,
+    .sidebar-backdrop, .no-print, .btn, .breadcrumb, .alert-banner,
+    .alert, .dropdown, button, .card-header {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+
+    body, html {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+
+    .main-area, .layout-wrapper {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+
+    .card-body {
+        padding: 0 !important;
+    }
+
+    table { font-size: 11px !important; }
+
+    @page {
+        margin: 0.4cm 0.6cm 0.6cm 0.6cm;
+        size: auto;
+    }
 }
 </style>
 @endsection

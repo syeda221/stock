@@ -506,16 +506,27 @@ ${isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disable
                     }
 
                     if (res.status === 422) {
-                        let errors = res.body.errors || res.body;
-                        let errorMsg = Object.values(errors).flat().join('<br>');
-                        if(!errorMsg && res.body.message) {
+                        let errorMsg = '';
+                        let title = 'Validation Error';
+
+                        if (res.body.errors && typeof res.body.errors === 'object') {
+                            errorMsg = Object.values(res.body.errors).flat().join('<br>');
+                        } else if (res.body.message) {
                             errorMsg = res.body.message;
+                            let lowerMsg = errorMsg.toLowerCase();
+                            if (lowerMsg.includes('capacity') || lowerMsg.includes('pallet') || lowerMsg.includes('space') || lowerMsg.includes('warehouse') || lowerMsg.includes('row')) {
+                                title = 'Warehouse Space / Capacity Issue';
+                            } else {
+                                title = 'Inbound Error';
+                            }
+                        } else if (typeof res.body === 'string') {
+                            errorMsg = res.body;
                         }
 
                         Swal.fire({
                             icon: 'error',
-                            title: 'Validation Error',
-                            html: errorMsg,
+                            title: title,
+                            html: errorMsg || 'Please check your input values.',
                         });
                     } else if (res.status >= 400) {
                         Swal.fire({

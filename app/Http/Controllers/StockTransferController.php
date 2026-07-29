@@ -47,35 +47,54 @@ class StockTransferController extends Controller
     }
 
     /**
-     * Display stock relocation & transfer management page
+     * Get the pallet code label for a specific pallet offset in a row
+     */
+    private function getPalletCode($rowName, $palletOffset)
+    {
+        $parts = preg_split('/ to /i', $rowName);
+        $firstPallet = trim($parts[0]);
+        if (preg_match('/^(.*?)(\d+)$/', $firstPallet, $m)) {
+            $prefix = $m[1];
+            $startNum = (int)$m[2];
+            $digits = strlen($m[2]);
+            return $prefix . str_pad($startNum + $palletOffset, $digits, '0', STR_PAD_LEFT);
+        }
+        return $rowName . '-P' . ($palletOffset + 1);
+    }
+
+    /**
+     * Display stock transfer wizard (no history here)
      */
     public function index(Request $request)
     {
-        $products = Product::with('category')->orderBy('name', 'asc')->get();
+        $products   = Product::with('category')->orderBy('name', 'asc')->get();
         $warehouses = Warehouse::where('status', 1)->with('rows')->orderBy('name', 'asc')->get();
-        
-        $transfersQuery = StockTransfer::with([
-            'product', 'fromWarehouse', 'fromWarehouseRow', 
-            'toWarehouse', 'toWarehouseRow', 'user'
-        ]);
+        return view('transfers.index', compact('products', 'warehouses'));
+    }
+
+    /**
+     * Transfer log – separate page
+     */
+    public function log(Request $request)
+    {
+        $products = Product::orderBy('name')->get();
+        $query    = StockTransfer::with(['product', 'fromWarehouse', 'toWarehouse', 'user']);
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $transfersQuery->where(function($q) use ($search) {
-                $q->where('transfer_no', 'like', "%{$search}%")
-                  ->orWhereHas('product', fn($pq) => $pq->where('name', 'like', "%{$search}%")->orWhere('item_code', 'like', "%{$search}%"))
-                  ->orWhere('from_location_display', 'like', "%{$search}%")
-                  ->orWhere('to_location_display', 'like', "%{$search}%");
+            $s = $request->search;
+            $query->where(function($q) use ($s) {
+                $q->where('transfer_no', 'like', "%{$s}%")
+                  ->orWhereHas('product', fn($pq) => $pq->where('name', 'like', "%{$s}%")->orWhere('item_code', 'like', "%{$s}%"))
+                  ->orWhere('from_location_display', 'like', "%{$s}%")
+                  ->orWhere('to_location_display', 'like', "%{$s}%");
             });
         }
-
         if ($request->filled('product_id')) {
-            $transfersQuery->where('product_id', $request->product_id);
+            $query->where('product_id', $request->product_id);
         }
 
-        $transfers = $transfersQuery->latest()->paginate(15);
-
-        return view('transfers.index', compact('products', 'warehouses', 'transfers'));
+        $transfers = $query->latest()->paginate(20);
+        return view('transfers.log', compact('transfers', 'products'));
     }
 
     /**
@@ -90,100 +109,207 @@ class StockTransferController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        // Build row-letter mapping for precise pallet display
-        $rowLetterMap = [];
-        $allRows = WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
-
-        $locations = $batches->map(function ($item) use ($rowLetterMap) {
+        $locations = $batches->map(function ($item) {
             $packSize = (float) ($item->pack_size_snapshot ?: ($item->product->pack_size ?? 1));
             $unitsAvailable = $packSize > 0 ? floor($item->balance_quantity / $packSize) : 0;
-            
-            // Location string calculation
-            $whId = $item->warehouse_id;
-            $whName = $item->warehouse->name ?? "WH-{$whId}";
-            $rowName = $item->warehouseRow->row_name ?? 'Unassigned Row';
-            
-            $whPadded = str_pad($whId, 2, '0', STR_PAD_LEFT);
-            $pStart = (int) ($item->pallet_start ?? 1);
-            $psPadded = str_pad($pStart, 3, '0', STR_PAD_LEFT);
-            $rowKey = $whId . '-' . $rowName;
-            $letter = $rowLetterMap[$rowKey] ?? '';
+            $whName = $item->warehouse->name ?? "WH-{$item->warehouse_id}";
+            $rowName = $item->warehouseRow->row_name ?? 'Unassigned';
+            $rowCapacity = $item->warehouseRow->pallet_capacity ?? 0;
+            $palletsUsed = $item->pallets_used ?? 0;
+            $palletStart = (int)($item->pallet_start ?? 1);
 
-            if ($letter) {
-                $cleanName = (strpos($rowName, '.') !== false) ? explode('.', $rowName)[0] : "W{$whPadded}";
-                $locationDisplay = "{$cleanName}.{$letter}{$psPadded}";
+            // Build individual pallet breakdown
+            $palletBreakdown = [];
+            $maxPerPallet = (int)($item->product->cartons_per_pallet ?? 0);
+            if ($maxPerPallet > 0 && $palletsUsed > 0) {
+                $palletBalances = $item->getPalletBalances();
+                foreach ($palletBalances as $pIdx => $pQty) {
+                    $palletCode = $this->getPalletCode($rowName, $palletStart - 1 + $pIdx);
+                    $units = $packSize > 0 ? floor($pQty / $packSize) : 0;
+                    $palletBreakdown[] = [
+                        'pallet_code' => $palletCode,
+                        'pallet_index' => $pIdx,
+                        'qty' => round($pQty, 2),
+                        'units' => $units,
+                    ];
+                }
             } else {
-                $cleanRow = trim(preg_split('/ to /i', $rowName)[0]);
-                $locationDisplay = "{$whName} - {$cleanRow}";
+                $palletBreakdown[] = [
+                    'pallet_code' => $this->getPalletCode($rowName, $palletStart - 1),
+                    'pallet_index' => 0,
+                    'qty' => round((float)$item->balance_quantity, 2),
+                    'units' => $unitsAvailable,
+                ];
             }
 
+            // Compute first & last pallet name
+            $firstPallet = $palletBreakdown[0]['pallet_code'] ?? $rowName;
+            $lastPallet  = count($palletBreakdown) > 1 ? end($palletBreakdown)['pallet_code'] : $firstPallet;
+            $palletRange = $firstPallet === $lastPallet ? $firstPallet : "{$firstPallet} to {$lastPallet}";
+
             return [
-                'batch_id' => $item->id,
-                'warehouse_id' => $whId,
-                'warehouse_name' => $whName,
-                'warehouse_row_id' => $item->warehouse_row_id,
-                'row_name' => $rowName,
-                'location_display' => $locationDisplay,
-                'balance_quantity' => (float) $item->balance_quantity,
-                'units_available' => (int) $unitsAvailable,
-                'pack_size' => $packSize,
-                'sap_batch' => $item->sap_batch ?: '-',
-                'vendor_batch' => $item->vendor_batch ?: '-',
-                'mfg_date' => $item->mfg_date ? $item->mfg_date->format('d.m.Y') : '-',
-                'expiry_date' => $item->expiry_date ? $item->expiry_date->format('d.m.Y') : '-',
+                'batch_id'          => $item->id,
+                'warehouse_id'      => $item->warehouse_id,
+                'warehouse_name'    => $whName,
+                'warehouse_row_id'  => $item->warehouse_row_id,
+                'row_name'          => $rowName,
+                'row_capacity'      => $rowCapacity,
+                'pallet_start'      => $palletStart,
+                'pallets_used'      => $palletsUsed,
+                'pallet_range'      => $palletRange,
+                'pallet_breakdown'  => $palletBreakdown,
+                'balance_quantity'  => (float) $item->balance_quantity,
+                'units_available'   => (int) $unitsAvailable,
+                'pack_size'         => $packSize,
+                'sap_batch'         => $item->sap_batch ?: '-',
+                'vendor_batch'      => $item->vendor_batch ?: '-',
+                'po_no'             => $item->po_no ?: '-',
+                'ibd_no'            => $item->ibd_no ?: '-',
+                'mfg_date'          => $item->mfg_date ? $item->mfg_date->format('d M Y') : '-',
+                'expiry_date'       => $item->expiry_date ? $item->expiry_date->format('d M Y') : '-',
                 'quality_clearance' => $item->quality_clearance ?: 'pending',
-                'cartons_per_pallet' => max(1, (int) ($item->product->cartons_per_pallet ?? 1)),
-                'stock_in_id' => $item->stock_in_id,
+                'cartons_per_pallet'=> max(1, (int) ($item->product->cartons_per_pallet ?? 1)),
+                'stock_in_id'       => $item->stock_in_id,
             ];
         });
 
         return response()->json([
-            'success' => true,
-            'product' => [
-                'id' => $product->id,
-                'name' => $product->name,
-                'item_code' => $product->item_code,
-                'pack_size' => $product->pack_size,
+            'success'         => true,
+            'product'         => [
+                'id'              => $product->id,
+                'name'            => $product->name,
+                'item_code'       => $product->item_code,
+                'pack_size'       => $product->pack_size,
                 'cartons_per_pallet' => max(1, (int) ($product->cartons_per_pallet ?? 1)),
             ],
-            'locations' => $locations,
+            'locations'       => $locations,
             'total_locations' => $locations->count(),
-            'total_cartons' => $locations->sum('balance_quantity'),
-            'total_units' => $locations->sum('units_available'),
+            'total_qty'       => $locations->sum('balance_quantity'),
+            'total_units'     => $locations->sum('units_available'),
         ]);
     }
 
     /**
-     * Store a new stock transfer / location relocation
+     * AJAX: Get available (free/partially-free) pallet spaces across warehouses
+     * Returns sorted list: Warehouse 01 first, row A first, pallets from beginning
+     */
+    public function getAvailableSpaces(Request $request)
+    {
+        $totalUnitsNeeded = max(1, (int)$request->units);
+        $productId        = (int)$request->product_id;
+        $excludeBatchIds  = array_filter(explode(',', $request->exclude_batch_ids ?? ''));
+        
+        $product = Product::find($productId);
+        $cartonsPerPallet = max(1, (int)($product->cartons_per_pallet ?? 1));
+        $packSize = (float)($product->pack_size ?? 1);
+        $palletsNeeded = max(1, (int)ceil($totalUnitsNeeded / $cartonsPerPallet));
+
+        // Get all warehouses and their rows (sorted alphabetically / numerically)
+        $warehouses = Warehouse::where('status', 1)
+            ->with(['rows' => function($q) { $q->orderByRaw("CAST(REGEXP_REPLACE(row_name, '[^0-9]', '') AS UNSIGNED), row_name"); }])
+            ->orderBy('name')
+            ->get();
+
+        // Get occupied pallet positions per row
+        $occupiedByRow = StockInItem::where('balance_quantity', '>', 0)
+            ->whereNotIn('id', $excludeBatchIds ?: [0])
+            ->select('warehouse_row_id', 'pallet_start', 'pallets_used')
+            ->get()
+            ->groupBy('warehouse_row_id');
+
+        $suggestions = [];
+
+        foreach ($warehouses as $wh) {
+            foreach ($wh->rows as $row) {
+                $rowCap = (int)($row->pallet_capacity ?? 0);
+                if ($rowCap <= 0) continue;
+
+                // Build occupied pallet set for this row
+                $occupied = [];
+                $rowItems = $occupiedByRow->get($row->id, collect());
+                foreach ($rowItems as $it) {
+                    $start = max(1, (int)$it->pallet_start);
+                    $end   = $start + max(1, (int)$it->pallets_used) - 1;
+                    for ($p = $start; $p <= min($end, $rowCap); $p++) {
+                        $occupied[$p] = true;
+                    }
+                }
+
+                // Find contiguous free blocks (from pallet 1 upward)
+                $freeBlocks = [];
+                $blockStart = null;
+                for ($p = 1; $p <= $rowCap; $p++) {
+                    if (!isset($occupied[$p])) {
+                        if ($blockStart === null) $blockStart = $p;
+                    } else {
+                        if ($blockStart !== null) {
+                            $freeBlocks[] = ['start' => $blockStart, 'end' => $p - 1];
+                            $blockStart = null;
+                        }
+                    }
+                }
+                if ($blockStart !== null) {
+                    $freeBlocks[] = ['start' => $blockStart, 'end' => $rowCap];
+                }
+
+                if (empty($freeBlocks)) continue;
+
+                $freeCount = array_sum(array_map(fn($b) => $b['end'] - $b['start'] + 1, $freeBlocks));
+                $firstBlock = $freeBlocks[0];
+                $firstFreeCode = $this->getPalletCode($row->row_name, $firstBlock['start'] - 1);
+                $lastFreeCode  = $this->getPalletCode($row->row_name, $firstBlock['end'] - 1);
+
+                $canFit = min($freeCount, $palletsNeeded);
+
+                $suggestions[] = [
+                    'warehouse_id'    => $wh->id,
+                    'warehouse_name'  => $wh->name,
+                    'row_id'          => $row->id,
+                    'row_name'        => $row->row_name,
+                    'row_capacity'    => $rowCap,
+                    'free_pallets'    => $freeCount,
+                    'first_free'      => $firstBlock['start'],
+                    'first_free_code' => $firstFreeCode,
+                    'last_free_code'  => $lastFreeCode,
+                    'can_fit'         => $canFit,
+                    'fits_all'        => $freeCount >= $palletsNeeded,
+                    'free_blocks'     => $freeBlocks,
+                ];
+            }
+        }
+
+        // Sort: ones that fit all first, then by warehouse name, then row name
+        usort($suggestions, function($a, $b) {
+            if ($b['fits_all'] !== $a['fits_all']) return $b['fits_all'] <=> $a['fits_all'];
+            $wComp = strcmp($a['warehouse_name'], $b['warehouse_name']);
+            if ($wComp !== 0) return $wComp;
+            return strcmp($a['row_name'], $b['row_name']);
+        });
+
+        return response()->json([
+            'success'        => true,
+            'pallets_needed' => $palletsNeeded,
+            'suggestions'    => array_values($suggestions),
+        ]);
+    }
+
+    /**
+     * Store a new stock transfer / location relocation (single batch)
      */
     public function store(Request $request)
     {
         $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'stock_in_item_id' => 'required|exists:stock_in_items,id',
-            'transfer_units' => 'required|integer|min:1',
-            'to_warehouse_id' => 'required|exists:warehouses,id',
-            'to_warehouse_row_id' => 'nullable|exists:warehouse_rows,id',
-            'to_pallet_start' => 'nullable|integer|min:1',
-            'remarks' => 'nullable|string|max:500',
+            'product_id'         => 'required|exists:products,id',
+            'stock_in_item_id'   => 'required|exists:stock_in_items,id',
+            'transfer_units'     => 'required|integer|min:1',
+            'to_warehouse_id'    => 'required|exists:warehouses,id',
+            'to_warehouse_row_id'=> 'nullable|exists:warehouse_rows,id',
+            'to_pallet_start'    => 'nullable|integer|min:1',
+            'remarks'            => 'nullable|string|max:500',
         ]);
 
         try {
             $transfer = DB::transaction(function () use ($request) {
-                // Lock source batch
                 $sourceBatch = StockInItem::with(['warehouse', 'warehouseRow', 'product'])->lockForUpdate()->findOrFail($request->stock_in_item_id);
                 
                 $product = $sourceBatch->product;
@@ -194,22 +320,18 @@ class StockTransferController extends Controller
                 $availableUnits = $packSize > 0 ? floor($sourceBatch->balance_quantity / $packSize) : 0;
 
                 if ($requestedUnits > $availableUnits) {
-                    throw new \Exception("Cannot transfer {$requestedUnits} units. Only {$availableUnits} units available in source location.");
+                    throw new \Exception("Cannot transfer {$requestedUnits} units. Only {$availableUnits} units available.");
                 }
 
-                // Calculate exact source location display (e.g. Warehouse 01 (C010))
                 $fromLocationDisplay = $this->formatLocationPalletDisplay(
-                    $sourceBatch->warehouse,
-                    $sourceBatch->warehouseRow,
-                    $sourceBatch->pallet_start,
-                    $sourceBatch->pallets_used
+                    $sourceBatch->warehouse, $sourceBatch->warehouseRow,
+                    $sourceBatch->pallet_start, $sourceBatch->pallets_used
                 );
 
                 $cartonsPerPallet = max(1, (int) ($product->cartons_per_pallet ?? 1));
                 $palletsNeeded = max(1, (int) ceil($requestedUnits / $cartonsPerPallet));
                 $toPalletStart = max(1, (int) ($request->to_pallet_start ?: 1));
 
-                // Use WarehouseRowFifo to assign pallets strictly within row capacities and split into next rows if needed
                 $splits = \App\Services\WarehouseRowFifo::assign(
                     $request->to_warehouse_id,
                     $palletsNeeded,
@@ -221,86 +343,73 @@ class StockTransferController extends Controller
                     $toPalletStart
                 );
 
-                // 1. Decrement source batch balance
                 $sourceBatch->decrement('balance_quantity', $requestedQty);
 
-                // 2. Create Destination Items for each split
                 $destLocationDisplays = [];
                 foreach ($splits as $split) {
-                    $splitWh = Warehouse::find($split['warehouse_id']);
+                    $splitWh  = Warehouse::find($split['warehouse_id']);
                     $splitRow = $split['warehouse_row_id'] ? WarehouseRow::find($split['warehouse_row_id']) : null;
-                    
-                    $splitLocationName = $this->formatLocationPalletDisplay(
-                        $splitWh,
-                        $splitRow,
-                        $split['pallet_start'],
-                        $split['pallets']
-                    );
-                    $destLocationDisplays[] = $splitLocationName;
+                    $destLocationDisplays[] = $this->formatLocationPalletDisplay($splitWh, $splitRow, $split['pallet_start'], $split['pallets']);
 
                     StockInItem::create([
-                        'stock_in_id' => $sourceBatch->stock_in_id,
-                        'warehouse_id' => $split['warehouse_id'],
-                        'warehouse_row_id' => $split['warehouse_row_id'],
-                        'pallet_start' => $split['pallet_start'],
-                        'pallets_used' => $split['pallets'],
-                        'product_id' => $sourceBatch->product_id,
-                        'vendor_id' => $sourceBatch->vendor_id,
-                        'units_received' => $split['units'],
-                        'total_quantity' => $split['qty'],
-                        'balance_quantity' => $split['qty'],
-                        'vendor_batch' => $sourceBatch->vendor_batch,
-                        'sap_batch' => $sourceBatch->sap_batch,
-                        'po_no' => $sourceBatch->po_no,
-                        'ibd_no' => $sourceBatch->ibd_no,
-                        'mfg_date' => $sourceBatch->mfg_date,
-                        'expiry_date' => $sourceBatch->expiry_date,
-                        'sound_stock' => $sourceBatch->sound_stock,
-                        'block_stock' => $sourceBatch->block_stock,
-                        'hold_stock' => $sourceBatch->hold_stock,
+                        'stock_in_id'       => $sourceBatch->stock_in_id,
+                        'warehouse_id'      => $split['warehouse_id'],
+                        'warehouse_row_id'  => $split['warehouse_row_id'],
+                        'pallet_start'      => $split['pallet_start'],
+                        'pallets_used'      => $split['pallets'],
+                        'product_id'        => $sourceBatch->product_id,
+                        'vendor_id'         => $sourceBatch->vendor_id,
+                        'units_received'    => $split['units'],
+                        'total_quantity'    => $split['qty'],
+                        'balance_quantity'  => $split['qty'],
+                        'vendor_batch'      => $sourceBatch->vendor_batch,
+                        'sap_batch'         => $sourceBatch->sap_batch,
+                        'po_no'             => $sourceBatch->po_no,
+                        'ibd_no'            => $sourceBatch->ibd_no,
+                        'mfg_date'          => $sourceBatch->mfg_date,
+                        'expiry_date'       => $sourceBatch->expiry_date,
+                        'sound_stock'       => $sourceBatch->sound_stock,
+                        'block_stock'       => $sourceBatch->block_stock,
+                        'hold_stock'        => $sourceBatch->hold_stock,
                         'quality_clearance' => $sourceBatch->quality_clearance,
-                        'qc_remarks' => $sourceBatch->qc_remarks,
-                        'allow_expired_sale' => $sourceBatch->allow_expired_sale,
-                        'pack_size_snapshot' => $sourceBatch->pack_size_snapshot,
-                        'packing_snapshot' => $sourceBatch->packing_snapshot,
-                        'uom_snapshot' => $sourceBatch->uom_snapshot,
-                        'remarks' => "Relocated from {$fromLocationDisplay}. " . ($request->remarks ?? ''),
+                        'qc_remarks'        => $sourceBatch->qc_remarks,
+                        'allow_expired_sale'=> $sourceBatch->allow_expired_sale,
+                        'pack_size_snapshot'=> $sourceBatch->pack_size_snapshot,
+                        'packing_snapshot'  => $sourceBatch->packing_snapshot,
+                        'uom_snapshot'      => $sourceBatch->uom_snapshot,
+                        'remarks'           => "Relocated from {$fromLocationDisplay}. " . ($request->remarks ?? ''),
                     ]);
                 }
 
                 $toLocationDisplay = implode(' + ', array_unique($destLocationDisplays));
 
-                // 3. Generate Transfer Serial No
-                $todayStr = date('Ymd');
+                $todayStr   = date('Ymd');
                 $countToday = StockTransfer::whereDate('created_at', now()->toDateString())->count() + 1;
                 $transferNo = 'TRF-' . $todayStr . '-' . str_pad($countToday, 4, '0', STR_PAD_LEFT);
 
-                // 4. Create StockTransfer Audit Log
-                $transferLog = StockTransfer::create([
-                    'transfer_no' => $transferNo,
-                    'product_id' => $sourceBatch->product_id,
-                    'stock_in_item_id' => $sourceBatch->id,
-                    'from_warehouse_id' => $sourceBatch->warehouse_id,
-                    'from_warehouse_row_id' => $sourceBatch->warehouse_row_id,
-                    'from_location_display' => $fromLocationDisplay,
-                    'to_warehouse_id' => $request->to_warehouse_id,
-                    'to_warehouse_row_id' => $request->to_warehouse_row_id,
-                    'to_location_display' => $toLocationDisplay,
-                    'quantity' => $requestedQty,
-                    'units' => $requestedUnits,
-                    'transfer_date' => now(),
-                    'user_id' => Auth::id(),
-                    'remarks' => $request->remarks,
+                return StockTransfer::create([
+                    'transfer_no'          => $transferNo,
+                    'product_id'           => $sourceBatch->product_id,
+                    'stock_in_item_id'     => $sourceBatch->id,
+                    'from_warehouse_id'    => $sourceBatch->warehouse_id,
+                    'from_warehouse_row_id'=> $sourceBatch->warehouse_row_id,
+                    'from_location_display'=> $fromLocationDisplay,
+                    'to_warehouse_id'      => $request->to_warehouse_id,
+                    'to_warehouse_row_id'  => $request->to_warehouse_row_id,
+                    'to_location_display'  => $toLocationDisplay,
+                    'quantity'             => $requestedQty,
+                    'units'                => $requestedUnits,
+                    'transfer_date'        => now(),
+                    'user_id'              => Auth::id(),
+                    'remarks'              => $request->remarks,
                 ]);
-
-                return $transferLog;
             });
 
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json([
                     'success' => true,
                     'message' => "Stock successfully transferred ({$transfer->units} units) to {$transfer->to_location_display}.",
-                    'transfer' => $transfer
+                    'transfer'=> $transfer
                 ]);
             }
 
@@ -314,4 +423,142 @@ class StockTransferController extends Controller
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
     }
+
+    /**
+     * Store multiple batch transfers in one wizard step
+     */
+    public function storeMulti(Request $request)
+    {
+        $request->validate([
+            'product_id'         => 'required|exists:products,id',
+            'to_warehouse_id'    => 'required|exists:warehouses,id',
+            'to_warehouse_row_id'=> 'required|exists:warehouse_rows,id',
+            'to_pallet_start'    => 'required|integer|min:1',
+            'batches'            => 'required|array|min:1',
+            'batches.*.batch_id' => 'required|exists:stock_in_items,id',
+            'batches.*.units'    => 'required|integer|min:1',
+            'remarks'            => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $results = DB::transaction(function () use ($request) {
+                $product = Product::findOrFail($request->product_id);
+                $packSize = (float)($product->pack_size ?? 1);
+                $cartonsPerPallet = max(1, (int)($product->cartons_per_pallet ?? 1));
+                $toWarehouse = Warehouse::findOrFail($request->to_warehouse_id);
+                $toRow = WarehouseRow::findOrFail($request->to_warehouse_row_id);
+                $palletCursor = (int)$request->to_pallet_start;
+
+                $transferLogs = [];
+
+                foreach ($request->batches as $batchReq) {
+                    $sourceBatch = StockInItem::with(['warehouse', 'warehouseRow', 'product'])
+                        ->lockForUpdate()->findOrFail($batchReq['batch_id']);
+                    $batchPackSize = (float)($sourceBatch->pack_size_snapshot ?: $packSize);
+                    $requestedUnits = (int)$batchReq['units'];
+                    $requestedQty = round($requestedUnits * $batchPackSize, 4);
+
+                    $availableUnits = $batchPackSize > 0 ? floor($sourceBatch->balance_quantity / $batchPackSize) : 0;
+                    if ($requestedUnits > $availableUnits) {
+                        throw new \Exception("Batch #{$sourceBatch->id}: Cannot transfer {$requestedUnits} units. Only {$availableUnits} available.");
+                    }
+
+                    $fromLocationDisplay = $this->formatLocationPalletDisplay(
+                        $sourceBatch->warehouse, $sourceBatch->warehouseRow,
+                        $sourceBatch->pallet_start, $sourceBatch->pallets_used
+                    );
+
+                    $palletsNeeded = max(1, (int)ceil($requestedUnits / $cartonsPerPallet));
+
+                    // Assign to destination using cursor position
+                    $splits = \App\Services\WarehouseRowFifo::assign(
+                        $request->to_warehouse_id,
+                        $palletsNeeded,
+                        $requestedUnits,
+                        $batchPackSize,
+                        true,
+                        $cartonsPerPallet,
+                        $request->to_warehouse_row_id,
+                        $palletCursor
+                    );
+
+                    $sourceBatch->decrement('balance_quantity', $requestedQty);
+
+                    $destDisplays = [];
+                    foreach ($splits as $split) {
+                        $splitWh  = Warehouse::find($split['warehouse_id']);
+                        $splitRow = $split['warehouse_row_id'] ? WarehouseRow::find($split['warehouse_row_id']) : null;
+                        $destDisplays[] = $this->formatLocationPalletDisplay($splitWh, $splitRow, $split['pallet_start'], $split['pallets']);
+
+                        StockInItem::create([
+                            'stock_in_id'        => $sourceBatch->stock_in_id,
+                            'warehouse_id'        => $split['warehouse_id'],
+                            'warehouse_row_id'    => $split['warehouse_row_id'],
+                            'pallet_start'        => $split['pallet_start'],
+                            'pallets_used'        => $split['pallets'],
+                            'product_id'          => $sourceBatch->product_id,
+                            'vendor_id'           => $sourceBatch->vendor_id,
+                            'units_received'      => $split['units'],
+                            'total_quantity'      => $split['qty'],
+                            'balance_quantity'    => $split['qty'],
+                            'vendor_batch'        => $sourceBatch->vendor_batch,
+                            'sap_batch'           => $sourceBatch->sap_batch,
+                            'po_no'               => $sourceBatch->po_no,
+                            'ibd_no'              => $sourceBatch->ibd_no,
+                            'mfg_date'            => $sourceBatch->mfg_date,
+                            'expiry_date'         => $sourceBatch->expiry_date,
+                            'sound_stock'         => $sourceBatch->sound_stock,
+                            'block_stock'         => $sourceBatch->block_stock,
+                            'hold_stock'          => $sourceBatch->hold_stock,
+                            'quality_clearance'   => $sourceBatch->quality_clearance,
+                            'qc_remarks'          => $sourceBatch->qc_remarks,
+                            'allow_expired_sale'  => $sourceBatch->allow_expired_sale,
+                            'pack_size_snapshot'  => $sourceBatch->pack_size_snapshot,
+                            'packing_snapshot'    => $sourceBatch->packing_snapshot,
+                            'uom_snapshot'        => $sourceBatch->uom_snapshot,
+                            'remarks'             => "Wizard transfer from {$fromLocationDisplay}. " . ($request->remarks ?? ''),
+                        ]);
+                    }
+
+                    $toLocationDisplay = implode(' + ', array_unique($destDisplays));
+                    $palletCursor += $palletsNeeded;
+
+                    $todayStr   = date('Ymd');
+                    $countToday = StockTransfer::whereDate('created_at', now()->toDateString())->count() + 1;
+                    $transferNo = 'TRF-' . $todayStr . '-' . str_pad($countToday, 4, '0', STR_PAD_LEFT);
+
+                    $transferLogs[] = StockTransfer::create([
+                        'transfer_no'           => $transferNo,
+                        'product_id'            => $sourceBatch->product_id,
+                        'stock_in_item_id'      => $sourceBatch->id,
+                        'from_warehouse_id'     => $sourceBatch->warehouse_id,
+                        'from_warehouse_row_id' => $sourceBatch->warehouse_row_id,
+                        'from_location_display' => $fromLocationDisplay,
+                        'to_warehouse_id'       => $request->to_warehouse_id,
+                        'to_warehouse_row_id'   => $request->to_warehouse_row_id,
+                        'to_location_display'   => $toLocationDisplay,
+                        'quantity'              => $requestedQty,
+                        'units'                 => $requestedUnits,
+                        'transfer_date'         => now(),
+                        'user_id'               => Auth::id(),
+                        'remarks'               => $request->remarks,
+                    ]);
+                }
+
+                return $transferLogs;
+            });
+
+            $totalUnits = collect($results)->sum('units');
+
+            return response()->json([
+                'success' => true,
+                'message' => "âœ… {$totalUnits} units successfully transferred across " . count($results) . " batches.",
+                'count'   => count($results),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
 }
+

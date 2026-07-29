@@ -65,9 +65,16 @@
     @can('product-list')
     <li class="nav-item">
         <a href="{{ route('product.index') }}"
-           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product.*') ? 'active' : '' }}">
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product.index') ? 'active' : '' }}">
             <i class="bi bi-basket2 me-2"></i>
             <span>Products</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('product.wizard') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('product.wizard') ? 'active' : '' }}">
+            <i class="bi bi-magic me-2 text-warning"></i>
+            <span>Master Setup Wizard</span>
         </a>
     </li>
     @endcan

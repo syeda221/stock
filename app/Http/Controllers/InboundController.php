@@ -392,15 +392,19 @@ class InboundController extends Controller
             $request->merge(['items' => $filteredItems]);
         }
 
-        // Auto-resolve top-level warehouse_id from first item row or default active warehouse
+        // Resolve default active warehouse ID
+        $defaultActiveWhId = Warehouse::where('status', 1)->orderBy('name')->value('id') ?? Warehouse::where('status', 1)->value('id');
+
+        if (!$defaultActiveWhId) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['message' => 'No active warehouse found in system. Please create or activate a warehouse first.'], 422);
+            }
+            return back()->withInput()->withErrors(['error' => 'No active warehouse found in system. Please create or activate a warehouse first.']);
+        }
+
+        // Auto-resolve top-level warehouse_id if missing or set to 'auto'
         if (!$request->has('warehouse_id') || empty($request->warehouse_id) || $request->warehouse_id === 'auto') {
-            $firstItemWh = collect($request->items)->firstWhere('warehouse_id', '!=', 'auto')['warehouse_id'] ?? null;
-            if (!$firstItemWh || $firstItemWh === 'auto') {
-                $firstItemWh = Warehouse::where('status', 1)->value('id');
-            }
-            if ($firstItemWh) {
-                $request->merge(['warehouse_id' => $firstItemWh]);
-            }
+            $request->merge(['warehouse_id' => $defaultActiveWhId]);
         }
 
         $request->validate([
@@ -435,12 +439,15 @@ class InboundController extends Controller
         if ($request->manual_selection == '1') {
             $freeCapacity = \App\Services\WarehouseRowFifo::getFreeRowCapacity($request->warehouse_id);
             if ($freeCapacity <= 0) {
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['message' => 'Selected warehouse has no free space.'], 422);
+                }
                 return back()->withErrors(['warehouse_id' => 'Selected warehouse has no free space.'])->withInput();
             }
         }
 
         try {
-            DB::transaction(function () use ($request, &$stockIn) {
+            DB::transaction(function () use ($request, &$stockIn, $defaultActiveWhId) {
 
                 // Determine warehouse sequence: primary (user-selected/auto) first, then others by name
                 $primaryWarehouse = Warehouse::findOrFail($request->warehouse_id);
@@ -580,7 +587,7 @@ class InboundController extends Controller
 
                 $itemWhId = !empty($item['warehouse_id']) && $item['warehouse_id'] !== 'auto'
                     ? (int) $item['warehouse_id']
-                    : ($primaryWarehouse ? $primaryWarehouse->id : $activeWarehouses->first()->id);
+                    : $defaultActiveWhId;
 
                 if ($manualRowId) {
                     $rowObj = WarehouseRow::find($manualRowId);
@@ -665,7 +672,7 @@ class InboundController extends Controller
             return redirect()->route('inbound.invoice', $stockIn)
                 ->with('success', 'Inbound stock added successfully.');
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['message' => $e->getMessage()], 422);
             }
@@ -968,9 +975,11 @@ class InboundController extends Controller
             $palletsNeeded = (int) ceil($units / $product->cartons_per_pallet);
         }
 
+        $defaultWhId = Warehouse::where('status', 1)->orderBy('name')->value('id') ?? Warehouse::where('status', 1)->value('id');
+
         $itemWhId = !empty($itemData['warehouse_id']) && $itemData['warehouse_id'] !== 'auto'
             ? (int) $itemData['warehouse_id']
-            : ($primaryWarehouse ? $primaryWarehouse->id : Warehouse::where('status', 1)->value('id'));
+            : $defaultWhId;
 
         if ($manualRowId) {
             $rowObj = WarehouseRow::find($manualRowId);

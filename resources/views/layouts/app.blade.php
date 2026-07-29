@@ -234,6 +234,46 @@
         }
 
         @media (max-width: 576px) { .top-header { padding: 0.65rem 0.8rem; } }
+
+        /* ===== Global Print CSS ===== */
+        @media print {
+            header, nav, .top-header, #notificationBar, #sidebar, .sidebar, #sidebarBackdrop,
+            .sidebar-backdrop, .no-print, .btn, .breadcrumb, .alert-banner,
+            .alert, .dropdown, button, .card-header {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                max-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+            }
+
+            body, html {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .main-area, .layout-wrapper, main, main.p-4 {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .card {
+                border: none !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .card-body {
+                padding: 0 !important;
+            }
+        }
     </style>
 @stack('styles')
 </head>

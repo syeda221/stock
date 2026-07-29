@@ -36,6 +36,10 @@
            class="btn btn-sm btn-outline-info rounded-pill px-3">
             <i class="bi bi-upload me-1"></i> Import
         </a>
+        <a href="{{ route('product.wizard') }}"
+           class="btn btn-sm btn-outline-dark rounded-pill shadow-sm px-3 fw-bold">
+            <i class="bi bi-magic me-1"></i> Setup Wizard
+        </a>
         <a href="{{ route('product.create') }}"
            class="btn btn-sm btn-primary rounded-pill shadow-sm px-3">
             <i class="bi bi-plus-lg me-1"></i> Add Product

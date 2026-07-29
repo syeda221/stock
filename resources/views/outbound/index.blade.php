@@ -15,6 +15,28 @@
     border: 1px solid #dee2e6;
     color: #212529;
 }
+
+/* ── Modal & KPI Strip Styles ── */
+#outboundBatchesModal .modal-content {
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+    overflow: hidden;
+}
+@media (min-width: 993px) {
+    #outboundBatchesModal { left: 280px !important; width: calc(100% - 280px) !important; }
+}
+.kpi-strip { display: flex; background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+.kpi-card  { flex: 1; padding: 14px 18px; text-align: center; border-right: 1px solid #f1f5f9; }
+.kpi-card:last-child { border-right: none; }
+.kpi-icon  { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 6px; font-size: 14px; }
+.kpi-val   { font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.2; margin-bottom: 2px; }
+.kpi-lbl   { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: .5px; text-transform: uppercase; }
+.kpi-blue   .kpi-icon { background:#dbeafe; color:#2563eb; }
+.kpi-green  .kpi-icon { background:#dcfce7; color:#16a34a; }
+.kpi-purple .kpi-icon { background:#ede9fe; color:#7c3aed; }
+.kpi-orange .kpi-icon { background:#ffedd5; color:#ea580c; }
+.state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:12px; color:#94a3b8; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -43,8 +65,8 @@
                     <i class="bi bi-truck text-primary fs-5"></i>
                 </div>
                 <div>
-                    <small class="text-muted d-block">Total Records</small>
-                    <strong class="fs-6">{{ $items->total() }}</strong>
+                    <small class="text-muted d-block">Total Entries</small>
+                    <strong class="fs-6">{{ $transactions->total() }}</strong>
                 </div>
             </div>
         </div>
@@ -57,7 +79,7 @@
                 </div>
                 <div>
                     <small class="text-muted d-block">Sales</small>
-                    <strong class="fs-6">{{ $items->where('stockOut.source_type', 'sale')->count() }}</strong>
+                    <strong class="fs-6">{{ $transactions->getCollection()->where('source_type', 'sale')->count() }}</strong>
                 </div>
             </div>
         </div>
@@ -70,7 +92,7 @@
                 </div>
                 <div>
                     <small class="text-muted d-block">Transfers</small>
-                    <strong class="fs-6">{{ $items->where('stockOut.source_type', 'transfer')->count() }}</strong>
+                    <strong class="fs-6">{{ $transactions->getCollection()->where('source_type', 'transfer')->count() }}</strong>
                 </div>
             </div>
         </div>
@@ -79,11 +101,11 @@
         <div class="card border-0 shadow-sm bg-warning bg-opacity-10">
             <div class="card-body p-3 d-flex align-items-center gap-3">
                 <div class="bg-warning bg-opacity-25 rounded-3 p-2">
-                    <i class="bi bi-arrow-return-left text-warning fs-5"></i>
+                    <i class="bi bi-boxes text-warning fs-5"></i>
                 </div>
                 <div>
-                    <small class="text-muted d-block">Returns</small>
-                    <strong class="fs-6">{{ $items->where('stockOut.source_type', 'return')->count() }}</strong>
+                    <small class="text-muted d-block">Total Cartons</small>
+                    <strong class="fs-6">{{ number_format($transactions->getCollection()->sum(fn($tx) => $tx->items->sum('units_dispatch'))) }}</strong>
                 </div>
             </div>
         </div>
@@ -171,7 +193,6 @@
                 <button type="button" id="resetFilters" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-arrow-counterclockwise"></i> Reset
                 </button>
-                <span class="ms-auto text-muted small">Total: <strong id="totalCount">{{ $items->count() }}</strong> records</span>
             </div>
         </form>
     </div>
@@ -192,232 +213,113 @@
             </div>
         @endif
 
-        <div id="selectionToolbar" class="d-none align-items-center text-white p-2 rounded m-3 shadow-sm" style="background-color: var(--bs-primary) !important;">
-            <div class="me-auto fw-semibold ms-2" id="selectionCount">0 selected</div>
-            <form id="exportSelectedForm" method="POST" action="{{ route('outbound.exportSelected') }}" class="m-0 p-0 d-flex align-items-center">
-                @csrf
-                <div id="hiddenInputsContainer"></div>
-                <button type="submit" class="btn btn-sm btn-outline-light me-2">
-                    <i class="bi bi-file-earmark-arrow-down"></i> Export selected
-                </button>
-            </form>
-            <button type="button" class="btn btn-sm btn-light text-primary fw-semibold me-2" id="clearSelectionBtn">Clear</button>
-        </div>
-
-        <div class="table-responsive rounded-bottom">
+        <div class="table-responsive rounded-bottom mt-3">
             <table class="table table-hover table-sm align-middle mb-0">
-                <thead class="table-primary small">
+                <thead class="table-dark small">
                     <tr class="text-nowrap">
-                        <th style="width:30px">
-                            <input type="checkbox" id="selectAllCheckbox" class="form-check-input shadow-none">
-                        </th>
-                        <th>WH</th>
+                        <th width="46">#</th>
+                        <th>Invoice No</th>
+                        <th>Outbound Date</th>
+                        <th>Warehouse</th>
                         <th>To / Customer</th>
-                        <th>Product</th>
-                        <th>Group</th>
-                        <th class="text-end">Units</th>
-                        <th class="text-end">Pack</th>
-                        <th class="text-end">Qty</th>
-                        <th class="text-end">Pallets</th>
-                        <th>Vehicle</th>
-                        <th>Dispatch No</th>
-                        <th>Date</th>
-                        <th class="text-center">Actions</th>
+                        <th>Transporter</th>
+                        <th class="text-center">Products</th>
+                        <th class="text-end">Total Cartons</th>
+                        <th>Vehicle / Driver</th>
+                        <th class="text-center" width="220">Action</th>
                     </tr>
                 </thead>
 
                 <tbody id="outboundTableBody">
-                @forelse($items as $item)
+                @forelse($transactions as $tx)
                     @php
-                        $out = $item->stockOut;
-
-                        $badge = match($out->source_type){
-                            'sale'     => 'success',
-                            'transfer' => 'info',
-                            'return'   => 'warning',
-                            default    => 'secondary'
-                        };
-
-                        $target = $out->source_type === 'sale'
-                            ? ($out->customer->name ?? '-')
-                            : ($out->toWarehouse->name ?? '-');
-
-                        $productText = ($item->product->item_code ?? '') . ' - ' . ($item->product->name ?? '-');
-
-                        $headerData = [
-                            'Outbound Type'     => ucfirst($out->source_type),
-                            'From Warehouse'    => $out->warehouse->name ?? '-',
-                            'To / Customer'     => $target,
-                            'Transporter'       => $out->transporter->name ?? '-',
-                            'Shipment No'       => $out->shipment_no ?? '-',
-                            'Delivery No'       => $out->delivery_no ?? '-',
-                            'Gatepass No'       => $out->gatepass_no ?? '-',
-                            'Shipment Type'     => strtoupper($out->shipment_type ?? 'MANUAL'),
-                            'Vehicle No'        => $out->vehicle_no ?? '-',
-                            'Vehicle Size'      => $out->vehicle_size ?? '-',
-                            'Vehicle In Time'   => $out->vehicle_in_time ? \Carbon\Carbon::parse($out->vehicle_in_time)->format('d.m.Y h:i A') : '-',
-                            'Vehicle Out Time'  => $out->vehicle_out_time ? \Carbon\Carbon::parse($out->vehicle_out_time)->format('d.m.Y h:i A') : '-',
-                            'Driver Name'       => $out->driver_name ?? '-',
-                            'Driver Mobile'     => $out->driver_mobile ?? '-',
-                            'Dispatched Invoice No' => $out->dispatched_invoice_no ?? '-',
-                            'Dispatcher Sig'    => $out->dispatcher_sig ?? '-',
-                            'Picker'            => $out->picker ?? '-',
-                            'Header Remarks'    => $out->remarks ?? '-',
-                        ];
-
-                        $sourceItem = $item->sourceStockInItem;
-                        $palletLocationStr = 'Unassigned';
-                        $rowName = $item->warehouseRow->row_name ?? ($sourceItem->warehouseRow->row_name ?? '-');
-
-                        if ($item->warehouse_row_id || ($sourceItem && $sourceItem->warehouse_row_id)) {
-                            $rowId = $item->warehouse_row_id ?? $sourceItem->warehouse_row_id;
-
-                            if ($item->pallet_position) {
-                                $palletLocationStr = "Row " . $rowName . " (Pallet " . $item->pallet_position . ")";
-                            } else {
-                                $pallets = $item->pallets_returned > 0 ? $item->pallets_returned : 0;
-                                if ($pallets > 0) {
-                                    $offset = 0;
-                                    if ($sourceItem) {
-                                        $offset = \App\Models\StockInItem::where('warehouse_row_id', $rowId)
-                                            ->where('id', '<', $sourceItem->id)
-                                            ->sum('pallets_used');
-                                    }
-                                    $start = $offset + 1;
-                                    $end = $offset + $pallets;
-                                    if ($start == $end) {
-                                        $palletLocationStr = "Row " . $rowName . " (Pallet " . $start . ")";
-                                    } else {
-                                        $palletLocationStr = "Row " . $rowName . " (Pallets " . $start . "-" . $end . ")";
-                                    }
-                                } else {
-                                    $palletLocationStr = "Row " . $rowName;
-                                }
-                            }
-                        }
-
-                        $itemData = [
-                            'Product'          => ($item->product?->item_code ?? '-') . ' - ' . ($item->product?->name ?? '-'),
-                            'Category'         => $item->product?->category?->name ?? '-',
-                            'UOM'              => $item->product?->uom?->name ?? ($item->uom_snapshot ?? '-'),
-                            'Packing'          => $item->product?->packingType?->name ?? ($item->packing_snapshot ?? '-'),
-                            'SAP Batch'        => $item->sap_batch ?? '-',
-                            'Vendor Batch'     => $item->vendor_batch ?? '-',
-                            'PO No'            => $item->po_no ?? '-',
-                            'IBD No'           => $item->ibd_no ?? '-',
-                            'STO No'           => $item->sto_no ?? '-',
-                            'MFG Date'         => $item->mfg_date ? \Carbon\Carbon::parse($item->mfg_date)->format('d.m.Y') : '-',
-                            'Expiry Date'      => $item->expiry_date ? \Carbon\Carbon::parse($item->expiry_date)->format('d.m.Y') : '-',
-                            'Units Dispatch'   => $item->units_dispatch ?? 0,
-                            'Pack Size'        => $item->pack_size_snapshot ?? 0,
-                            'Dispatch Quantity'=> $item->dispatch_quantity ?? 0,
-                            'Pallet Location'  => $palletLocationStr,
-                            'Pallets Returned' => $item->pallets_returned ?? 0,
-                            'Item Remarks'     => $item->remarks ?? '-',
-                        ];
+                        $target = $tx->source_type === 'sale'
+                            ? ($tx->customer->name ?? '-')
+                            : ($tx->toWarehouse->name ?? '-');
+                        $whName = $tx->warehouse->name ?? '-';
+                        $itemCount = $tx->items->count();
+                        $totalCartons = number_format($tx->items->sum('units_dispatch'));
                     @endphp
 
                     <tr>
+                        <td class="text-muted" style="font-size:11px;">
+                            {{ ($transactions->currentPage()-1)*$transactions->perPage() + $loop->iteration }}
+                        </td>
+
+                        <td>
+                            <span class="fw-bold" style="color:#1d4ed8; font-family:'Courier New',monospace; font-size:12px;">
+                                {{ $tx->dispatched_invoice_no ?: ('#OUT-'.$tx->id) }}
+                            </span>
+                        </td>
+
+                        <td style="font-size:11.5px; color:#64748b;">
+                            {{ $tx->created_at->format('d.m.Y h:i A') }}
+                        </td>
+
+                        <td>
+                            <span class="badge bg-secondary"><i class="bi bi-building me-1"></i>{{ $whName }}</span>
+                        </td>
+
+                        <td class="fw-semibold small">{{ $target }}</td>
+
+                        <td class="small">{{ $tx->transporter->name ?? '—' }}</td>
+
                         <td class="text-center">
-                            <input type="checkbox" class="form-check-input row-checkbox shadow-none" value="{{ $item->id }}">
-                        </td>
-                        <td>
-                            @php
-                                $whName = $item->warehouse->name ?? $out->warehouse->name ?? '-';
-                            @endphp
-                            <div class="fw-bold text-nowrap small">{{ $whName }}</div>
+                            <span style="background:#f1f5f9;color:#475569;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;border:1px solid #e2e8f0;">
+                                {{ $itemCount }} {{ Str::plural('item', $itemCount) }}
+                            </span>
                         </td>
 
-                        <td class="fw-semibold small text-nowrap">{{ $target }}</td>
-
-                        <td>
-                            <div class="text-truncate small" style="max-width:180px"
-                                 title="{{ $productText }}">
-                                {{ $productText }}
-                            </div>
-                        </td>
-
-                        <td>
-                            @if(optional($item->product)->group)
-                                <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1" style="font-size: 9px;">
-                                    {{ optional($item->product)->group->name }}
-                                </span>
-                            @else
-                                <span class="text-muted" style="font-size: 9px;">—</span>
-                            @endif
-                        </td>
-
-                        <td class="text-end small">{{ $item->units_dispatch ?? '-' }}</td>
-                        <td class="text-end small">{{ $item->pack_size_snapshot ?? '-' }}</td>
-                        <td class="text-end fw-bold small">{{ number_format($item->dispatch_quantity,2) }}</td>
-                        <td class="text-end fw-bold text-primary small">
-                            {{ $item->pallets_returned > 0 ? $item->pallets_returned : '-' }}
+                        <td class="text-end fw-bold" style="color:#0f172a;">
+                            {{ $totalCartons }}
                         </td>
 
                         <td class="small text-nowrap">
-                            {{ $out->vehicle_no ?? '-' }}
-                            <div class="text-muted" style="font-size: 10px;">
-                                {{ $out->driver_name ?? '' }}
-                            </div>
+                            <div>{{ $tx->vehicle_no ?: '—' }}</div>
+                            <small class="text-muted">{{ $tx->driver_name ?: '' }}</small>
                         </td>
-
-                        <td class="small fw-semibold text-nowrap">{{ $out->dispatched_invoice_no ?? '-' }}</td>
-
-                        <td class="small text-nowrap">{{ $item->created_at->format('d.m.Y h:i A') }}</td>
 
                         {{-- ACTIONS --}}
                         <td class="text-center text-nowrap">
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-sm btn-outline-primary js-more"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#supportiveModal"
-                                    data-title="Outbound Item Details"
-                                    data-header='@json($headerData)'
-                                    data-item='@json($itemData)'
-                                    title="View">
-                                    <i class="bi bi-eye"></i>
+                            <div class="d-flex gap-1 justify-content-center">
+                                <button type="button" class="btn btn-sm btn-primary text-white fw-bold view-outbound-batches-btn"
+                                    style="font-size:11px; padding:4px 12px; border-radius:20px; border:none;"
+                                    data-stock-out-id="{{ $tx->id }}"
+                                    data-invoice="{{ $tx->dispatched_invoice_no ?: '#OUT-'.$tx->id }}"
+                                    title="View Full Outbound Details">
+                                    <i class="bi bi-list-columns-reverse me-1"></i> Details
                                 </button>
 
-                                <a href="{{ route('outbound.invoice', $out->id) }}"
-                                   class="btn btn-sm btn-outline-success"
+                                <a href="{{ route('outbound.edit', $tx->id) }}"
+                                   class="btn btn-sm btn-warning text-white fw-bold d-inline-flex align-items-center gap-1 shadow-sm"
+                                   style="font-size:11px; padding:4px 12px; border-radius:20px; border:none; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                                   title="Edit Entry">
+                                    <i class="bi bi-pencil"></i> Edit
+                                </a>
+
+                                <a href="{{ route('outbound.invoice', $tx->id) }}"
+                                   class="btn btn-sm btn-outline-secondary"
                                    target="_blank" title="Pick List">
                                     <i class="bi bi-file-text"></i>
                                 </a>
 
-                                <a href="{{ route('outbound.dispatch_details', $out->id) }}"
+                                <a href="{{ route('outbound.dispatch_details', $tx->id) }}"
                                    class="btn btn-sm btn-outline-info"
-                                   target="_blank"
-                                   title="Dispatch Details">
+                                   target="_blank" title="Dispatch Details">
                                     <i class="bi bi-receipt"></i>
                                 </a>
 
-                                <a href="{{ route('outbound.dc', $out->id) }}"
-                                   class="btn btn-sm btn-outline-secondary"
+                                <a href="{{ route('outbound.dc', $tx->id) }}"
+                                   class="btn btn-sm btn-outline-dark"
                                    target="_blank" title="Gate Pass">
                                     <i class="bi bi-file-earmark"></i>
                                 </a>
-
-                                <a href="{{ route('outbound.edit', $out->id) }}"
-                                   class="btn btn-sm btn-outline-warning" title="Edit">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-
-                                <form action="{{ route('outbound.destroy', $out->id) }}"
-                                      method="POST" class="d-inline">
-                                    @csrf
-                                    @method('DELETE')
-                                    <!-- <button class="btn btn-sm btn-outline-danger"
-                                            onclick="return confirm('Delete outbound?')"
-                                            title="Delete">
-                                        <i class="bi bi-trash"></i>
-                                    </button> -->
-                                </form>
                             </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="13" class="text-center py-4 text-muted">
+                        <td colspan="10" class="text-center py-5 text-muted">
                             <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary opacity-50"></i>
                             <p class="mb-0">No outbound records found</p>
                         </td>
@@ -428,8 +330,8 @@
         </div>
         <div class="card-footer bg-white border-top-0 py-2">
             <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted">Showing {{ $items->firstItem() ?? 0 }} - {{ $items->lastItem() ?? 0 }} of {{ $items->total() }} records</small>
-                {{ $items->links() }}
+                <small class="text-muted">Showing {{ $transactions->firstItem() ?? 0 }} - {{ $transactions->lastItem() ?? 0 }} of {{ $transactions->total() }} records</small>
+                {{ $transactions->links() }}
             </div>
         </div>
     </div>
@@ -793,5 +695,164 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Outbound Entry Details Modal Handler
+// Outbound Entry Details Modal Handler
+$(document).on('click', '.view-outbound-batches-btn', function() {
+    var stockOutId = this.dataset.stockOutId;
+    var invoice = this.dataset.invoice;
+
+    document.getElementById('outboundModalInvoiceName').innerText = invoice;
+    document.getElementById('outboundBatchLoadingState').style.display = 'flex';
+    document.getElementById('outboundBatchKpiStrip').style.display = 'none';
+    var tbody = document.getElementById('outboundBatchesTableBody');
+    tbody.innerHTML = '';
+
+    new bootstrap.Modal(document.getElementById('outboundBatchesModal')).show();
+
+    fetch('/outbound/' + stockOutId + '/items', {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        document.getElementById('outboundBatchLoadingState').style.display = 'none';
+
+        if (!data || !data.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center py-5 text-muted">No items found</td></tr>';
+            return;
+        }
+
+        var totalUnits = 0, totalPallets = 0, totalQty = 0;
+        data.forEach(function(item) {
+            totalUnits   += parseInt(item.units_dispatch) || 0;
+            totalPallets += parseInt(item.pallets_returned) || 0;
+            totalQty     += parseFloat(item.dispatch_quantity || 0);
+        });
+
+        document.getElementById('outboundKpiItems').textContent   = data.length;
+        document.getElementById('outboundKpiUnits').textContent   = totalUnits.toLocaleString();
+        document.getElementById('outboundKpiPallets').textContent = totalPallets;
+        document.getElementById('outboundKpiQty').textContent     = totalQty.toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+        document.getElementById('outboundBatchKpiStrip').style.display = 'flex';
+
+        var fmtDate = function(str) {
+            if (!str) return '—';
+            var d = new Date(str);
+            return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+        };
+
+        var escapeHtml = function(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+
+        data.forEach(function(item) {
+            var wh = item.warehouse ? item.warehouse.name : '—';
+            var rowName = item.warehouse_row ? item.warehouse_row.row_name : '';
+            var palletCode = item.pallet_code_display || (item.pallet_position ? ('Pallet ' + item.pallet_position) : (rowName || '—'));
+
+            var locBadge = '<span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-bold" style="font-size:11px;"><i class="bi bi-geo-alt-fill me-1"></i>' + escapeHtml(palletCode) + '</span>';
+            if (rowName && palletCode !== rowName) {
+                locBadge += '<small class="text-muted d-block mt-1" style="font-size:10px;"><i class="bi bi-layers me-1"></i>' + escapeHtml(rowName) + '</small>';
+            }
+
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="fw-bold text-dark ps-3 py-3">' + escapeHtml(item.product ? item.product.item_code + ' - ' + item.product.name : '—') + '</td>' +
+                '<td class="py-3"><span class="badge bg-secondary" style="font-size:10px;"><i class="bi bi-building me-1"></i>' + escapeHtml(wh) + '</span></td>' +
+                '<td class="py-3">' + locBadge + '</td>' +
+                '<td class="py-3 font-monospace small text-primary fw-bold">' + escapeHtml(item.po_no || '—') + '</td>' +
+                '<td class="py-3 font-monospace small text-primary fw-bold">' + escapeHtml(item.ibd_no || '—') + '</td>' +
+                '<td class="py-3 font-monospace small">' + escapeHtml(item.sap_batch || '—') + '</td>' +
+                '<td class="py-3 font-monospace small">' + escapeHtml(item.vendor_batch || '—') + '</td>' +
+                '<td class="py-3 text-end font-monospace fw-bold fs-6">' + (parseInt(item.units_dispatch)||0).toLocaleString() + '</td>' +
+                '<td class="py-3 text-end font-monospace fw-bold text-success fs-6">' + parseFloat(item.dispatch_quantity||0).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+                '<td class="py-3 pe-3 fw-bold text-danger">' + fmtDate(item.expiry_date) + '</td>';
+            tbody.appendChild(tr);
+        });
+    })
+    .catch(function(err) {
+        console.error(err);
+        document.getElementById('outboundBatchLoadingState').style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-5">Failed to load details</td></tr>';
+    });
+});
 </script>
+
+{{-- ══════════ OUTBOUND BATCHES DETAIL MODAL ══════════ --}}
+<div class="modal fade" id="outboundBatchesModal" tabindex="-1">
+<div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1080px;">
+<div class="modal-content border-0 shadow-lg" style="border-radius:16px; overflow:hidden;">
+
+  {{-- Modal Header --}}
+  <div class="modal-header" style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%); border:none; padding:18px 24px;">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width:42px; height:42px; background:rgba(59,130,246,.25); border-radius:12px; display:flex; align-items:center; justify-content:center;">
+        <i class="bi bi-box-arrow-up-right" style="color:#93c5fd; font-size:20px;"></i>
+      </div>
+      <div>
+        <h6 class="modal-title mb-0 text-white fw-bold" style="font-size:15px; letter-spacing:.3px;">
+          Outbound Dispatch Details
+        </h6>
+        <span class="badge bg-primary bg-opacity-25 text-info border border-info border-opacity-25 mt-1" id="outboundModalInvoiceName" style="font-size:11px;"></span>
+      </div>
+    </div>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+  </div>
+
+  {{-- KPI Strip --}}
+  <div class="kpi-strip" id="outboundBatchKpiStrip" style="display:none; background:#ffffff; border-bottom:1px solid #e2e8f0;">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon"><i class="bi bi-archive"></i></div>
+      <div class="kpi-val" id="outboundKpiItems">—</div>
+      <div class="kpi-lbl">Products</div>
+    </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><i class="bi bi-box-seam"></i></div>
+      <div class="kpi-val" id="outboundKpiUnits">—</div>
+      <div class="kpi-lbl">Dispatched Cartons</div>
+    </div>
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-icon"><i class="bi bi-layers"></i></div>
+      <div class="kpi-val" id="outboundKpiPallets">—</div>
+      <div class="kpi-lbl">Total Pallets</div>
+    </div>
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-icon"><i class="bi bi-stack"></i></div>
+      <div class="kpi-val" id="outboundKpiQty">—</div>
+      <div class="kpi-lbl">Total Qty</div>
+    </div>
+  </div>
+
+  {{-- Body --}}
+  <div class="modal-body p-0" style="background:#fff;">
+    <div id="outboundBatchLoadingState" class="state-box py-5 text-center" style="display:none;">
+      <div class="spinner-border text-primary" style="width:36px; height:36px; border-width:3px;"></div>
+      <p class="mt-2 text-muted small fw-semibold">Loading dispatch details...</p>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
+        <thead class="table-dark">
+          <tr class="text-nowrap" style="font-size:11px; letter-spacing:0.4px;">
+            <th class="py-2.5 ps-3">PRODUCT CODE & NAME</th>
+            <th class="py-2.5">SOURCE WAREHOUSE</th>
+            <th class="py-2.5">LOCATION / PALLET</th>
+            <th class="py-2.5">PO #</th>
+            <th class="py-2.5">IBD #</th>
+            <th class="py-2.5">SAP BATCH</th>
+            <th class="py-2.5">VENDOR BATCH</th>
+            <th class="py-2.5 text-end">CARTONS</th>
+            <th class="py-2.5 text-end">QTY</th>
+            <th class="py-2.5 pe-3">EXPIRY DATE</th>
+          </tr>
+        </thead>
+        <tbody id="outboundBatchesTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
 @endpush

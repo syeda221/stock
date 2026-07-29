@@ -142,10 +142,42 @@
 
 <style>
 @media print {
-    .btn, .card-header { display: none !important; }
-    @page { margin: 1cm; } /* Equal margins around the page */
-    body { background: #fff; }
-    .card { border: none !important; box-shadow: none !important; }
+    header, nav, .top-header, #notificationBar, #sidebar, .sidebar, #sidebarBackdrop,
+    .sidebar-backdrop, .no-print, .btn, .breadcrumb, .alert-banner,
+    .alert, .dropdown, button, .card-header {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+
+    body, html {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+
+    .main-area, .layout-wrapper {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+
+    .card-body {
+        padding: 0 !important;
+    }
+
+    @page { margin: 0.8cm; }
 }
 .print-container {
     width: 100%;
