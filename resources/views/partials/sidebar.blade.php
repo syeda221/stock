@@ -218,30 +218,40 @@
     @endcan
     @endcanany
 
-    {{-- User Management --}}
-    @canany(['user-list', 'role-list'])
-    <li class="sidebar-section mt-3">User Management</li>
+    {{-- Security & User Management --}}
+    <li class="sidebar-section mt-3">Security & Users</li>
 
-    @can('user-list')
     <li class="nav-item">
         <a href="{{ route('users.index') }}"
            class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('users.*') ? 'active' : '' }}">
-            <i class="bi bi-people-fill me-2"></i>
-            <span>Users</span>
+            <i class="bi bi-people-fill me-2 text-primary"></i>
+            <span>Users & Access</span>
         </a>
     </li>
-    @endcan
 
-    @can('role-list')
+    <li class="nav-item">
+        <a href="{{ route('shifts.index') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('shifts.*') ? 'active' : '' }}">
+            <i class="bi bi-clock-history me-2 text-warning"></i>
+            <span>Work Shifts</span>
+        </a>
+    </li>
+
     <li class="nav-item">
         <a href="{{ route('roles.index') }}"
            class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('roles.*') ? 'active' : '' }}">
-            <i class="bi bi-shield-lock me-2"></i>
+            <i class="bi bi-shield-lock me-2 text-info"></i>
             <span>Roles & Permissions</span>
         </a>
     </li>
-    @endcan
-    @endcanany
+
+    <li class="nav-item">
+        <a href="{{ route('login-logs.index') }}"
+           class="nav-link px-3 py-2 sidebar-link {{ request()->routeIs('login-logs.*') ? 'active' : '' }}">
+            <i class="bi bi-shield-check me-2 text-success"></i>
+            <span>Login Audit Log</span>
+        </a>
+    </li>
 
     {{-- Reports --}}
     @canany(['report-inbound', 'report-outbound', 'report-warehouse-stock', 'report-warehouse-capacity', 'report-all-stocks', 'report-stock-ledger'])

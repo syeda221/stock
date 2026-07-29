@@ -261,5 +261,12 @@ Route::delete('/outbound/{stockOut}', [OutboundController::class, 'destroy'])->n
     // Roles & Permissions
     Route::resource('roles', \App\Http\Controllers\RoleController::class);
     Route::resource('users', \App\Http\Controllers\UserController::class);
+    Route::post('users/{user}/toggle-status', [\App\Http\Controllers\UserController::class, 'toggleStatus'])->name('users.toggle-status');
+
+    // Shifts Management
+    Route::resource('shifts', \App\Http\Controllers\ShiftController::class)->except(['create', 'edit', 'show']);
+
+    // Login Audit Logs
+    Route::get('login-logs', [\App\Http\Controllers\LoginLogController::class, 'index'])->name('login-logs.index');
 
 });

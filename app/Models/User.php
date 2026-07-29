@@ -22,7 +22,21 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'shift_id',
+        'is_active',
+        'session_id',
+        'last_activity',
     ];
+
+    public function shift()
+    {
+        return $this->belongsTo(Shift::class);
+    }
+
+    public function loginLogs()
+    {
+        return $this->hasMany(LoginLog::class);
+    }
 
     /**
      * The attributes that should be hidden for serialization.

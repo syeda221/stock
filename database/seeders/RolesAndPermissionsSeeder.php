@@ -5,7 +5,9 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\Shift;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
@@ -14,78 +16,118 @@ class RolesAndPermissionsSeeder extends Seeder
         // Reset cached roles and permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
+        // Permissions list by module
         $permissions = [
-            // User & Roles
-            'user-list', 'user-create', 'user-edit', 'user-delete',
-            'role-list', 'role-create', 'role-edit', 'role-delete',
+            // Dashboard
+            'view-dashboard',
+            
+            // Inbound
+            'view-inbound',
+            'create-inbound',
+            'edit-inbound',
+            'delete-inbound',
+            
+            // Outbound
+            'view-outbound',
+            'create-outbound',
+            'edit-outbound',
+            'delete-outbound',
+            
+            // Stock Transfer
+            'view-stock-transfers',
+            'create-stock-transfers',
+            
+            // QC Management
+            'view-qc',
+            'manage-qc',
 
-            // Masters
-            'uom-list', 'uom-create', 'uom-edit', 'uom-delete',
-            'packing-type-list', 'packing-type-create', 'packing-type-edit', 'packing-type-delete',
-            'product-category-list', 'product-category-create', 'product-category-edit', 'product-category-delete',
-            'product-group-list', 'product-group-create', 'product-group-edit', 'product-group-delete',
-            'product-list', 'product-create', 'product-edit', 'product-delete',
-            'warehouse-list', 'warehouse-create', 'warehouse-edit', 'warehouse-delete',
-            
-            // Parties / Logistics
-            'vendor-list', 'vendor-create', 'vendor-edit', 'vendor-delete',
-            'customer-list', 'customer-create', 'customer-edit', 'customer-delete',
-            'transporter-list', 'transporter-create', 'transporter-edit', 'transporter-delete',
-            'arrived-from-list', 'arrived-from-create', 'arrived-from-edit', 'arrived-from-delete',
-            
-            // Inventory
-            'opening-stock-list', 'opening-stock-create',
-            'inbound-list', 'inbound-create', 'inbound-edit', 'inbound-delete', 'inbound-print', 'inbound-invoice',
-            'outbound-list', 'outbound-create', 'outbound-edit', 'outbound-delete', 'outbound-print', 'outbound-invoice', 'outbound-dc',
+            // Expiry & Sales Toggle
+            'view-expiry',
+            'toggle-expiry-sale',
             
             // Reports
-            'report-inbound',
-            'report-outbound',
-            'report-warehouse-stock',
-            'report-warehouse-capacity',
-            'report-all-stocks',
-            'report-stock-ledger'
+            'view-reports',
+            'export-reports',
+            
+            // Products & Masters
+            'view-products',
+            'create-products',
+            'edit-products',
+            'delete-products',
+            'view-masters',
+            'manage-masters',
+            
+            // Warehouses
+            'view-warehouses',
+            'manage-warehouses',
+            
+            // User & Security Management
+            'view-users',
+            'manage-users',
+            'view-roles',
+            'manage-roles',
+            'view-shifts',
+            'manage-shifts',
+            'view-login-logs',
         ];
 
-        // Create all permissions
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);
         }
 
-        // Create Roles
+        // Roles definition
         $superAdmin = Role::firstOrCreate(['name' => 'Super Admin']);
-        $admin = Role::firstOrCreate(['name' => 'Admin']);
-        $manager = Role::firstOrCreate(['name' => 'Manager']);
-        $staff = Role::firstOrCreate(['name' => 'Staff']);
-
-        // Assign all permissions to Super Admin
         $superAdmin->syncPermissions(Permission::all());
 
-        // Assign some permissions to Admin
-        $adminPermissions = array_diff($permissions, [
-            'role-list', 'role-create', 'role-edit', 'role-delete'
+        $manager = Role::firstOrCreate(['name' => 'Manager']);
+        $manager->syncPermissions([
+            'view-dashboard',
+            'view-inbound', 'create-inbound', 'edit-inbound',
+            'view-outbound', 'create-outbound', 'edit-outbound',
+            'view-stock-transfers', 'create-stock-transfers',
+            'view-qc', 'manage-qc',
+            'view-expiry', 'toggle-expiry-sale',
+            'view-reports', 'export-reports',
+            'view-products', 'create-products', 'edit-products',
+            'view-masters', 'view-warehouses'
         ]);
-        $admin->syncPermissions($adminPermissions);
 
-        // Assign Manager Permissions
-        $managerPermissions = [
-            'product-list', 'warehouse-list', 'vendor-list', 'customer-list',
-            'inbound-list', 'inbound-create', 'inbound-edit', 'inbound-print', 'inbound-invoice',
-            'outbound-list', 'outbound-create', 'outbound-edit', 'outbound-print', 'outbound-invoice', 'outbound-dc',
-            'report-inbound', 'report-outbound', 'report-warehouse-stock', 'report-all-stocks'
-        ];
-        $manager->syncPermissions($managerPermissions);
+        $warehouseStaff = Role::firstOrCreate(['name' => 'Warehouse Staff']);
+        $warehouseStaff->syncPermissions([
+            'view-dashboard',
+            'view-inbound', 'create-inbound',
+            'view-stock-transfers', 'create-stock-transfers',
+            'view-products', 'view-warehouses'
+        ]);
 
-        // Assign Staff Permissions
-        $staffPermissions = [
-            'product-list', 'inbound-list', 'outbound-list'
-        ];
-        $staff->syncPermissions($staffPermissions);
+        $dispatcher = Role::firstOrCreate(['name' => 'Dispatcher']);
+        $dispatcher->syncPermissions([
+            'view-dashboard',
+            'view-outbound', 'create-outbound',
+            'view-products'
+        ]);
 
-        // Ensure Admin user gets Super Admin role
-        $user = User::where('email', 'admin@admin.com')->first();
-        if ($user) {
-            $user->assignRole('Super Admin');
+        $viewer = Role::firstOrCreate(['name' => 'Viewer / Auditor']);
+        $viewer->syncPermissions([
+            'view-dashboard',
+            'view-reports',
+            'view-products',
+            'view-warehouses',
+            'view-expiry'
+        ]);
+
+        // Default Shifts
+        Shift::firstOrCreate(['name' => 'Morning Shift'], ['start_time' => '08:00:00', 'end_time' => '16:00:00']);
+        Shift::firstOrCreate(['name' => 'Evening Shift'], ['start_time' => '16:00:00', 'end_time' => '00:00:00']);
+        Shift::firstOrCreate(['name' => 'Night Shift'], ['start_time' => '00:00:00', 'end_time' => '08:00:00']);
+        Shift::firstOrCreate(['name' => 'Full Day (24/7)'], ['start_time' => '00:00:00', 'end_time' => '23:59:59']);
+
+        // Ensure default users exist with Super Admin role
+        $users = User::all();
+        foreach ($users as $user) {
+            if ($user->roles->isEmpty()) {
+                $user->assignRole('Super Admin');
+            }
         }
     }
 }
