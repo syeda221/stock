@@ -1033,6 +1033,10 @@ $item->hold_stock ? 'Yes' : 'No',
                     ->groupBy('pallet_position')
                     ->get();
 
+                $transferOutTotal = (float) DB::table('stock_transfers')
+                    ->where('stock_in_item_id', $entry->stock_in_item_id)
+                    ->sum('quantity');
+
                 for ($p = $palletStart; $p <= $palletEnd; $p++) {
                     $clone = clone $entry;
                     $clone->pallets_used = 1;
@@ -1049,6 +1053,12 @@ $item->hold_stock ? 'Yes' : 'No',
 
                     $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
                     $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
+                    if ($transferOutTotal > 0) {
+                        $canTake = min(max(0, $originalQty - $qtyOut), $transferOutTotal);
+                        $qtyOut += $canTake;
+                        $transferOutTotal -= $canTake;
+                    }
 
                     $clone->units_received = $perPalletUnits;
                     $clone->total_quantity = $originalQty;
@@ -1834,7 +1844,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.id',
                 'stock_in_items.stock_in_id as transaction_id',
                 'stock_in_items.created_at',
-                'stock_ins.source_type',
+                DB::raw("CASE WHEN stock_in_items.remarks LIKE 'Relocated from%' OR stock_in_items.remarks LIKE 'Wizard transfer from%' THEN 'transfer' ELSE stock_ins.source_type END as source_type"),
                 DB::raw("'IN' as direction"),
                 'products.id as product_id',
                 'products.item_code',
@@ -1926,6 +1936,7 @@ $item->hold_stock ? 'Yes' : 'No',
         $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
         $dispatchSums = collect();
+        $transferSums = collect();
         if ($inboundData->isNotEmpty()) {
             $dispatchSums = DB::table('stock_out_items')
                 ->select('stock_in_item_id', 'pallet_position', DB::raw('SUM(units_dispatch) as units_out'), DB::raw('SUM(dispatch_quantity) as qty_out'))
@@ -1933,6 +1944,13 @@ $item->hold_stock ? 'Yes' : 'No',
                 ->groupBy('stock_in_item_id', 'pallet_position')
                 ->get()
                 ->groupBy('stock_in_item_id');
+
+            $transferSums = DB::table('stock_transfers')
+                ->select('stock_in_item_id', DB::raw('SUM(quantity) as qty_out'))
+                ->whereIn('stock_in_item_id', $inboundData->pluck('id')->unique())
+                ->groupBy('stock_in_item_id')
+                ->get()
+                ->keyBy('stock_in_item_id');
         }
 
         // Build row-letter mapping: first row per warehouse = A, second = B, etc.
@@ -1992,6 +2010,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 $numPallets = $actualEnd - $entry->pallet_start + 1;
 
                 $itemDispatches = $dispatchSums->get($entry->id) ?? collect();
+                $transferOutTotal = $transferSums->has($entry->id) ? (float) $transferSums->get($entry->id)->qty_out : 0;
 
                 for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
@@ -2011,6 +2030,12 @@ $item->hold_stock ? 'Yes' : 'No',
 
                     $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
                     $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
+                    if ($transferOutTotal > 0) {
+                        $canTake = min(max(0, $originalQty - $qtyOut), $transferOutTotal);
+                        $qtyOut += $canTake;
+                        $transferOutTotal -= $canTake;
+                    }
 
                     $clone->units = $perPalletUnits;
                     $clone->quantity = $originalQty;
@@ -2167,6 +2192,11 @@ $item->hold_stock ? 'Yes' : 'No',
             $outboundData = collect();
         }
 
+        if (!$request->filled('source_type') || in_array('transfer', (array)$request->source_type)) {
+            // transferOutQuery removed as it creates a duplicate unexploded entry which confuses users.
+            // Transfer reductions are already accounted for in the inbound pallet balances.
+        }
+
         // Format warehouse_display for outbound entries using database pallet position or fallbacks
         if ($outboundData->isNotEmpty()) {
             foreach ($outboundData as $entry) {
@@ -2286,7 +2316,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 'stock_in_items.id',
                 'stock_in_items.stock_in_id as transaction_id',
                 'stock_in_items.created_at',
-                'stock_ins.source_type',
+                DB::raw("CASE WHEN stock_in_items.remarks LIKE 'Relocated from%' OR stock_in_items.remarks LIKE 'Wizard transfer from%' THEN 'transfer' ELSE stock_ins.source_type END as source_type"),
                 DB::raw("'IN' as direction"),
                 'products.id as product_id',
                 'products.item_code',
@@ -2453,6 +2483,10 @@ $item->hold_stock ? 'Yes' : 'No',
                     ->groupBy('pallet_position')
                     ->get();
 
+                $transferOutTotal = (float) DB::table('stock_transfers')
+                    ->where('stock_in_item_id', $entry->id)
+                    ->sum('quantity');
+
                 for ($p = $entry->pallet_start; $p <= $actualEnd; $p++) {
                     $clone = clone $entry;
                     $clone->pallet_start = $p;
@@ -2471,6 +2505,12 @@ $item->hold_stock ? 'Yes' : 'No',
 
                     $palletDispatch = $itemDispatches->firstWhere('pallet_position', $p);
                     $qtyOut = $palletDispatch ? (float) $palletDispatch->qty_out : 0;
+
+                    if ($transferOutTotal > 0) {
+                        $canTake = min(max(0, $originalQty - $qtyOut), $transferOutTotal);
+                        $qtyOut += $canTake;
+                        $transferOutTotal -= $canTake;
+                    }
 
                     $clone->units = $perPalletUnits;
                     $clone->quantity = $originalQty;
@@ -2862,4 +2902,7 @@ $item->hold_stock ? 'Yes' : 'No',
         return view('reports.warehouse_capacity', compact('reportData'));
     }
 }
+
+
+
 
