@@ -831,8 +831,28 @@ class InboundController extends Controller
                 // Fetch original split IDs BEFORE modifying the database
                 $allOriginalSplitIds = $stockIn->items()->pluck('id')->toArray();
 
-                // Track which split IDs are submitted so we can delete removed ones
+                // 1.5 Track which split IDs are submitted and delete removed ones BEFORE assigning
                 $submittedSplitIds = [];
+                foreach ($request->items as $itemData) {
+                    $splitIdsStr = $itemData['split_ids'] ?? '';
+                    $splitIds = array_filter(explode(',', $splitIdsStr));
+                    if (!empty($splitIds)) {
+                        $submittedSplitIds = array_merge($submittedSplitIds, $splitIds);
+                    }
+                }
+
+                $splitsToRemove = array_diff($allOriginalSplitIds, $submittedSplitIds);
+                if (!empty($splitsToRemove)) {
+                    $removedSplits = StockInItem::whereIn('id', $splitsToRemove)->get();
+                    foreach ($removedSplits as $removedSplit) {
+                        if (round($removedSplit->total_quantity - $removedSplit->balance_quantity, 4) > 0) {
+                            throw new \Exception("Cannot delete item '{$removedSplit->product->name}' because it has already been dispatched.");
+                        }
+                    }
+                    StockInItem::whereIn('id', $splitsToRemove)->delete();
+                }
+
+                $simulatedOccupied = [];
 
                 // 2. Process Items
                 foreach ($request->items as $itemData) {
@@ -849,8 +869,6 @@ class InboundController extends Controller
 
                     if (!empty($splitIds)) {
                         // EXISTING ITEM
-                        $submittedSplitIds = array_merge($submittedSplitIds, $splitIds);
-
                         $existingSplits = StockInItem::whereIn('id', $splitIds)->get();
                         
                         $oldTotalQty = round($existingSplits->sum('total_quantity'), 4);
@@ -885,26 +903,13 @@ class InboundController extends Controller
                             // Item NOT dispatched. We can safely delete old splits and re-create them with FIFO
                             StockInItem::whereIn('id', $splitIds)->delete();
                             
-                            $this->createItemSplits($stockIn, $warehouse, $product, $itemData);
+                            $this->createItemSplits($stockIn, $warehouse, $product, $itemData, $simulatedOccupied);
                         }
 
                     } else {
                         // NEW ITEM
-                        $this->createItemSplits($stockIn, $warehouse, $product, $itemData);
+                        $this->createItemSplits($stockIn, $warehouse, $product, $itemData, $simulatedOccupied);
                     }
-                }
-
-                // 3. Delete Removed Items
-                $splitsToRemove = array_diff($allOriginalSplitIds, $submittedSplitIds);
-                
-                if (!empty($splitsToRemove)) {
-                    $removedSplits = StockInItem::whereIn('id', $splitsToRemove)->get();
-                    foreach ($removedSplits as $removedSplit) {
-                        if (round($removedSplit->total_quantity - $removedSplit->balance_quantity, 4) > 0) {
-                            throw new \Exception("Cannot delete item '{$removedSplit->product->name}' because it has already been dispatched.");
-                        }
-                    }
-                    StockInItem::whereIn('id', $splitsToRemove)->delete();
                 }
 
                 // Sync header warehouse_id if items ended up in a different warehouse
@@ -938,7 +943,7 @@ class InboundController extends Controller
     /**
      * Helper to create FIFO split items
      */
-    private function createItemSplits($stockIn, $primaryWarehouse, $product, $itemData)
+    private function createItemSplits($stockIn, $primaryWarehouse, $product, $itemData, array &$simulatedOccupied = [])
     {
         $units = (int) $itemData['units_received'];
         $packSize = (float) $product->pack_size;
@@ -964,8 +969,7 @@ class InboundController extends Controller
             }
         }
 
-        $simulatedOccupied = [];
-        $ignoreStockInId = $stockIn ? (int)$stockIn->id : null;
+        $ignoreStockInId = null;
 
         $splits = \App\Services\WarehouseRowFifo::assign(
             $itemWhId,
