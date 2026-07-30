@@ -321,6 +321,7 @@
             <th class="text-center">Pallets</th>
             <th class="text-center">QC</th>
             <th class="text-center">Status</th>
+            <th class="text-center">Action</th>
           </tr>
         </thead>
         <tbody id="ibdBatchesTableBody">
@@ -332,6 +333,49 @@
 
 </div>
 </div>
+</div>
+
+{{-- SPLIT BATCH MODAL --}}
+<div class="modal fade" id="splitBatchModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Split Transferred Batch</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2" style="font-size: 13px;">
+            Divide the transferred quantity into multiple parts to assign different SAP batches.
+        </div>
+        <input type="hidden" id="splitItemId">
+        <input type="hidden" id="splitItemTotalUnits">
+        
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold">Total Units to Split: <span id="splitTotalUnitsDisplay" class="text-primary">0</span></span>
+            <button type="button" class="btn btn-sm btn-success" id="addSplitRowBtn"><i class="bi bi-plus-lg"></i> Add Row</button>
+        </div>
+
+        <table class="table table-bordered table-sm" id="splitTable">
+            <thead class="table-light">
+                <tr>
+                    <th>Units</th>
+                    <th>SAP Batch</th>
+                    <th style="width: 50px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows -->
+            </tbody>
+        </table>
+        
+      </div>
+      <div class="modal-footer">
+        <span id="splitErrorMsg" class="text-danger me-auto fw-bold" style="font-size:12px;"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="saveSplitBtn">Save Split</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 @endsection
@@ -399,9 +443,15 @@ document.addEventListener('click', function(e) {
             var rowName = (item.warehouse_row) ? item.warehouse_row.row_name : '—';
             var loc     = item.pallet_range_display || rowName;
 
+            var productTag = item.is_transferred ? ' <span class="badge bg-primary rounded-pill" style="font-size:10px;">Transferred</span>' : '';
+            var actionHtml = '';
+            if (item.is_transferred) {
+                actionHtml = '<button type="button" class="btn btn-sm btn-outline-info split-batch-btn" data-id="' + item.id + '" data-units="' + item.units_received + '" data-sap="' + (item.sap_batch||'') + '" style="font-size: 11px;">Split</button>';
+            }
+
             var tr = document.createElement('tr');
             tr.innerHTML =
-                '<td class="fw-bold">' + ((item.product ? item.product.item_code + ' - ' + item.product.name : '—')) + '</td>' +
+                '<td class="fw-bold">' + ((item.product ? item.product.item_code + ' - ' + item.product.name : '—')) + productTag + '</td>' +
                 '<td>' + wh + '</td>' +
                 '<td class="fw-bold text-dark">' + loc + '</td>' +
                 '<td>' + (item.sap_batch || '—') + '</td>' +
@@ -410,7 +460,8 @@ document.addEventListener('click', function(e) {
                 '<td class="text-end font-monospace fw-bold text-success">' + parseFloat(item.balance_quantity||0).toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
                 '<td class="text-center"><span class="badge bg-secondary">' + (item.pallets_used||0) + '</span></td>' +
                 '<td class="text-center">' + qcHtml + '</td>' +
-                '<td class="text-center">' + sHtml + '</td>';
+                '<td class="text-center">' + sHtml + '</td>' +
+                '<td class="text-center">' + actionHtml + '</td>';
             tbody.appendChild(tr);
         });
     })
@@ -431,6 +482,110 @@ function exportInbound() {
     });
     window.location.href = '{{ route("inbound.export") }}?' + params.toString();
 }
+
+/* ── Split Batch Modal Logic ── */
+let splitBatchModal;
+document.addEventListener('DOMContentLoaded', () => {
+    splitBatchModal = new bootstrap.Modal(document.getElementById('splitBatchModal'));
+});
+
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.split-batch-btn')) {
+        let btn = e.target.closest('.split-batch-btn');
+        document.getElementById('splitItemId').value = btn.dataset.id;
+        document.getElementById('splitItemTotalUnits').value = btn.dataset.units;
+        document.getElementById('splitTotalUnitsDisplay').innerText = btn.dataset.units;
+        
+        let tbody = document.querySelector('#splitTable tbody');
+        tbody.innerHTML = `
+            <tr>
+                <td><input type="number" class="form-control form-control-sm split-units" value="${btn.dataset.units}"></td>
+                <td><input type="text" class="form-control form-control-sm split-sap" value="${btn.dataset.sap}"></td>
+                <td></td>
+            </tr>
+        `;
+        document.getElementById('splitErrorMsg').innerText = '';
+        
+        // Hide the details modal temporarily so they don't overlap awkwardly
+        bootstrap.Modal.getInstance(document.getElementById('ibdBatchesModal')).hide();
+        splitBatchModal.show();
+    }
+});
+
+document.getElementById('addSplitRowBtn').addEventListener('click', function() {
+    let tbody = document.querySelector('#splitTable tbody');
+    tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+            <td><input type="number" class="form-control form-control-sm split-units"></td>
+            <td><input type="text" class="form-control form-control-sm split-sap"></td>
+            <td><button type="button" class="btn btn-sm btn-outline-danger remove-split-row"><i class="bi bi-trash"></i></button></td>
+        </tr>
+    `);
+});
+
+document.addEventListener('click', function(e) {
+    let btn = e.target.closest('.remove-split-row');
+    if (btn) btn.closest('tr').remove();
+});
+
+document.getElementById('splitBatchModal').addEventListener('hidden.bs.modal', function () {
+    // Re-open details modal when split modal closes
+    bootstrap.Modal.getInstance(document.getElementById('ibdBatchesModal')).show();
+});
+
+document.getElementById('saveSplitBtn').addEventListener('click', function() {
+    let totalExpected = parseInt(document.getElementById('splitItemTotalUnits').value);
+    let id = document.getElementById('splitItemId').value;
+    
+    let splits = [];
+    let sum = 0;
+    let inputs = document.querySelectorAll('#splitTable tbody tr');
+    inputs.forEach(tr => {
+        let units = parseInt(tr.querySelector('.split-units').value) || 0;
+        let sap = tr.querySelector('.split-sap').value;
+        if (units > 0) {
+            splits.push({ units: units, sap_batch: sap });
+            sum += units;
+        }
+    });
+
+    if (sum !== totalExpected) {
+        document.getElementById('splitErrorMsg').innerText = "Total units (" + sum + ") must equal original units (" + totalExpected + ").";
+        return;
+    }
+
+    document.getElementById('saveSplitBtn').disabled = true;
+    document.getElementById('saveSplitBtn').innerText = 'Saving...';
+
+    fetch('/stock-items/' + id + '/split-batch', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ splits: splits })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('saveSplitBtn').disabled = false;
+        document.getElementById('saveSplitBtn').innerText = 'Save Split';
+        if (data.error) {
+            document.getElementById('splitErrorMsg').innerText = data.error;
+        } else {
+            // Success
+            splitBatchModal.hide();
+            Swal.fire('Success', 'Batch split successfully!', 'success');
+            // Refresh the details table by fetching again
+            document.querySelector('.view-ibd-batches-btn[data-stock-in-id="' + data.stock_in_id + '"]').click();
+        }
+    })
+    .catch(e => {
+        document.getElementById('saveSplitBtn').disabled = false;
+        document.getElementById('saveSplitBtn').innerText = 'Save Split';
+        document.getElementById('splitErrorMsg').innerText = 'Server error.';
+    });
+});
 
 /* ── Filter functionality ── */
 $(document).ready(function() {

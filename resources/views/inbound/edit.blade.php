@@ -218,17 +218,28 @@
             /* ADD ROW FUNCTION */
             function addRow(data = null) {
                 let isDispatched = data ? data.is_dispatched : false;
-                let lockMsg = isDispatched ? '<br><small class="text-danger">Dispatched: Cannot reduce units/pallets</small>' : '';
-                let unitsReadOnly = isDispatched ? 'min="' + data.dispatched_quantity + '"' : ''; // Just a simple html5 constraint
+                let isTransferred = data ? data.is_transferred : false;
+                
+                let lockMsg = '';
+                if (isTransferred) {
+                    lockMsg = '<br><small class="text-danger" style="font-size:10px;">Transferred: Cannot modify</small>';
+                } else if (isDispatched) {
+                    lockMsg = '<br><small class="text-danger" style="font-size:10px;">Dispatched: Cannot modify units</small>';
+                }
+
+                let isLocked = isDispatched || isTransferred;
+                let unitsReadOnly = isLocked ? 'readonly' : '';
+                let badgeHtml = isTransferred ? ' <span class="badge bg-primary" style="font-size:10px;">Transferred</span>' : '';
                 
                 itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
 <tr>
 <td>
 <div class="input-group input-group-sm">
-<input class="form-control product-input" placeholder="Search product" autocomplete="off" value="${data ? data.item_code + ' - ' + data.product_name : ''}" ${isDispatched ? 'readonly' : ''}>
-<button type="button" class="btn btn-outline-primary open-batch-btn" title="Batch Details"><i class="bi bi-tags"></i> Batch</button>
+<input class="form-control product-input" placeholder="Search product" autocomplete="off" value="${data ? data.item_code + ' - ' + data.product_name : ''}" ${isLocked ? 'readonly' : ''}>
+<button type="button" class="btn btn-outline-primary open-batch-btn" title="Batch Details" ${isTransferred ? 'disabled' : ''}><i class="bi bi-tags"></i> Batch</button>
 </div>
 <div class="product-search-wrap">
+${badgeHtml}
 <input type="hidden" name="items[${rowIndex}][product_id]" class="product-id" value="${data ? data.product_id : ''}">
 <input type="hidden" name="items[${rowIndex}][split_ids]" value="${data ? data.split_ids : ''}">
 ${lockMsg}
@@ -240,7 +251,7 @@ ${lockMsg}
 <td><input class="form-control form-control-sm total-qty bg-light fw-bold" value="${data ? data.total_quantity : ''}" readonly></td>
 
 <td>
-<input name="items[${rowIndex}][pallets_used]" class="form-control form-control-sm pallets-used" placeholder="Auto" value="${data && data.pallets_used > 0 ? data.pallets_used : ''}" ${isDispatched ? 'readonly' : ''}>
+<input name="items[${rowIndex}][pallets_used]" class="form-control form-control-sm pallets-used" placeholder="Auto" value="${data && data.pallets_used > 0 ? data.pallets_used : ''}" ${isLocked ? 'readonly' : ''}>
 <input type="hidden" name="items[${rowIndex}][use_pallets]" value="1">
 <input type="hidden" class="pallets-per-packing" value="${data ? data.cartons_per_pallet || '' : ''}">
 </td>
@@ -272,8 +283,8 @@ ${lockMsg}
 
 <td>
 <div class="d-flex gap-1 justify-content-center">
-${isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disabled title="Cannot delete dispatched item"><i class="bi bi-trash"></i></button>' : '<button type="button" class="btn btn-sm btn-outline-danger removeRow" title="Remove"><i class="bi bi-trash"></i></button>'}
-<button type="button" class="btn btn-sm btn-info text-white duplicateRow shadow-sm" title="Duplicate Row"><i class="bi bi-files"></i></button>
+${isTransferred ? '<button type="button" class="btn btn-sm btn-secondary" disabled title="Cannot delete transferred item"><i class="bi bi-trash"></i></button>' : (isDispatched ? '<button type="button" class="btn btn-sm btn-secondary" disabled title="Cannot delete dispatched item"><i class="bi bi-trash"></i></button>' : '<button type="button" class="btn btn-sm btn-outline-danger removeRow" title="Remove"><i class="bi bi-trash"></i></button>')}
+<button type="button" class="btn btn-sm btn-info text-white duplicateRow shadow-sm" title="Duplicate Row" ${isTransferred ? 'disabled' : ''}><i class="bi bi-files"></i></button>
 </div>
 <input type="hidden" name="items[${rowIndex}][sap_batch]" value="${data && data.sap_batch ? data.sap_batch : ''}">
 <input type="hidden" name="items[${rowIndex}][vendor_batch]" value="${data && data.vendor_batch ? data.vendor_batch : ''}">

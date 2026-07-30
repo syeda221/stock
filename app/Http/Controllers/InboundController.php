@@ -102,33 +102,48 @@ class InboundController extends Controller
      */
     public function getItems(StockIn $stockIn)
     {
-        $items = $stockIn->items()
+        $allItems = $stockIn->items()
             ->with(['product.category', 'product.group', 'warehouse', 'warehouseRow', 'stockIn.warehouse'])
-            ->get()
-            ->map(function ($item) {
-                // Resolve pallet range display
-                $palletRange = null;
-                if ($item->warehouse_row_id && $item->pallets_used > 0) {
-                    $row = $item->warehouseRow;
-                    if ($item->pallet_start !== null) {
-                        $start = (int) $item->pallet_start;
-                        $end   = $start + $item->pallets_used - 1;
-                    } else {
-                        $offset = StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
-                            ->where('id', '<', $item->id)
-                            ->where('balance_quantity', '>', 0)
-                            ->sum('pallets_used');
-                        $start = $offset + 1;
-                        $end   = $offset + $item->pallets_used;
-                    }
-                    $rowName = $row->row_name ?? '-';
-                    $palletRange = $start == $end
-                        ? "Row {$rowName} (P{$start})"
-                        : "Row {$rowName} (P{$start}-P{$end})";
+            ->get();
+
+        $allItems->each(function ($item) {
+            $item->is_transferred = preg_match('/(?:transfer|relocated)/i', $item->remarks ?? '') === 1;
+
+            // Resolve pallet range display
+            $palletRange = null;
+            if ($item->warehouse_row_id && $item->pallets_used > 0) {
+                $row = $item->warehouseRow;
+                if ($item->pallet_start !== null) {
+                    $start = (int) $item->pallet_start;
+                    $end   = $start + $item->pallets_used - 1;
+                } else {
+                    $offset = \App\Models\StockInItem::where('warehouse_row_id', $item->warehouse_row_id)
+                        ->where('id', '<', $item->id)
+                        ->where('balance_quantity', '>', 0)
+                        ->sum('pallets_used');
+                    $start = $offset + 1;
+                    $end   = $offset + $item->pallets_used;
                 }
-                $item->pallet_range_display = $palletRange;
-                return $item;
-            });
+                $rowName = $row->row_name ?? '-';
+                $palletRange = $start == $end
+                    ? "Row {$rowName} (P{$start})"
+                    : "Row {$rowName} (P{$start}-P{$end})";
+            }
+            $item->pallet_range_display = $palletRange;
+        });
+
+        // Filter out original empty items if they have a transferred counterpart
+        $items = $allItems->filter(function ($item) use ($allItems) {
+            if (round($item->balance_quantity, 4) == 0 && !$item->is_transferred) {
+                $hasTransferredCounterpart = $allItems->contains(function ($other) use ($item) {
+                    return $other->product_id == $item->product_id && $other->is_transferred;
+                });
+                if ($hasTransferredCounterpart) {
+                    return false; // Hide it
+                }
+            }
+            return true;
+        })->values();
 
         return response()->json($items);
     }
@@ -705,6 +720,7 @@ class InboundController extends Controller
             $totalQty = $group->sum('total_quantity');
             $balanceQty = $group->sum('balance_quantity');
             $isDispatched = round($totalQty - $balanceQty, 4) > 0;
+            $isTransferred = preg_match('/(?:transfer|relocated)/i', $first->remarks ?? '') === 1;
 
             return [
                 'product_id' => $first->product_id,
@@ -722,6 +738,7 @@ class InboundController extends Controller
                 'total_quantity' => $totalQty,
                 'balance_quantity' => $balanceQty,
                 'is_dispatched' => $isDispatched,
+                'is_transferred' => $isTransferred,
                 'use_pallets' => $first->use_pallets,
                 'pallets_used' => $group->sum('pallets_used'),
                 'sound_stock' => $first->sound_stock,
@@ -874,8 +891,9 @@ class InboundController extends Controller
                         $oldTotalQty = round($existingSplits->sum('total_quantity'), 4);
                         $oldBalanceQty = round($existingSplits->sum('balance_quantity'), 4);
                         $isDispatched = ($oldTotalQty - $oldBalanceQty) > 0.001;
+                        $isTransferred = preg_match('/(?:transfer|relocated)/i', $existingSplits->first()->remarks ?? '') === 1;
 
-                        if ($isDispatched) {
+                        if ($isDispatched || $isTransferred) {
                             // Enforce constraint: Cannot reduce units below what is already dispatched
                             $dispatchedQty = $oldTotalQty - $oldBalanceQty;
                             if ($newQty < $dispatchedQty) {
@@ -1905,5 +1923,76 @@ class InboundController extends Controller
         return response()->streamDownload(function () use ($content) {
             echo $content;
         }, $filename, $headers);
+    }
+
+    /**
+     * Safely split an untouched StockInItem (often a transferred item) into multiple parts
+     * so the user can assign different SAP batches.
+     */
+    public function splitBatch(Request $request, StockInItem $item)
+    {
+        $request->validate([
+            'splits' => 'required|array',
+            'splits.*.units' => 'required|integer|min:1',
+            'splits.*.sap_batch' => 'nullable|string',
+        ]);
+
+        $splits = $request->splits;
+        
+        $totalRequested = array_sum(array_column($splits, 'units'));
+        if ($totalRequested !== $item->units_received) {
+            return response()->json(['error' => "Total split units ({$totalRequested}) must equal original units ({$item->units_received})."], 400);
+        }
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            // Ensure the item hasn't been partially dispatched from its current location
+            if (round($item->balance_quantity, 4) != round($item->total_quantity, 4)) {
+                return response()->json(['error' => "Cannot split an item that has partial outbound or transfer history from its current location."], 400);
+            }
+
+            $originalPalletsUsed = $item->pallets_used;
+            $originalPalletStart = $item->pallet_start;
+            
+            // Keep the original item as the first split (preserves any inbound/transfer source links if applicable)
+            $firstSplit = array_shift($splits);
+            
+            $item->units_received = $firstSplit['units'];
+            $item->total_quantity = $firstSplit['units'] * $item->pack_size_snapshot;
+            $item->balance_quantity = $item->total_quantity;
+            $item->sap_batch = $firstSplit['sap_batch'] ?? $item->sap_batch;
+            
+            if ($originalPalletsUsed > 0 && $item->product && $item->product->cartons_per_pallet > 0) {
+                $item->pallets_used = ceil($item->units_received / $item->product->cartons_per_pallet);
+            }
+            $item->save();
+
+            $currentPalletStart = $originalPalletStart !== null ? $originalPalletStart + $item->pallets_used : null;
+
+            foreach ($splits as $splitData) {
+                $newItem = $item->replicate();
+                $newItem->units_received = $splitData['units'];
+                $newItem->total_quantity = $splitData['units'] * $item->pack_size_snapshot;
+                $newItem->balance_quantity = $newItem->total_quantity;
+                $newItem->sap_batch = $splitData['sap_batch'] ?? $item->sap_batch;
+                
+                if ($originalPalletsUsed > 0 && $item->product && $item->product->cartons_per_pallet > 0) {
+                    $newItem->pallets_used = ceil($newItem->units_received / $item->product->cartons_per_pallet);
+                    if ($currentPalletStart !== null) {
+                        $newItem->pallet_start = $currentPalletStart;
+                        $currentPalletStart += $newItem->pallets_used;
+                    }
+                }
+                
+                $newItem->save();
+            }
+
+            \Illuminate\Support\Facades\DB::commit();
+            return response()->json(['success' => true, 'stock_in_id' => $item->stock_in_id]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 }
