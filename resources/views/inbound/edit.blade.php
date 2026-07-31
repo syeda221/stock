@@ -155,7 +155,8 @@
                     <table class="table table-bordered table-hover align-middle mb-0" id="itemsTable" style="min-width: 1000px;">
                         <thead class="table-light">
                             <tr>
-                                <th style="width: 320px;">Product</th>
+                                <th style="width: 250px;">Product</th>
+                                <th style="width: 140px;">Warehouse</th>
                                 <th style="width: 90px;">Units</th>
                                 <th style="width: 90px;">Pack</th>
                                 <th style="width: 100px;">Total</th>
@@ -231,6 +232,11 @@
                 let unitsReadOnly = isLocked ? 'readonly' : '';
                 let badgeHtml = isTransferred ? ' <span class="badge bg-primary" style="font-size:10px;">Transferred</span>' : '';
                 
+                let warehouseOptions = `<option value="auto">Auto</option>`;
+                @foreach($warehouses as $w)
+                    warehouseOptions += `<option value="{{ $w->id }}" ${data && data.warehouse_id == {{ $w->id }} ? 'selected' : ''}>{{ $w->name }}</option>`;
+                @endforeach
+
                 itemsTable.querySelector('tbody').insertAdjacentHTML('beforeend', `
 <tr>
 <td>
@@ -244,6 +250,13 @@ ${badgeHtml}
 <input type="hidden" name="items[${rowIndex}][split_ids]" value="${data ? data.split_ids : ''}">
 ${lockMsg}
 </div>
+</td>
+
+<td>
+<select name="items[${rowIndex}][warehouse_id]" class="form-select form-select-sm warehouse-select" ${isLocked ? 'disabled' : ''}>
+    ${warehouseOptions}
+</select>
+${isLocked ? `<input type="hidden" name="items[${rowIndex}][warehouse_id]" value="${data && data.warehouse_id ? data.warehouse_id : ''}">` : ''}
 </td>
 
 <td><input name="items[${rowIndex}][units_received]" class="form-control form-control-sm units" value="${data ? data.units_received : ''}" ${unitsReadOnly}></td>
@@ -477,6 +490,7 @@ ${isTransferred ? '<button type="button" class="btn btn-sm btn-secondary" disabl
                         block_stock: row.querySelector('[name$="[block_stock]"]').checked,
                         hold_stock: row.querySelector('[name$="[hold_stock]"]').checked,
                         quality_clearance: row.querySelector('.qc-select').value,
+                        warehouse_id: row.querySelector('.warehouse-select').value,
                         sap_batch: row.querySelector('[name$="[sap_batch]"]').value,
                         vendor_batch: row.querySelector('[name$="[vendor_batch]"]').value,
                         ibd_no: row.querySelector('[name$="[ibd_no]"]').value,

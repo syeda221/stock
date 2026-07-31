@@ -724,6 +724,7 @@ class InboundController extends Controller
 
             return [
                 'product_id' => $first->product_id,
+                'warehouse_id' => $first->warehouse_id,
                 'product_name' => optional($first->product)->name,
                 'item_code' => optional($first->product)->item_code,
                 'pack_size' => $first->pack_size_snapshot,
