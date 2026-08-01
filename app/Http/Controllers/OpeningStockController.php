@@ -1140,7 +1140,7 @@ class OpeningStockController extends Controller
                                 'sound_stock'        => !$item['blocked'] && !$item['hold'],
                                 'block_stock'        => $item['blocked'],
                                 'hold_stock'         => $item['hold'],
-                                'quality_clearance'  => $item['quality_clearance'],
+                                'quality_clearance'  => $item['quality_clearance'] ?? 'pending',
                                 'remarks'            => $item['remarks'] ?: null,
                             ]);
                         }
