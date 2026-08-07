@@ -736,7 +736,7 @@ class OpeningStockController extends Controller
         $request->validate([
             'csv_file'     => 'required|file|mimes:csv,txt',
             'warehouse_id' => 'nullable|exists:warehouses,id',
-            'import_mode'  => 'nullable|in:full_replace,update_only',
+            'import_mode'  => 'nullable|in:full_replace,update_only,append',
         ]);
 
         $importMode = $request->input('import_mode', 'full_replace');
@@ -793,8 +793,8 @@ class OpeningStockController extends Controller
             fclose($handle);
             return back()->with('error', 'Missing required column "Item Code". Found: ' . implode(', ', $csvHeaders));
         }
-        // Units Received only required in full_replace mode
-        if ($importMode === 'full_replace' && !isset($headerMap['Units Received'])) {
+        // Units Received only required in full_replace or append mode
+        if (($importMode === 'full_replace' || $importMode === 'append') && !isset($headerMap['Units Received'])) {
             fclose($handle);
             return back()->with('error', 'Missing required column "Units Received". Found: ' . implode(', ', $csvHeaders));
         }
@@ -854,8 +854,8 @@ class OpeningStockController extends Controller
 
             if (empty($itemCode)) $rowErrors[] = 'Missing Item Code';
 
-            // Units Received only required in full_replace mode
-            if ($importMode === 'full_replace' && (empty($units) || !is_numeric($units))) {
+            // Units Received only required in full_replace or append mode
+            if (($importMode === 'full_replace' || $importMode === 'append') && (empty($units) || !is_numeric($units))) {
                 $rowErrors[] = 'Invalid Units Received';
             }
 
@@ -872,9 +872,9 @@ class OpeningStockController extends Controller
                 if (!$product) $rowErrors[] = "Product '{$itemCode}' not found";
             }
 
-            // Warehouse only relevant in full_replace mode
+            // Warehouse only relevant in full_replace or append mode
             $rowWarehouse = null;
-            if ($importMode === 'full_replace') {
+            if ($importMode === 'full_replace' || $importMode === 'append') {
                 if ($csvHasWarehouse) {
                     $whName = strtolower(trim($getCell($row, 'Warehouse')));
                     if (!empty($whName) && $allWarehouses->has($whName)) {
@@ -983,14 +983,16 @@ class OpeningStockController extends Controller
                 }
 
                 // ── FULL REPLACE MODE ────────────────────────────────────────────
-                // Delete all existing opening stock records first
-                $oldItems = StockInItem::whereHas('stockIn', function ($q) {
-                    $q->where('source_type', 'opening');
-                })->get();
-                foreach ($oldItems as $oldItem) {
-                    $oldItem->delete();
+                if ($importMode === 'full_replace') {
+                    // Delete all existing opening stock records first
+                    $oldItems = StockInItem::whereHas('stockIn', function ($q) {
+                        $q->where('source_type', 'opening');
+                    })->get();
+                    foreach ($oldItems as $oldItem) {
+                        $oldItem->delete();
+                    }
+                    StockIn::where('source_type', 'opening')->delete();
                 }
-                StockIn::where('source_type', 'opening')->delete();
 
                 // Insert new items
                 foreach ($items as $item) {
@@ -1154,8 +1156,14 @@ class OpeningStockController extends Controller
                 $message = "Updated batch info for {$imported} product(s).";
                 if ($skipped > 0) $message .= " {$skipped} row(s) not found / skipped.";
                 if ($errors) $message .= " Details: " . implode(' | ', array_slice($errors, 0, 5));
+            } elseif ($importMode === 'append') {
+                $message = "Appended {$imported} product(s) to existing stock.";
+                if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
+                else $message .= " Auto-assigned to warehouses with available space.";
+                if ($skipped > 0) $message .= " {$skipped} row(s) skipped.";
+                if ($errors) $message .= " Errors: " . implode(' | ', array_slice($errors, 0, 5));
             } else {
-                $message = "Imported {$imported} product(s).";
+                $message = "Imported {$imported} product(s) (Full Replace).";
                 if ($request->warehouse_id) $message .= " Warehouse: {$targetWarehouse->name}.";
                 else $message .= " Auto-assigned to warehouses with available space.";
                 if ($skipped > 0) $message .= " {$skipped} row(s) skipped.";

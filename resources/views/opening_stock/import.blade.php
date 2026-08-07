@@ -69,6 +69,18 @@
                                     </div>
                                 </div>
                             </label>
+                            <label class="d-flex align-items-start gap-2 p-3 border rounded-3" style="cursor:pointer;" id="mode-append-label">
+                                <input type="radio" name="import_mode" value="append" id="mode_append" class="form-check-input mt-0 flex-shrink-0">
+                                <div>
+                                    <div class="fw-semibold text-dark" style="font-size:13.5px;">
+                                        <i class="bi bi-plus-circle text-success me-1"></i> Append / Add Stock
+                                    </div>
+                                    <div class="text-muted" style="font-size:12px;">
+                                        Add new opening stock items from CSV to existing stock.
+                                        <strong class="text-success">Existing records will NOT be deleted.</strong>
+                                    </div>
+                                </div>
+                            </label>
                             <label class="d-flex align-items-start gap-2 p-3 border rounded-3" style="cursor:pointer;" id="mode-replace-label">
                                 <input type="radio" name="import_mode" value="full_replace" id="mode_full_replace" class="form-check-input mt-0 flex-shrink-0">
                                 <div>
@@ -166,22 +178,28 @@ document.addEventListener('DOMContentLoaded', function () {
     const modeRadios      = document.querySelectorAll('input[name="import_mode"]');
     const warehouseField  = document.getElementById('warehouse-field');
     const updateLabel     = document.getElementById('mode-update-label');
+    const appendLabel     = document.getElementById('mode-append-label');
     const replaceLabel    = document.getElementById('mode-replace-label');
 
     function applyMode() {
         const selected = document.querySelector('input[name="import_mode"]:checked').value;
-        const isReplace = selected === 'full_replace';
+        const showWarehouse = selected === 'full_replace' || selected === 'append';
 
-        // Show warehouse only for full replace
-        warehouseField.style.display = isReplace ? '' : 'none';
+        // Show warehouse for full replace or append
+        warehouseField.style.display = showWarehouse ? '' : 'none';
 
         // Highlight active card
-        updateLabel.classList.toggle('border-primary', !isReplace);
-        updateLabel.classList.toggle('bg-primary', !isReplace);
-        updateLabel.classList.toggle('bg-opacity-10', !isReplace);
-        replaceLabel.classList.toggle('border-warning', isReplace);
-        replaceLabel.classList.toggle('bg-warning', isReplace);
-        replaceLabel.classList.toggle('bg-opacity-10', isReplace);
+        updateLabel.classList.toggle('border-primary', selected === 'update_only');
+        updateLabel.classList.toggle('bg-primary', selected === 'update_only');
+        updateLabel.classList.toggle('bg-opacity-10', selected === 'update_only');
+
+        appendLabel.classList.toggle('border-success', selected === 'append');
+        appendLabel.classList.toggle('bg-success', selected === 'append');
+        appendLabel.classList.toggle('bg-opacity-10', selected === 'append');
+
+        replaceLabel.classList.toggle('border-warning', selected === 'full_replace');
+        replaceLabel.classList.toggle('bg-warning', selected === 'full_replace');
+        replaceLabel.classList.toggle('bg-opacity-10', selected === 'full_replace');
     }
 
     modeRadios.forEach(r => r.addEventListener('change', applyMode));
