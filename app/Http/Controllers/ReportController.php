@@ -291,22 +291,9 @@ class ReportController extends Controller
 
         $stockIns = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->get();
 
-        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Pre-compute pallet positions across ALL items (opening + inbound) so they match stock ledger
         $rowPalletOffsets = [];
@@ -429,7 +416,7 @@ class ReportController extends Controller
                             $assignedQty += $palletQty;
                             $assignedBalance += $palletBalance;
 
-                            $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                            $psPadded = str_pad($p, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                             $rowNameStr = $item->warehouseRow->row_name ?? '';
                             $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$whPadded}";
                             $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
@@ -568,22 +555,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
         $stockOuts = $query->orderBy('created_at', 'desc')->get();
 
-        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Pre-compute pallet positions across ALL outbound items for consistency
         $rowPalletOffsets = [];
@@ -671,7 +645,7 @@ $item->hold_stock ? 'Yes' : 'No',
                             $remainingUnits -= $perPalletUnits;
                             $assignedQty += $palletQty;
 
-                            $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                            $psPadded = str_pad($p, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                             $rowNameStr = $item->warehouseRow->row_name ?? '';
                             $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$whPadded}";
                             $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
@@ -983,22 +957,9 @@ $item->hold_stock ? 'Yes' : 'No',
             ->orderBy('stock_in_items.sap_batch')
             ->get();
 
-        // Build row-letter mapping and expand into per-pallet rows
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         $rowPalletOffsets = [];
         $expanded = collect();
@@ -1077,7 +1038,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     // Note: warehouse_rows capacity is not strictly fetched here, but we can assume it's available or not cap
                     $palletCapacity = \App\Models\WarehouseRow::find($entry->row_id)->pallet_capacity ?? 0;
                     $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
-                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
+                    $psPadded = str_pad($displayP, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                     $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     $expanded->push($clone);
                 }
@@ -1285,21 +1246,8 @@ $item->hold_stock ? 'Yes' : 'No',
             ->get();
 
         // Build row letter mapping for warehouse display formatting
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Format warehouse display using actual pallet balances (FIFO-aware)
         foreach ($items as $item) {
@@ -1324,9 +1272,9 @@ $item->hold_stock ? 'Yes' : 'No',
                             $actualStart = $pStart + $firstActiveIdx;
                             $actualEnd = $pStart + $lastActiveIdx;
                             
-                            $startName = $rowLetter . str_pad($actualStart, 3, '0', STR_PAD_LEFT);
+                            $startName = $rowLetter . str_pad($actualStart, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                             if ($actualStart < $actualEnd) {
-                                $endName = $rowLetter . str_pad($actualEnd, 3, '0', STR_PAD_LEFT);
+                                $endName = $rowLetter . str_pad($actualEnd, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                                 $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
                             } else {
                                 $item->warehouse_display = "{$whPrefix}.{$startName}";
@@ -1403,21 +1351,8 @@ $item->hold_stock ? 'Yes' : 'No',
             ->orderBy('stock_in_items.pallet_start')
             ->get();
 
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         foreach ($items as $item) {
             $item->warehouse_display = '—';
@@ -1430,9 +1365,9 @@ $item->hold_stock ? 'Yes' : 'No',
                         $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($wh->id, 2, '0', STR_PAD_LEFT);
                         $originalPallets = $item->pallets_used || 1;
                         $pStart = (int) $item->pallet_start;
-                        $startName = $rowLetter . str_pad($pStart, 3, '0', STR_PAD_LEFT);
+                        $startName = $rowLetter . str_pad($pStart, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                         if ($originalPallets > 1) {
-                            $endName = $rowLetter . str_pad($pStart + $originalPallets - 1, 3, '0', STR_PAD_LEFT);
+                            $endName = $rowLetter . str_pad($pStart + $originalPallets - 1, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                             $item->warehouse_display = "{$whPrefix}.{$startName} to {$endName}";
                         } else {
                             $item->warehouse_display = "{$whPrefix}.{$startName}";
@@ -1953,22 +1888,9 @@ $item->hold_stock ? 'Yes' : 'No',
                 ->keyBy('stock_in_item_id');
         }
 
-        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Compute pallet positions per warehouse row and expand into per-pallet rows
         $rowPalletOffsets = [];
@@ -2046,7 +1968,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                     // Cap the displayed pallet number to the physical capacity to prevent fake locations like A011, A012
                     $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
-                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
+                    $psPadded = str_pad($displayP, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                     if ($rowLetter) {
                         $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
@@ -2070,7 +1992,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
                         $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad((int)$entry->pallet_start, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
                         $parts = preg_split('/ to /i', $entry->row_name);
@@ -2208,7 +2130,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
                         $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad($effectivePalletPos, 3, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($effectivePalletPos, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
                         $parts = preg_split('/ to /i', $effectiveRowName);
@@ -2418,22 +2340,9 @@ $item->hold_stock ? 'Yes' : 'No',
 
         $inboundData = $inboundQuery->orderBy('stock_in_items.warehouse_row_id')->orderBy('stock_in_items.id')->get();
 
-        // Build row-letter mapping: first row per warehouse = A, second = B, etc.
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Compute pallet positions per warehouse row and expand into per-pallet rows
         $rowPalletOffsets = [];
@@ -2522,7 +2431,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                     // Cap the displayed pallet number to the physical capacity
                     $displayP = ($palletCapacity > 0 && $p > $palletCapacity) ? $palletCapacity : $p;
-                    $psPadded = str_pad($displayP, 3, '0', STR_PAD_LEFT);
+                    $psPadded = str_pad($displayP, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                     if ($rowLetter) {
                         $clone->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
@@ -2546,7 +2455,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
                         $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad((int)$entry->pallet_start, 3, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad((int)$entry->pallet_start, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
                         $parts = preg_split('/ to /i', $entry->row_name);
@@ -2696,7 +2605,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
                         $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
-                        $psPadded = str_pad($effectivePalletPos, 3, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($effectivePalletPos, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
                         $parts = preg_split('/ to /i', $effectiveRowName);

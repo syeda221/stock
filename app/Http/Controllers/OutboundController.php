@@ -991,22 +991,9 @@ class OutboundController extends Controller
 
     public function export(Request $request)
     {
-        // Build row-letter mapping
-        $rowLetterMap = [];
-        $allRows = WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = WarehouseRow::getRowDigitsMap();
 
         $query = StockOutItem::with([
             'stockOut.warehouse', 'stockOut.customer', 'stockOut.toWarehouse', 'stockOut.transporter',
@@ -1103,7 +1090,7 @@ class OutboundController extends Controller
                 
                 if ($letter && $palletNum !== null) {
                     $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
-                    $psPadded = str_pad($palletNum, 3, '0', STR_PAD_LEFT);
+                    $psPadded = str_pad($palletNum, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                     $rowNameStr = $row->row_name ?? '';
                     $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$wp}";
                     $warehouseDisplay = "{$wName}.{$letter}{$psPadded}";

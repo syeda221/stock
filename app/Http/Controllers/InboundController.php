@@ -1101,22 +1101,9 @@ class InboundController extends Controller
 
         $items = $query->latest()->get();
 
-        // Build row-letter mapping
-        $rowLetterMap = [];
-        $allRows = \App\Models\WarehouseRow::orderBy('warehouse_id')->orderBy('row_name')->get()->groupBy('warehouse_id');
-        foreach ($allRows as $whId => $rows) {
-            $rows = $rows->sortBy('row_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-            foreach ($rows as $i => $row) {
-                $n = $i + 1;
-                $letter = '';
-                while ($n > 0) {
-                    $n--;
-                    $letter = chr(65 + $n % 26) . $letter;
-                    $n = (int)($n / 26);
-                }
-                $rowLetterMap[$whId . '-' . $row->row_name] = $letter;
-            }
-        }
+        // Build row-letter mapping and digits padding
+        $rowLetterMap = \App\Models\WarehouseRow::getRowLetterMap();
+        $rowDigitsMap = \App\Models\WarehouseRow::getRowDigitsMap();
 
         // Compute pallet positions
         $rowPalletOffsets = [];
@@ -1149,6 +1136,7 @@ class InboundController extends Controller
                 $inboundPositions[$item->id] = [
                     'start' => $palletStart, 'end' => $palletEnd,
                     'letter' => $rw, 'wh_padded' => $wp,
+                    'digits' => $rowDigitsMap[$rowKey] ?? 3,
                 ];
             }
         }
@@ -1220,7 +1208,7 @@ class InboundController extends Controller
                         $remainingUnits -= $perPalletUnits;
                         $assignedQty += $palletQty;
 
-                        $psPadded = str_pad($p, 3, '0', STR_PAD_LEFT);
+                        $psPadded = str_pad($p, $pos['digits'] ?? 3, '0', STR_PAD_LEFT);
                         $rowNameStr = $item->warehouseRow->row_name ?? '';
                         $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$whPadded}";
                         $warehouseDisplay = "{$wName}.{$rowLetter}{$psPadded}";
