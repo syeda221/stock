@@ -137,10 +137,11 @@
                 <div class="col-md-4">
                     <label class="form-label fw-semibold">Pack Size</label>
                     <input type="number"
+                           step="any"
                            name="pack_size"
                            value="{{ old('pack_size', $product->pack_size) }}"
                            class="form-control rounded-pill @error('pack_size') is-invalid @enderror"
-                           min="1"
+                           min="0.001"
                            required>
                     <small class="text-muted ms-2">Units per packing</small>
                     @error('pack_size')

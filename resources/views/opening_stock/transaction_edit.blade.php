@@ -403,7 +403,7 @@ function addRow(prefilled = null) {
 </td>
 
 <td>
-<input class="form-control form-control-sm pack-size" value="${prefilled && prefilled.pack_size ? prefilled.pack_size : ''}" readonly>
+<input type="number" step="any" min="0.001" name="items[${idx}][pack_size]" class="form-control form-control-sm pack-size" value="${prefilled && prefilled.pack_size ? prefilled.pack_size : ''}">
 </td>
 
 <td>
@@ -612,20 +612,23 @@ document.getElementById('saveBatchBtn').addEventListener('click', function () {
     activeRow.querySelector('.units')?.focus();
 });
 
-/* ================= REAL-TIME UNITS → TOTAL + PALLETS ================= */
+/* ================= REAL-TIME UNITS / PACK-SIZE → TOTAL + PALLETS ================= */
 document.addEventListener('input', function (e) {
-    if (!e.target.classList.contains('units')) return;
+    if (!e.target.classList.contains('units') && !e.target.classList.contains('pack-size')) return;
 
     const row = e.target.closest('tr');
-    const units = Number(e.target.value || 0);
-    const pack = Number(row.querySelector('.pack-size').value || 0);
+    const units = Number(row.querySelector('.units')?.value || 0);
+    const pack = Number(row.querySelector('.pack-size')?.value || 0);
 
-    row.querySelector('.total-qty').value = units * pack;
+    const totalQty = units * pack;
+    row.querySelector('.total-qty').value = Number.isInteger(totalQty) ? totalQty : parseFloat(totalQty.toFixed(3));
 
-    const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing').value || 0);
-    const palletsInput = row.querySelector('.pallets-used');
-    if (cartonsPerPallet > 0 && units > 0) {
-        palletsInput.value = Math.ceil(units / cartonsPerPallet);
+    if (e.target.classList.contains('units')) {
+        const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing')?.value || 0);
+        const palletsInput = row.querySelector('.pallets-used');
+        if (palletsInput && cartonsPerPallet > 0 && units > 0) {
+            palletsInput.value = Math.ceil(units / cartonsPerPallet);
+        }
     }
 });
 

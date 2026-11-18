@@ -1089,7 +1089,7 @@ class OutboundController extends Controller
                 $letter = $rowLetterMap[$rowKey] ?? '';
                 
                 if ($letter && $palletNum !== null) {
-                    $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                    $wp = substr(\App\Models\Warehouse::getPrefix($whId, optional($item->warehouse)->name, $row->row_name ?? null), 1);
                     $psPadded = str_pad($palletNum, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                     $rowNameStr = $row->row_name ?? '';
                     $wName = (strpos($rowNameStr, '.') !== false) ? explode('.', $rowNameStr)[0] : "W{$wp}";

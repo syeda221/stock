@@ -185,7 +185,8 @@ class OpeningStockController extends Controller
             'items' => 'required|array|min:1',
 
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.units_received' => 'required|integer|min:1',
+            'items.*.units_received' => 'required|numeric|min:0.001',
+            'items.*.pack_size' => 'nullable|numeric|min:0.001',
             'items.*.warehouse_id' => 'nullable|string',
 
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
@@ -281,7 +282,7 @@ class OpeningStockController extends Controller
 
                     $product  = Product::findOrFail($item['product_id']);
                     $units    = (int) $item['units_received'];
-                    $packSize = (float) $product->pack_size;
+                    $packSize = !empty($item['pack_size']) && is_numeric($item['pack_size']) ? (float) $item['pack_size'] : (float) $product->pack_size;
 
                     $itemWh = !empty($item['warehouse_id']) ? $item['warehouse_id'] : $headerWhId;
                     $itemWhId = ($itemWh === 'auto') ? $activeWarehouses->first()->id : (int) $itemWh;
@@ -404,7 +405,8 @@ class OpeningStockController extends Controller
         $request->validate([
             'warehouse_id'      => 'required|exists:warehouses,id',
             'product_id'         => 'required|exists:products,id',
-            'units_received'     => 'required|integer|min:1',
+            'units_received'     => 'required|numeric|min:0.001',
+            'pack_size'          => 'nullable|numeric|min:0.001',
             'pallets_used'       => 'nullable|integer|min:0',
             'sap_batch'         => 'nullable|string|max:100',
             'vendor_batch'      => 'nullable|string|max:100',
@@ -424,7 +426,7 @@ class OpeningStockController extends Controller
                 $warehouse = Warehouse::findOrFail($request->warehouse_id);
                 $product = Product::findOrFail($request->product_id);
                 $units = (int) $request->units_received;
-                $packSize = (float) $product->pack_size;
+                $packSize = !empty($request->pack_size) && is_numeric($request->pack_size) ? (float) $request->pack_size : (float) $product->pack_size;
                 $totalQty = round($units * $packSize, 4);
 
                 // Calculate pallets
@@ -591,7 +593,7 @@ class OpeningStockController extends Controller
                     $rowNameStr = $item->warehouseRow->row_name ?? '';
                     $rowKey = $whId . '-' . $rowNameStr;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
-                    $whPadded = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                    $whPadded = substr(\App\Models\Warehouse::getPrefix($whId, $item->warehouse->name ?? null, $rowNameStr), 1);
 
                     $maxPerPallet = $item->product->cartons_per_pallet ?? null;
                     $numPallets = $originalPallets;
@@ -744,6 +746,7 @@ class OpeningStockController extends Controller
         $fieldAliases = [
             'Record ID'      => ['Record ID', 'Record ID', 'record_id', 'ID', 'id'],
             'Item Code'      => ['Item Code', 'Item Code', 'item_code', 'ItemCode', 'Code'],
+            'Pack Size'      => ['Pack Size', 'pack_size', 'PackSize', 'Packing Size', 'Packing', 'Pack'],
             'Units Received' => ['Units Received', 'Units Received', 'units_received', 'Units'],
             'IBD'            => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
             'PO'             => ['PO', 'po', 'po_no', 'PO No'],
@@ -896,6 +899,7 @@ class OpeningStockController extends Controller
             $items[] = [
                 'record_id'         => $getCell($row, 'Record ID'),
                 'product'           => $product,
+                'pack_size'         => is_numeric($getCell($row, 'Pack Size')) && (float)$getCell($row, 'Pack Size') > 0 ? (float)$getCell($row, 'Pack Size') : null,
                 'units'             => is_numeric($units) ? (int) $units : null,
                 'warehouse'         => $rowWarehouse,
                 'ibd_no'            => $getCell($row, 'IBD'),
@@ -985,7 +989,7 @@ class OpeningStockController extends Controller
                 foreach ($items as $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
-                    $packSize      = (float) $product->pack_size;
+                    $packSize      = $item['pack_size'] !== null ? $item['pack_size'] : (float) $product->pack_size;
                     $cartonsPerPallet = (int) $product->cartons_per_pallet;
 
                     // Determine target warehouses for this item
@@ -1217,7 +1221,7 @@ class OpeningStockController extends Controller
             $product = Product::find($productId);
             if (!$product) continue;
 
-            $packSize = (float) $product->pack_size;
+            $packSize = !empty($itemData['pack_size']) && is_numeric($itemData['pack_size']) ? (float) $itemData['pack_size'] : (float) $product->pack_size;
             $cartonsPerPallet = (int) ($product->cartons_per_pallet ?? 0);
 
             if ($palletsUsed === 0 && $cartonsPerPallet > 0) {
@@ -1391,7 +1395,8 @@ class OpeningStockController extends Controller
             'warehouse_id' => 'required|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.units_received' => 'required|integer|min:1',
+            'items.*.units_received' => 'required|numeric|min:0.001',
+            'items.*.pack_size' => 'nullable|numeric|min:0.001',
             'items.*.warehouse_id' => 'nullable|string',
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
             'items.*.sap_batch' => 'nullable|string|max:100',
@@ -1437,7 +1442,7 @@ class OpeningStockController extends Controller
                     $productId = $itemData['product_id'];
                     $product = Product::findOrFail($productId);
                     $newUnits = (int) $itemData['units_received'];
-                    $packSize = (float) $product->pack_size;
+                    $packSize = !empty($itemData['pack_size']) && is_numeric($itemData['pack_size']) ? (float) $itemData['pack_size'] : (float) $product->pack_size;
                     $newQty = round($newUnits * $packSize, 4);
 
                     $splitIdsStr = $itemData['split_ids'] ?? '';

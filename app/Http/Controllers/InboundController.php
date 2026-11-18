@@ -263,7 +263,7 @@ class InboundController extends Controller
             $ignoreItemIds = array_filter(array_map('intval', explode(',', $splitIdsStr)));
 
             $product = $productId ? Product::find($productId) : null;
-            $packSize = $product ? (float) $product->pack_size : 1.0;
+            $packSize = !empty($itemData['pack_size']) && is_numeric($itemData['pack_size']) ? (float) $itemData['pack_size'] : ($product ? (float) $product->pack_size : 1.0);
             $cartonsPerPallet = $product ? (int) ($product->cartons_per_pallet ?? 0) : 0;
 
             if ($idx == $activeRowIndex) {
@@ -444,7 +444,8 @@ class InboundController extends Controller
 
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|exists:products,id',
-            'items.*.units_received' => 'nullable|integer|min:0',
+            'items.*.units_received' => 'nullable|numeric|min:0',
+            'items.*.pack_size' => 'nullable|numeric|min:0.001',
             'items.*.quality_clearance' => 'nullable|in:pending,approved,rejected',
             'items.*.qc_remarks' => 'nullable|string',
             'items.*.warehouse_row_id' => 'nullable|exists:warehouse_rows,id',
@@ -565,7 +566,7 @@ class InboundController extends Controller
 
                 $product  = Product::findOrFail($item['product_id']);
                 $units    = (int) $item['units_received'];
-                $packSize = (float) $product->pack_size;
+                $packSize = !empty($item['pack_size']) && is_numeric($item['pack_size']) ? (float) $item['pack_size'] : (float) $product->pack_size;
 
                 $manualRowId = !empty($item['warehouse_row_id']) ? (int) $item['warehouse_row_id'] : null;
                 $manualPalletStart = isset($item['pallet_start']) && $item['pallet_start'] !== '' ? (int) $item['pallet_start'] : null;
@@ -879,7 +880,7 @@ class InboundController extends Controller
                     $productId = $itemData['product_id'];
                     $product = Product::findOrFail($productId);
                     $newUnits = (float) $itemData['units_received'];
-                    $packSize = (float) $product->pack_size;
+                    $packSize = !empty($itemData['pack_size']) && is_numeric($itemData['pack_size']) ? (float) $itemData['pack_size'] : (float) $product->pack_size;
                     $newQty = round($newUnits * $packSize, 4);
                     
                     $splitIdsStr = $itemData['split_ids'] ?? '';
@@ -965,7 +966,7 @@ class InboundController extends Controller
     private function createItemSplits($stockIn, $primaryWarehouse, $product, $itemData, array &$simulatedOccupied = [])
     {
         $units = (int) $itemData['units_received'];
-        $packSize = (float) $product->pack_size;
+        $packSize = !empty($itemData['pack_size']) && is_numeric($itemData['pack_size']) ? (float) $itemData['pack_size'] : (float) $product->pack_size;
 
         $manualRowId = !empty($itemData['warehouse_row_id']) ? (int) $itemData['warehouse_row_id'] : null;
         $manualPalletStart = isset($itemData['pallet_start']) && $itemData['pallet_start'] !== '' ? (int) $itemData['pallet_start'] : null;
@@ -1132,7 +1133,7 @@ class InboundController extends Controller
             }
             if ($item->stockIn->source_type === 'inbound') {
                 $rw = $rowLetterMap[$rowKey] ?? '';
-                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                $wp = substr(\App\Models\Warehouse::getPrefix($whId, $item->warehouse->name ?? null, $row->row_name ?? null), 1);
                 $inboundPositions[$item->id] = [
                     'start' => $palletStart, 'end' => $palletEnd,
                     'letter' => $rw, 'wh_padded' => $wp,
@@ -1375,6 +1376,7 @@ class InboundController extends Controller
 
         $fieldAliases = [
             'Item Code'        => ['Item Code', 'item_code', 'ItemCode', 'Code'],
+            'Pack Size'        => ['Pack Size', 'pack_size', 'PackSize', 'Packing Size', 'Packing', 'Pack'],
             'Units Received'   => ['RECEIVED Units', 'Units Received', 'units_received', 'Units'],
             'IBD'              => ['IBD', 'ibd', 'ibd_no', 'IBD No'],
             'PO'               => ['PO', 'po', 'po_no', 'PO No'],
@@ -1582,6 +1584,7 @@ class InboundController extends Controller
 
             $items[] = [
                 'product'              => $product,
+                'pack_size'            => is_numeric($getCell($row, 'Pack Size')) && (float)$getCell($row, 'Pack Size') > 0 ? (float)$getCell($row, 'Pack Size') : null,
                 'units'                => (int) $units,
                 'warehouse'            => $rowWarehouse,
                 'ibd_no'               => $getCell($row, 'IBD'),
@@ -1630,7 +1633,7 @@ class InboundController extends Controller
                 foreach ($items as $i => $item) {
                     $product       = $item['product'];
                     $units         = $item['units'];
-                    $packSize      = (float) $product->pack_size;
+                    $packSize      = $item['pack_size'] !== null ? $item['pack_size'] : (float) $product->pack_size;
                     $cartonsPerPallet = (int) $product->cartons_per_pallet;
 
                     if ($item['warehouse']) {

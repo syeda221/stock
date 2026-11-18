@@ -260,7 +260,7 @@ ${isLocked ? `<input type="hidden" name="items[${rowIndex}][warehouse_id]" value
 </td>
 
 <td><input name="items[${rowIndex}][units_received]" class="form-control form-control-sm units" value="${data ? data.units_received : ''}" ${unitsReadOnly}></td>
-<td><input class="form-control form-control-sm pack-size bg-light" value="${data ? data.pack_size : ''}" readonly></td>
+<td><input type="number" step="any" min="0.001" name="items[${rowIndex}][pack_size]" class="form-control form-control-sm pack-size" value="${data ? data.pack_size : ''}" ${isLocked ? 'readonly' : ''}></td>
 <td><input class="form-control form-control-sm total-qty bg-light fw-bold" value="${data ? data.total_quantity : ''}" readonly></td>
 
 <td>
@@ -441,18 +441,23 @@ ${isTransferred ? '<button type="button" class="btn btn-sm btn-secondary" disabl
 
             /* TOTAL + PALLETS AUTO-CALC */
             document.addEventListener('input', e => {
-                if (!e.target.classList.contains('units')) return;
+                if (!e.target.classList.contains('units') && !e.target.classList.contains('pack-size')) return;
                 const row = e.target.closest('tr');
-                const units = +e.target.value || 0;
-                const pack = +row.querySelector('.pack-size').value || 0;
-                row.querySelector('.total-qty').value = (units * pack).toFixed(0);
+                const units = +row.querySelector('.units')?.value || 0;
+                const pack = +row.querySelector('.pack-size')?.value || 0;
+                const totalQty = units * pack;
+                row.querySelector('.total-qty').value = Number.isInteger(totalQty) ? totalQty : parseFloat(totalQty.toFixed(3));
 
-                // Auto-recalculate pallets: ceil(units / cartons_per_pallet)
-                const palletsInput = row.querySelector('.pallets-used');
-                if(!palletsInput.readOnly) {
-                    const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing').value || 0);
-                    if (cartonsPerPallet > 0 && units > 0) {
-                        palletsInput.value = Math.ceil(units / cartonsPerPallet);
+                if (e.target.classList.contains('units')) {
+                    const palletsInput = row.querySelector('.pallets-used');
+                    if(palletsInput && !palletsInput.readOnly) {
+                        const cartonsPerPallet = Number(row.querySelector('.pallets-per-packing')?.value || 0);
+                        if (cartonsPerPallet > 0 && units > 0) {
+                            palletsInput.value = Math.ceil(units / cartonsPerPallet);
+                        }
+                    }
+                }
+            });
                     }
                 }
             });

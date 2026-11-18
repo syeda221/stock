@@ -47,7 +47,7 @@
 
                 <div class="col-md-4 mb-3">
                     <label class="form-label fw-semibold small">Pack Size</label>
-                    <input type="text" id="pack_size" class="form-control form-control-sm" value="{{ $item->pack_size_snapshot }}" readonly>
+                    <input type="number" step="any" min="0.001" name="pack_size" id="pack_size" class="form-control form-control-sm" value="{{ $item->pack_size_snapshot }}">
                 </div>
 
                 <div class="col-md-4 mb-3">
@@ -140,15 +140,17 @@ document.addEventListener('DOMContentLoaded', function () {
     const totalInput = document.getElementById('total_quantity');
     const palletsInput = document.getElementById('pallets_used');
 
-    function updateCalculations() {
+    function updateCalculations(e) {
         const selectedOption = productSelect.options[productSelect.selectedIndex];
         if (!selectedOption) return;
-        const pack = parseFloat(selectedOption.dataset.pack || 0);
+        if (e && e.target === productSelect) {
+            packInput.value = parseFloat(selectedOption.dataset.pack || 0);
+        }
+        const pack = parseFloat(packInput.value || 0);
         const cartonsPerPallet = parseFloat(selectedOption.dataset.cartons || 0);
         const units = parseFloat(unitsInput.value || 0);
 
-        packInput.value = pack;
-        totalInput.value = (units * pack).toFixed(4);
+        totalInput.value = (units * pack).toFixed(3);
 
         if (cartonsPerPallet > 0 && units > 0) {
             palletsInput.value = Math.ceil(units / cartonsPerPallet);
@@ -160,6 +162,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     productSelect.addEventListener('change', updateCalculations);
     unitsInput.addEventListener('input', updateCalculations);
+    packInput.addEventListener('input', updateCalculations);
 
     // Initial run
     updateCalculations();

@@ -577,7 +577,7 @@
                     {{-- Pack Size --}}
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Pack Size (Units/Ctn) <span class="text-danger">*</span></label>
-                        <input type="number" name="pack_size" class="form-control form-control-sm rounded-3" min="1" value="1" placeholder="e.g. 12" required>
+                        <input type="number" step="any" min="0.001" name="pack_size" class="form-control form-control-sm rounded-3" value="1" placeholder="e.g. 217.7" required>
                     </div>
 
                     {{-- Cartons Per Pallet --}}

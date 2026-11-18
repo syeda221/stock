@@ -335,7 +335,7 @@ class ReportController extends Controller
             }
             if ($item->stockIn->source_type === 'inbound') {
                 $rw = $rowLetterMap[$rowKey] ?? '';
-                $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+                $wp = substr(\App\Models\Warehouse::getPrefix($whId, $item->warehouse->name ?? null, $item->warehouseRow->row_name ?? null), 1);
                 $inboundPositions[$item->id] = [
                     'start' => $palletStart, 'end' => $palletEnd,
                     'letter' => $rw, 'wh_padded' => $wp,
@@ -574,7 +574,7 @@ $item->hold_stock ? 'Yes' : 'No',
             
             $rowKey = $whId . '-' . $row->row_name;
             $rw = $rowLetterMap[$rowKey] ?? '';
-            $wp = str_pad($whId, 2, '0', STR_PAD_LEFT);
+            $wp = substr(\App\Models\Warehouse::getPrefix($whId, $item->warehouse->name ?? null, $row->row_name ?? null), 1);
             
             $palletStart = $item->pallet_position !== null ? (int)$item->pallet_position : 1;
             $palletCount = (int)$item->pallets_returned;
@@ -978,7 +978,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $entry->row_name);
 
                 $totalUnits = (float) $entry->units_received;
                 $totalQty = (float) $entry->total_quantity;
@@ -1257,7 +1257,7 @@ $item->hold_stock ? 'Yes' : 'No',
                 $rowKey = $whId . '-' . $item->row_name;
                 $rowLetter = $rowLetterMap[$rowKey] ?? '';
                 if ($rowLetter) {
-                    $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($whId, 2, '0', STR_PAD_LEFT);
+                    $whPrefix = \App\Models\Warehouse::getPrefix($whId, $item->warehouse_name, $item->row_name);
                     
                     // Use StockInItem model to get actual per-pallet balances (FIFO drain aware)
                     $stockInItem = \App\Models\StockInItem::with('product')->find($item->id);
@@ -1362,7 +1362,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowKey = $wh->id . '-' . $item->row_name;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = preg_match('/^(W\d+)/', $item->row_name, $wm) ? $wm[1] : 'W' . str_pad($wh->id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = \App\Models\Warehouse::getPrefix($wh->id, $wh->name ?? $item->warehouse_name, $item->row_name);
                         $originalPallets = $item->pallets_used || 1;
                         $pStart = (int) $item->pallet_start;
                         $startName = $rowLetter . str_pad($pStart, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
@@ -1914,7 +1914,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $entry->row_name);
 
                 // Expand: one row per pallet with sequential carton fill
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
@@ -1991,7 +1991,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $entry->row_name);
                         $psPadded = str_pad((int)$entry->pallet_start, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
@@ -2129,7 +2129,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowKey = $entry->warehouse_id . '-' . $effectiveRowName;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $effectiveRowName);
                         $psPadded = str_pad($effectivePalletPos, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
@@ -2370,7 +2370,7 @@ $item->hold_stock ? 'Yes' : 'No',
 
                 $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                 $rowLetter = $rowLetterMap[$mapKey] ?? '';
-                $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $entry->row_name);
 
                 // Expand: one row per pallet with sequential carton fill
                 $maxPerPallet = $entry->cartons_per_pallet ?? null;
@@ -2454,7 +2454,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $mapKey = $entry->warehouse_id . '-' . $entry->row_name;
                     $rowLetter = $rowLetterMap[$mapKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $entry->row_name && preg_match('/^(W\d+)/', $entry->row_name, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $entry->row_name);
                         $psPadded = str_pad((int)$entry->pallet_start, $rowDigitsMap[$mapKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {
@@ -2604,7 +2604,7 @@ $item->hold_stock ? 'Yes' : 'No',
                     $rowKey = $entry->warehouse_id . '-' . $effectiveRowName;
                     $rowLetter = $rowLetterMap[$rowKey] ?? '';
                     if ($rowLetter) {
-                        $whPrefix = $effectiveRowName && preg_match('/^(W\d+)/', $effectiveRowName, $wm) ? $wm[1] : 'W' . str_pad($entry->warehouse_id, 2, '0', STR_PAD_LEFT);
+                        $whPrefix = \App\Models\Warehouse::getPrefix($entry->warehouse_id, $entry->warehouse_name, $effectiveRowName);
                         $psPadded = str_pad($effectivePalletPos, $rowDigitsMap[$rowKey] ?? 3, '0', STR_PAD_LEFT);
                         $entry->warehouse_display = "{$whPrefix}.{$rowLetter}{$psPadded}";
                     } else {

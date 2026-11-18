@@ -143,7 +143,7 @@ class ProductWizardController extends Controller
             'product_group_id'    => 'required|exists:product_groups,id',
             'uom_id'              => 'required|exists:uoms,id',
             'packing_type_id'     => 'required|exists:packing_types,id',
-            'pack_size'           => 'required|integer|min:1',
+            'pack_size'           => 'required|numeric|min:0.001',
             'cartons_per_pallet'  => 'nullable|integer|min:1',
         ]);
 

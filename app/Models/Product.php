@@ -18,6 +18,10 @@ class Product extends Model
         'status'
     ];
 
+    protected $casts = [
+        'pack_size' => 'decimal:3',
+    ];
+
     public function category()
 {
     return $this->belongsTo(ProductCategory::class, 'product_category_id');

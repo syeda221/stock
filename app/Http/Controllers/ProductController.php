@@ -68,7 +68,7 @@ class ProductController extends Controller
             'product_group_id' => 'required|exists:product_groups,id',
             'uom_id' => 'required|exists:uoms,id',
             'packing_type_id' => 'required|exists:packing_types,id',
-            'pack_size' => 'required|integer|min:1',
+            'pack_size' => 'required|numeric|min:0.001',
             'pallets_per_packing' => 'nullable|integer|min:1',
         ]);
 
@@ -108,7 +108,7 @@ class ProductController extends Controller
             'product_group_id' => 'required|exists:product_groups,id',
             'uom_id' => 'required|exists:uoms,id',
             'packing_type_id' => 'required|exists:packing_types,id',
-            'pack_size' => 'required|integer|min:1',
+            'pack_size' => 'required|numeric|min:0.001',
             'pallets_per_packing' => 'nullable|integer|min:1',
         ]);
 
@@ -314,7 +314,7 @@ class ProductController extends Controller
                     'product_group_id'    => $grpId,
                     'uom_id'            => $uomId,
                     'packing_type_id'   => $pkId,
-                    'pack_size'         => max((int) ($packSize ?: 1), 1),
+                    'pack_size'         => is_numeric($packSize) && (float) $packSize > 0 ? (float) $packSize : 1.0,
                     'cartons_per_pallet' => is_numeric($cartonsPerPallet) ? (int) $cartonsPerPallet : null,
                     'status'            => strtolower($statusStr) === 'active' ? 1 : 0,
                 ]);
